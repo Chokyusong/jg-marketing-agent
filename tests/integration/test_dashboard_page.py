@@ -112,3 +112,25 @@ def test_bundled_serif_font_is_linked(page, make_client):
     font = make_client(key=None).get("/static/fonts/NotoSerifKR-Regular-subset.woff2")
     assert font.status_code == 200
     assert font.headers["content-type"] == "font/woff2"
+
+
+def test_label_text_is_at_least_11px(make_client):
+    # UI_SPEC 6절: 이름표 11px 이상(영상 길이, 진행 단계 이름 포함, 좁은 화면 포함)
+    css = make_client(key=None).get("/static/css/style.css").text
+    sizes = [float(x) for x in re.findall(r"font-size:\s*([\d.]+)px", css)]
+    assert sizes and min(sizes) >= 11
+    for selector in (".duration {", ".job-steps li {"):
+        rule = css.split(selector, 1)[1].split("}", 1)[0]
+        assert "font-size: 11px" in rule
+
+
+def test_broken_thumbnail_falls_back_to_empty_box(make_client):
+    # 그림을 못 불러오면 img를 떼어 내 빈 자리(.thumb 배경)만 남긴다. 01·02칸이 같은 함수를 쓴다.
+    client = make_client(key=None)
+    fmt = client.get("/static/js/format.js").text
+    body = fmt.split("export function thumbnail(video) {", 1)[1]
+    assert "addEventListener('error', () => img.remove()" in body
+    for name in ("discover.js", "analysis.js"):
+        js = client.get(f"/static/js/{name}").text
+        assert "thumbnail(video)" in js
+        assert "el('img'" not in js  # 썸네일 그림은 thumbnail()만 만든다

@@ -58,10 +58,16 @@ export function el(tag, attrs = {}, children = []) {
 }
 
 // 썸네일 + 길이 표시. 바깥 글은 textContent로만 넣는다.
+// 그림을 못 불러오면 img를 떼어 내 주소가 없을 때와 같은 빈 자리(배경색)만 남긴다.
 export function thumbnail(video) {
   const duration = formatDuration(video.duration_seconds);
+  let img = null;
+  if (video.thumbnail_url) {
+    img = el('img', { src: video.thumbnail_url, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' });
+    img.addEventListener('error', () => img.remove(), { once: true });
+  }
   return el('span', { class: 'thumb' }, [
-    video.thumbnail_url ? el('img', { src: video.thumbnail_url, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : null,
+    img,
     duration ? el('span', { class: 'duration', text: duration }) : null,
   ]);
 }
