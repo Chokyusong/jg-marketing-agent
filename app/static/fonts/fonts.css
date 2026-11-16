@@ -1,0 +1,9 @@
+/* Noto Serif KR (SIL Open Font License 1.1) — 제목용 명조 글꼴.
+   굵기 400만, 한글·영문·숫자·기본 기호만 남긴 파일이다. 출처와 만든 방법은 같은 폴더 README.md. */
+@font-face {
+  font-family: "Noto Serif KR";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("NotoSerifKR-Regular-subset.woff2") format("woff2");
+}

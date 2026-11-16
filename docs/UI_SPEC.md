@@ -142,7 +142,9 @@
 - **글자 크기를 한 단계 키운다.** 목업은 본문 13px, 이름표 10px이다. 본문 14px, 이름표 11px 이상으로.
 - **글꼴.** 목업은 `Noto Serif CJK KR`·`Noto Sans CJK KR`을 쓰는데 Windows에는 보통 없다. 없으면 제목이 명조로 안 보인다.
   - 순서: 제목 `'Noto Serif KR','Noto Serif CJK KR','Nanum Myeongjo',Batang,Georgia,serif` / 본문 `'Pretendard','Noto Sans KR','Malgun Gothic','Segoe UI',sans-serif`.
-  - 실행 중에 외부에서 내려받지 않는다(오프라인에서도 떠야 한다). 목업과 같은 모습을 내려면 명조 글꼴 파일을 `app/static/fonts/`에 넣어야 한다. 넣는다면 Noto Serif KR(OFL 라이선스)을 쓰고 README에 출처를 적는다. **넣을지는 대표가 정한다**(9단계 전까지). 그 전에는 위 순서대로 PC에 있는 글꼴을 쓴다.
+  - 실행 중에 외부에서 내려받지 않는다(오프라인에서도 떠야 한다).
+  - **명조 글꼴은 프로그램에 넣었다**(대표 결정, 2026-11-16): `app/static/fonts/NotoSerifKR-Regular-subset.woff2`. Noto Serif KR, SIL OFL 1.1, 굵기 400 하나, 약 1MB. 템플릿에서 `/static/fonts/fonts.css`를 불러오면 `"Noto Serif KR"`로 쓸 수 있다. 굵기가 400뿐이니 제목에 굵은 글씨를 쓰지 않는다(목업도 제목은 전부 400이다). 출처와 라이선스는 `app/static/fonts/README.md`.
+  - 본문 글꼴은 넣지 않는다. PC에 있는 글꼴을 위 순서대로 쓴다.
 - **모서리.** 둥글리지 않는다(목업은 전부 각진 선). 선택 표시와 점만 둥글다.
 - **선.** 카드 대신 가는 선으로 구역을 나눈다. 그림자 없음.
 - **아이콘.** 목업처럼 글자 화살표(`↗`)와 CSS 도형만. 아이콘 글꼴이나 외부 CDN을 쓰지 않는다.
