@@ -81,6 +81,10 @@ function render(state) {
     comments.textContent = '–';
   }
 
+  // 넓은 화면에서는 두 줄을 한 줄에 말줄임으로 둔다(2026-11-17). 전체는 마우스를 올리면
+  transcript.title = transcript.textContent;
+  comments.title = comments.textContent;
+
   const note = ctx ? noteLine(ctx) : '';
   $('ctx-note').textContent = note;
   $('ctx-note').hidden = !note;

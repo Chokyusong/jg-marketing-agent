@@ -1,6 +1,6 @@
 // ① 영상 탐색: 탭, 검색창과 거르기(쇼츠 제외 포함), 영상 목록, 선택, 오류 문구.
 import { api } from './api.js';
-import { el, formatAgo, formatViews, thumbnail } from './format.js';
+import { el, formatAgo, formatViews, thumbnail, titleNode } from './format.js';
 import { getState, setState, subscribe } from './state.js';
 
 const $ = (id) => document.getElementById(id);
@@ -93,7 +93,7 @@ function videoRow(video, selected) {
   const meta = [video.channel_title, formatViews(video.view_count), formatAgo(video.published_at)].filter(Boolean);
   const done = commentedText(video.commented);
   const body = el('span', {}, [
-    el('span', { class: 'video-title', text: video.title }),
+    titleNode(video.title), // 끝의 #태그는 흐리게(원문은 title 속성에 그대로)
     el('span', { class: 'video-meta' }, [
       done ? el('span', { class: 'commented', text: done }) : null,
       meta.join(' · '),
@@ -197,6 +197,10 @@ function setupList() {
 }
 
 export function initDiscover() {
+  // 「쇼츠 제외」는 늘 config.yaml 기본값(discover.exclude_shorts)으로 시작한다. 창을 새로 고쳐도
+  // 브라우저가 앞서 바꾼 체크 상태를 되살리지 않게 HTML의 처음 값으로 되돌린다(2026-11-17)
+  const shorts = $('exclude-shorts');
+  if (shorts) shorts.checked = shorts.defaultChecked;
   setupTabs();
   setupList();
   $('search-form').addEventListener('submit', (event) => {

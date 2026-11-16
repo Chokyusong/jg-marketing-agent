@@ -57,6 +57,24 @@ export function el(tag, attrs = {}, children = []) {
   return node;
 }
 
+// 영상 제목 끝에 줄줄이 붙은 #태그를 나눈다(2026-11-17). 화면에서 태그만 흐리게 그려 제목 본문이
+// 먼저 읽히게 한다. 제목 원문은 바꾸지 않는다: 두 조각을 이으면 원문 그대로다.
+// 제목이 태그뿐이거나 태그가 없으면 { main: 원문, tags: '' }.
+const TRAILING_TAGS = /(?:\s*#[^\s#]+)+\s*$/u;
+export function splitTitleTags(title) {
+  const text = String(title ?? '');
+  const found = TRAILING_TAGS.exec(text);
+  if (!found || !text.slice(0, found.index).trim()) return { main: text, tags: '' };
+  return { main: text.slice(0, found.index), tags: text.slice(found.index) };
+}
+
+// 제목 한 덩어리: 본문 + 흐린 태그. 전체 원문은 부르는 쪽이 title 속성에 둔다
+export function titleNode(title, className = 'video-title') {
+  const { main, tags } = splitTitleTags(title);
+  if (!tags) return el('span', { class: className, text: main });
+  return el('span', { class: className }, [main, el('span', { class: 'title-tags', text: tags })]);
+}
+
 // 썸네일 + 길이 표시. 바깥 글은 textContent로만 넣는다.
 // 그림을 못 불러오면 img를 떼어 내 주소가 없을 때와 같은 빈 자리(배경색)만 남긴다.
 export function thumbnail(video) {

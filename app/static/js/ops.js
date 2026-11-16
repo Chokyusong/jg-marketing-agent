@@ -4,14 +4,14 @@
 // - 03칸: 사용 프로필(자동 배정 = 가장 오래 안 쓴 프로필), 작업 방식(대상: youtube = 사람이 게시,
 //   sandbox = 테스트 페이지 자동 실행), 일일 제한(설정값 이하로만), 오늘 작업 n / 상한.
 //   고른 값은 화면 상태에만 둔다. 게시 실행(8단계)이 이 값으로 예약하고, 서버가 상한을 다시 강제한다.
-// - 기록 표는 최근 5줄만(전체 보기는 9단계 VIEW ALL, panels.js). 바깥 글은 textContent로만 넣는다.
+// - 기록 표는 최근 3줄만(넓은 화면에서 높이를 고정한 띠, 2026-11-17 한 화면 배치)(전체 보기는 9단계 VIEW ALL, panels.js). 바깥 글은 textContent로만 넣는다.
 import { api } from './api.js';
 import { el } from './format.js';
 import { getState, setState, subscribe } from './state.js';
 
 const $ = (id) => document.getElementById(id);
 const REFRESH_MS = 30000;
-const RECENT_ROWS = 5;
+const RECENT_ROWS = 3;
 
 let lastKey = null;
 let seq = 0;

@@ -1,42 +1,38 @@
-// 3열이 창 아래로 잘리지 않게(9단계). 넓은 화면(3열, 1121px 이상)에서 세 칸의 최대 높이를
-// "창 높이 − 3열이 시작하는 위치"로 둔다. 내용이 그보다 길면 그 칸 안에서만 세로로 스크롤한다.
-// 1920×1080에서는 내용이 다 들어가 스크롤이 생기지 않는다. 프로그램 창 기본 크기(1600×1000)처럼
-// 낮은 창에서만 칸 안 스크롤이 생긴다. 좁은 화면(2열·1열)은 페이지가 그대로 길어진다.
-const WIDE = '(min-width: 1121px)';
-const MIN_CAP = 420; // 이보다 낮게 남으면 자르지 않는다(너무 낮은 창에서는 페이지 스크롤이 낫다)
+// 한 화면 배치(2026-11-17). 넓은 화면(1121px 이상, 높이 600px 이상)에서는 CSS 격자가 화면을
+// 위 줄 · 제목 영역 · 흐름 띠 · 3열(남는 높이 전부) · 작업 기록 띠로 나누고 페이지는 스크롤하지 않는다
+// (style.css 「한 화면 배치」). 칸 제목은 칸 맨 위에 고정되고, 넘치는 내용은 그 칸 몸통(.col-body)
+// 안에서만 스크롤한다. 01칸은 영상 목록 한 곳만 스크롤한다.
+//
+// 9단계에서 JS로 칸 최대 높이(--col-max)를 재던 방식은 CSS 격자로 바꿨다. 여기서는 목록이 다시
+// 그려지거나 창 크기가 바뀌어도 고른 영상 줄이 목록 안에서 보이게만 맞춘다(페이지는 움직이지 않는다).
+import { subscribe } from './state.js';
+
+const FIT = '(min-width: 1121px) and (min-height: 600px)';
+
+// 목록 상자 안에서만 스크롤을 옮긴다(scrollIntoView는 페이지나 칸까지 움직일 수 있어 쓰지 않는다)
+function keepInList(list, row) {
+  const top = row.offsetTop; // .video-list는 position: relative라 줄 위치가 목록 기준이다
+  const bottom = top + row.offsetHeight;
+  if (top < list.scrollTop) list.scrollTop = top;
+  else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
+}
 
 export function initLayout() {
-  const workspace = document.querySelector('.workspace');
-  if (!workspace) return;
-  const wide = window.matchMedia(WIDE);
+  const list = document.getElementById('video-list');
+  if (!list) return;
+  const fit = window.matchMedia(FIT);
+  let lastSelected = null;
   let frame = 0;
-  const fit = () => {
-    frame = 0;
-    if (!wide.matches) {
-      workspace.classList.remove('is-capped');
-      workspace.style.removeProperty('--col-max');
-      return;
-    }
-    const top = workspace.getBoundingClientRect().top + window.scrollY;
-    const room = Math.floor(window.innerHeight - top - 2);
-    if (room < MIN_CAP) {
-      workspace.classList.remove('is-capped');
-      workspace.style.removeProperty('--col-max');
-      return;
-    }
-    workspace.style.setProperty('--col-max', `${room}px`);
-    workspace.classList.add('is-capped');
+  const reveal = (force) => {
+    const row = list.querySelector('.vid[aria-pressed="true"]');
+    const id = row ? row.dataset.id : null;
+    if (row && fit.matches && (force || id !== lastSelected)) keepInList(list, row);
+    lastSelected = id;
   };
-  const schedule = () => {
-    if (!frame) frame = requestAnimationFrame(fit);
+  subscribe(() => reveal(false));
+  const onResize = () => {
+    if (!frame) frame = requestAnimationFrame(() => { frame = 0; reveal(true); });
   };
-  window.addEventListener('resize', schedule);
-  wide.addEventListener('change', schedule);
-  // 위 줄·제목 영역 높이가 바뀌면(글꼴을 늦게 불러올 때 등) 다시 잰다
-  const watch = new ResizeObserver(schedule);
-  for (const sel of ['.top', '.hero', '.progress']) {
-    const node = document.querySelector(sel);
-    if (node) watch.observe(node);
-  }
-  fit();
+  window.addEventListener('resize', onResize);
+  fit.addEventListener('change', onResize);
 }

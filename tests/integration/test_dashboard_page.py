@@ -359,7 +359,8 @@ def test_records_table_is_on(page):
     history = _section(page, 'id="activity"', "</section>")
     assert "7단계에서 연결" not in history
     # 9단계: 한국어 이름을 위에, 영어는 작게 아래에
-    assert 'id="records-meta">최근 5줄 · ACTIVITY ARCHIVE<' in history
+    # 한 화면 배치(2026-11-17): 첫 화면은 높이를 고정한 띠에 최근 3줄
+    assert 'id="records-meta">최근 3줄 · ACTIVITY ARCHIVE<' in history
     for ko, en in (("시간", "TIME"), ("영상", "VIDEO"), ("작업", "ACTION"), ("댓글", "COMMENT"),
                    ("상태", "STATUS"), ("프로필", "PROFILE")):
         assert f'<th><span class="ko">{ko}</span><small class="en">{en}</small></th>' in history
@@ -375,7 +376,7 @@ def test_ops_js_wires_the_three_apis(make_client):
         assert snippet in api, snippet
     js = client.get("/static/js/ops.js").text
     for text in ("api.todayStats(ops.target, ops.dailyLimit)", "api.records(RECENT_ROWS)",
-                 "const RECENT_ROWS = 5;", "timeZone: 'Asia/Seoul'", "'–'",
+                 "const RECENT_ROWS = 3;", "timeZone: 'Asia/Seoul'", "'–'",
                  "setInterval(refreshOps", "export async function refreshOps()"):
         assert text in js, text
     assert "initOps" in client.get("/static/js/app.js").text
@@ -473,6 +474,17 @@ def test_discover_has_exclude_shorts_checked_by_default(page, make_client):
     assert ".filters .shorts-toggle { flex: none; }" in css  # 같은 줄(높이가 늘지 않게)
 
 
+def test_exclude_shorts_always_starts_from_config_default(page, make_client):
+    # 대표 화면에서 「쇼츠 제외」가 꺼진 채 보였다(2026-11-17). 창을 새로 고쳐도 브라우저가
+    # 앞서 바꾼 체크를 되살리지 않게 폼 자동 복원을 끄고, 시작할 때 HTML의 처음 값으로 되돌린다
+    assert '<form id="search-form" autocomplete="off">' in page
+    assert re.search(r'id="exclude-shorts"[^>]*autocomplete="off"', page)
+    discover = make_client(key=None).get("/static/js/discover.js").text
+    init = discover.split("export function initDiscover() {", 1)[1]
+    assert "shorts.checked = shorts.defaultChecked;" in init
+    assert init.index("shorts.defaultChecked") < init.index("setupTabs();")
+
+
 def test_exclude_shorts_unchecked_when_config_turns_it_off(make_client):
     overrides = {"discover": {"query": "연애 고민", "max_results": 12, "exclude_shorts": False}}
     page = make_client(key=None, overrides=overrides).get("/").text
@@ -563,11 +575,26 @@ def test_next_action_highlights_one_thing_in_order(make_client):
 
 
 def test_columns_scroll_inside_when_window_is_short(make_client):
+    # 한 화면 배치(2026-11-17): 9단계의 JS 칸 높이(--col-max) 대신 CSS 격자. 넓은 화면에서 페이지는
+    # 스크롤하지 않고, 칸 제목은 고정, 칸 몸통(.col-body)만 스크롤, 01칸은 영상 목록만 스크롤
     client = make_client(key=None)
     css = client.get("/static/css/style.css").text
-    assert ".workspace.is-capped .column" in css and "var(--col-max)" in css
+    fit_query = "@media (min-width: 1121px) and (min-height: 600px) {"
+    fit = css.split(fit_query, 1)[1].split("\n}\n", 1)[0]
+    for token in ("html, body { height: 100%; overflow: hidden; }",
+                  "grid-template-rows: auto auto auto minmax(0, 1fr) auto",
+                  ".colhead { flex: none;",
+                  ".col-body { flex: 1 1 auto; min-height: 0; overflow-y: auto;",
+                  "#col-discover .col-body > .video-list { flex: 1 1 0;"):
+        assert token in fit, token
+    assert "--col-max" not in css and "is-capped" not in css
+    page = client.get("/").text
+    for col in ("col-discover", "col-analyze", "col-execute"):
+        # 칸 제목(colhead)은 몸통(.col-body) 밖, 바로 앞에 있다
+        head = _section(page, f'id="{col}"', '<div class="col-body">')
+        assert head.count('<div class="colhead">') == 1 and "</h2>" in head
     layout = client.get("/static/js/layout.js").text
-    assert "(min-width: 1121px)" in layout and "--col-max" in layout and "ResizeObserver" in layout
+    assert "(min-width: 1121px) and (min-height: 600px)" in layout and "keepInList" in layout
     topbar = client.get("/static/js/topbar.js").text
     assert "aria-current" in topbar and "is-focus" in topbar and "preventScroll" in topbar
 
@@ -575,11 +602,32 @@ def test_columns_scroll_inside_when_window_is_short(make_client):
 def test_body_and_list_text_sizes(make_client):
     css = make_client(key=None).get("/static/css/style.css").text
 
-    def rule(selector):
-        return css.split(selector, 1)[1].split("}", 1)[0]
+    def rule(selector, text=css):
+        return text.split(selector, 1)[1].split("}", 1)[0]
 
     assert "font-size: 14px" in rule("body {")
     assert "font-size: 14px" in rule(".video-title { display")
+    # 넓은 화면(1600px 이상)은 한 단계 더: 본문·목록 제목 15px, 보조 글 13px
+    wide = css.split("@media (min-width: 1600px) {", 1)[1]
+    assert "font-size: 15px" in rule("body {", wide)
+    assert "font-size: 15px" in rule(".vid .video-title, .midinfo .video-title {", wide)
+    assert "font-size: 13px" in rule(".video-meta {", wide)
+
+
+def test_title_hashtags_are_dimmed_but_title_text_is_unchanged(make_client):
+    client = make_client(key=None)
+    fmt = client.get("/static/js/format.js").text
+    assert "export function splitTitleTags(title)" in fmt and "export function titleNode(" in fmt
+    assert "class: 'title-tags'" in fmt
+    # 제목이 태그뿐이면 나누지 않는다
+    assert "!text.slice(0, found.index).trim()" in fmt
+    for name in ("discover.js", "analysis.js"):
+        js = client.get(f"/static/js/{name}").text
+        assert "titleNode(video.title)" in js, name
+    discover = client.get("/static/js/discover.js").text
+    assert "title: video.title }" in discover  # 원문 전체는 title 속성에
+    css = client.get("/static/css/style.css").text
+    assert ".title-tags { color: var(--dim);" in css
 
 
 def test_empty_loading_and_error_texts_name_the_next_step(make_client):

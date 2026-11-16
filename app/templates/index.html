@@ -79,6 +79,7 @@
     <!-- 01 영상 탐색 (2단계에서 연결) -->
     <div class="column" id="col-discover">
       <div class="colhead"><h2 tabindex="-1">영상 탐색</h2><span class="number">01 / 03</span></div>
+      <div class="col-body">
 
       <div class="tabs" role="tablist" aria-label="영상 불러오는 방법">
         <button type="button" class="tab" role="tab" id="tab-keyword" aria-controls="pane-keyword" aria-selected="true">키워드 검색</button>
@@ -86,7 +87,7 @@
       </div>
 
       <div role="tabpanel" id="pane-keyword" aria-labelledby="tab-keyword">
-        <form id="search-form">
+        <form id="search-form" autocomplete="off">
           <div class="search">
             <input class="field" id="q" name="q" type="search" value="{{ default_query }}" maxlength="100" autocomplete="off" aria-label="유튜브 검색어" placeholder="검색 키워드를 입력하세요" />
             <button type="submit" id="search-btn">영상 찾기 ↗</button>
@@ -113,7 +114,7 @@
               </select>
             </label>
             <label class="shorts-toggle" title="61초 미만 영상(쇼츠)과 길이 정보가 없는 영상을 목록에서 뺍니다. 검색 1회 100단위는 같습니다"><small>쇼츠</small>
-              <span class="check"><input type="checkbox" id="exclude-shorts" name="exclude_shorts"{% if default_exclude_shorts %} checked{% endif %} /><i aria-hidden="true"></i>쇼츠 제외</span>
+              <span class="check"><input type="checkbox" id="exclude-shorts" name="exclude_shorts" autocomplete="off"{% if default_exclude_shorts %} checked{% endif %} /><i aria-hidden="true"></i>쇼츠 제외</span>
             </label>
           </div>
         </form>
@@ -139,11 +140,13 @@
         <p class="empty">기본 검색어가 들어 있습니다. <b>[영상 찾기]</b>를 누르면 최신 영상이 뜹니다.</p>
       </div>
       <p class="note" id="quota-note">YouTube 할당량 오늘 <b id="quota-used">–</b> / <span id="quota-limit">10,000</span> 단위 · 검색 1회 100단위 · 같은 검색은 10분 동안 저장한 결과를 씁니다.</p>
+      </div>
     </div>
 
     <!-- 02 AI 분석과 댓글 초안 (3단계: 자막 출처·붙여넣기, 6단계: 초안 직접 쓰기·규칙 검사, 5단계: 분석·AI 초안·승인) -->
     <div class="column" id="col-analyze">
       <div class="colhead"><h2 tabindex="-1">AI 분석과 댓글 초안</h2><span class="number">02 / 03</span></div>
+      <div class="col-body">
 
       <div class="midinfo" id="selected-summary">
         <p class="empty-sm">01에서 영상을 고르면 여기에 표시됩니다.</p>
@@ -215,11 +218,13 @@
         </div>
       </div>
       <p class="note">영상의 구체적 장면은 실제 자막 등 검증 가능한 근거가 있을 때만 반영합니다.</p>
+      </div>
     </div>
 
     <!-- 03 실행 및 관리 (7단계: 설정 4줄, 8단계: 큰 버튼·진행 단계·승인·복사·확인) -->
     <div class="column" id="col-execute">
       <div class="colhead"><h2 tabindex="-1">실행 및 관리</h2><span class="number">03 / 03</span></div>
+      <div class="col-body">
 
       <div class="exec-settings" data-target="{{ default_target }}" data-limit="{{ daily_max_comments }}">
         <div class="section-mini">브라우저 환경 <span>LOCAL CONTROL</span></div>
@@ -260,13 +265,14 @@
       </div>
 
       <div class="hint"><b>운영 원칙</b> <small>OPERATION NOTE</small><br />중복 작업 방지 · 활동 이력 기록 · 공개적 홍보 관계 표시<br />정책을 준수하는 사용자 승인 방식으로 설계</div>
+      </div>
     </div>
   </section>
 
-  <!-- 작업 기록 (7단계): GET /api/records. 최신이 위, 최근 5줄. 9단계: [전체 보기 VIEW ALL]은 겹침 패널 -->
+  <!-- 작업 기록 (7단계): GET /api/records. 최신이 위, 최근 3줄(넓은 화면에서 높이 고정 띠). 9단계: [전체 보기 VIEW ALL]은 겹침 패널 -->
   <section class="history" id="activity">
     <div class="history-top"><h2 tabindex="-1">작업 기록</h2>
-      <span class="history-tools"><small id="records-meta">최근 5줄 · ACTIVITY ARCHIVE</small>
+      <span class="history-tools"><small id="records-meta">최근 3줄 · ACTIVITY ARCHIVE</small>
         <button type="button" class="line-btn" id="records-all" aria-haspopup="dialog" aria-controls="records-panel">전체 보기 <small>VIEW ALL</small> ↗</button></span></div>
     <div class="table-wrap">
       <table>
