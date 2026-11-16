@@ -2,7 +2,7 @@
 
 유튜브 영상을 분석해 홍보 표기(`[광고]`)가 붙은 댓글 초안을 만들고, 사람이 승인하는 로컬 대시보드(FastAPI). 제이지그룹 AI PM 채용 과제 TRACK 2 「마케팅 AI 에이전트 개발」.
 
-## 지금 되는 것 / 아직 안 되는 것 (2026-11-17, 3단계 + P단계 + 6단계 + 4단계 + 5단계 + 7단계 + 8단계 + 9단계 + R1)
+## 지금 되는 것 / 아직 안 되는 것 (2026-11-17, 3단계 + P단계 + 6단계 + 4단계 + 5단계 + 7단계 + 8단계 + 9단계 + R1 + R2)
 
 **되는 것**
 - 프로그램으로 실행 (P단계): `JG-Marketing-Agent.cmd`를 더블클릭하면 브라우저 탭·주소창 없는 자체 창(「JG Marketing Agent」)이 뜬다. 창을 닫으면 프로그램이 끝난다. 이미 떠 있으면 새로 띄우지 않고 알린다. 창 안의 바깥 링크("YouTube에서 보기")는 기본 브라우저로 열린다
@@ -12,6 +12,10 @@
   - 기록 화면(오늘 숫자 4개, 전체 기록 표, 전체·게시·실패 거르기), 프로필 화면(카드 3장, 로그인 단추는 「곧 연결」), 설정 화면(유튜브 연결·AI 모델·댓글 규칙·게시·영상 찾기 묶음을 읽기 전용으로, 저장 단추는 「곧 연결」, [미리 불러오기]는 동작)
   - 크기: 1920×1009(1080 모니터에서 최대화한 창)·1903×1009·1600×960(기본 창)에서는 세 칸이 다 보이고 스크롤은 영상 목록 한 곳뿐. 1366×720에서는 ②·③ 칸 안에서만 스크롤. 1100px 아래에서는 왼쪽 줄이 아이콘만 남고 세 칸을 ①②③ 탭으로 하나씩. 가장 작은 글자 12px, 단추·입력 칸 높이 36px 이상, 금색 단추는 한 번에 하나
   - 연습 모드는 `config.yaml`의 `browser.default_target`이 `sandbox`라 켠 채로 시작한다(UI_SPEC은 끔이 기본)
+- **설정과 프로필 로그인을 프로그램 안에서 (R2, 2026-11-17)** — `.env`나 `config.yaml`을 열지 않아도 된다
+  - 설정 화면: 유튜브 연결(API 키를 넣고 [키 저장] → 「저장됨」만 보이고 값은 다시 보이지 않음, [바꾸기]·[지우기]·[연결 확인], 접어 둔 키 받는 법, 오늘 사용량) · AI 모델(이 PC의 모델 고르기, [모델 확인]·[미리 불러오기], 문제면 고치는 법) · 댓글 규칙(글자 수·홍보하는 곳·써도 되는 사실 줄 더하기/빼기·홍보 표기·홍보 표기 기본) · 게시(하루 상한·게시 직전 확인·타자 속도·크롬 창 띄울 모니터) · 영상 찾기(기본 검색어·개수·쇼츠 빼기·쇼츠 길이 181초). 바꾸면 [저장]이 금색, 누르면 바로 적용(작업 화면의 기본 검색어·하루 상한도 따라 바뀜), 틀린 칸은 옆에 이유. [기본값으로]는 두 번 눌러 되돌림(키는 남김). 홍보 표기 기본·게시 직전 확인은 「곧 적용」(R3)
+  - 프로필 화면: 카드 3장(로그인 상태와 채널 이름 · 확인한 때 · 마지막으로 쓴 때), [로그인하기](보통 크롬 창이 구글 로그인 화면으로 열림, 로그인은 사람이 직접, 창을 닫으면 저절로 한 번 확인) · [로그인 확인](창 없이 읽기만) · [유튜브 열기]. 로그인 상태는 아래 줄 「프로필」과 ③ 프로필 고르기에도 보인다
+  - 작업 화면 위 「시작 준비」 한 줄: 유튜브 연결 [API 키 넣기] · AI 모델 [모델 확인] · 프로필 로그인 [유튜브1 로그인]. 누르면 고칠 곳으로 가고, 셋 다 되면 사라진다([닫기]도 됨). 연습 모드는 키와 로그인 없이도 된다
 - 01 영상 탐색 (2단계): [영상 찾기] 한 번으로 `config.yaml`의 기본 검색어(`discover.query`) 최신 영상 목록(썸네일·길이·제목·채널·조회수·올린 때). 검색어, 업로드 기간·정렬(최신·관련성·조회수)·표시 개수 거르기, 「쇼츠 제외」 체크(기본 켬 — 길이 61초 미만·길이 정보가 없는 영상을 빼고 표시 개수를 채운다. 결과 줄에 「쇼츠 n개 제외」. 검색 1회 100단위는 같다), URL 직접 입력, 영상 선택, 오류마다 문구와 다음 행동
 - YouTube Data API 연동: 검색·영상 상세·인기 댓글, 오류 6종 분류(키 없음·키 거부·할당량 초과·댓글 막힘·영상 없음·네트워크), 같은 검색 10분 저장, 오늘 사용 단위 기록(SQLite `data/app.sqlite3`)
 - 위 줄 시스템 상태: YouTube 키가 있는지 없는지(값은 보이지 않음). 01칸 아래에 오늘 할당량 사용량. 영상을 고르면 흐름 띠가 02로 넘어가고 02칸에 선택한 영상이 보인다
@@ -53,7 +57,7 @@
 
 ## 설치와 실행 (Windows 11)
 
-필요: Python 3.12(`py -3.12`), Microsoft Edge WebView2 Runtime(Windows 11에는 기본으로 들어 있다). YouTube API 키(2단계부터), [Ollama](https://ollama.com)와 모델 하나(4단계부터). 기본은 `qwen3.8:27b`(5단계 초안 비교에서 규칙 통과율이 가장 높았다, [docs/MODEL_EVAL.md](docs/MODEL_EVAL.md)). 다른 모델을 쓰려면 `ollama pull <모델>` 후 이름을 `.env`의 `OLLAMA_MODEL`에.
+필요: Python 3.12(`py -3.12`), Microsoft Edge WebView2 Runtime(Windows 11에는 기본으로 들어 있다). YouTube API 키(2단계부터), [Ollama](https://ollama.com)와 모델 하나(4단계부터). 기본은 `qwen3.8:27b`(5단계 초안 비교에서 규칙 통과율이 가장 높았다, [docs/MODEL_EVAL.md](docs/MODEL_EVAL.md)). 다른 모델을 쓰려면 `ollama pull <모델>` 후 프로그램 설정 화면의 「AI 모델」에서 고른다(R2). YouTube API 키도 설정 화면의 「유튜브 연결」에 넣는다.
 
 **처음 한 번 준비** (PowerShell, 저장소 폴더)
 
@@ -61,7 +65,7 @@
 cd "E:\Projects\JG\JG-Marketing-Agent-Stage1"
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt     # 개발까지 하려면 requirements-dev.txt
-Copy-Item .env.example .env              # 비밀값은 .env에만 (커밋 금지)
+# (개발용, 선택) Copy-Item .env.example .env   # 키·모델은 보통 프로그램 설정 화면에서 넣는다. .env는 커밋 금지
 ```
 
 ### 1. 더블클릭으로 프로그램 실행 (평소)
@@ -130,6 +134,15 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | `POST /api/jobs/{id}/cancel` | 작업 취소(크롬을 닫고 예약을 실패로 푼다) |
 | `GET /api/jobs/{id}/screenshot` | 실패 화면 캡처(PNG). 앱을 다시 켜서 메모리에 없는 지난 작업도 캡처 폴더의 `<작업 ID>.png`를 찾는다(9단계) |
 | `GET /api/settings` | 9단계 SETTINGS 패널: 지금 설정을 읽기 전용으로. `comment`(글자 수·표기·브랜드), `brand_facts`, `daily_max_comments`, `profiles[{name, folder, ready}]`, `llm`(`active`·`type`·`model`·`local`·`timeout_seconds`·`keep_alive`), `browser`(창 위치 설정값·실제로 쓸 위치·조정 여부·확인 문구·크롬 찾음 등), `youtube`(`key_configured`·`quota`), `discover`. 키 값·PC 경로·LLM 주소는 싣지 않고 모델을 부르지 않는다 |
+| `PUT /api/settings` | R2: 바꾼 칸만 저장(`{"values": {"limits.daily_max_comments": 7}}`). 칸 이름은 DESIGN 8.1. 틀리면 422 `settings_invalid` + `fields`(칸 → 이유), 게시 중이면 409 `settings_busy`. 저장하면 바로 적용. `GET /api/settings`의 `edit`에 지금 값·기본값·바꾼 칸·범위 |
+| `POST /api/settings/reset` | R2 [기본값으로]: 프로그램에서 바꾼 값을 모두 지운다(저장한 API 키는 남김) |
+| `PUT`·`DELETE /api/settings/youtube-key` | R2: API 키를 암호화해 저장(`{"key": "…"}`) / 지우기. 응답은 `key_configured`·`key_source`(`program`·`dev_file`)·`can_store_key`뿐, 키 값은 없다 |
+| `POST /api/settings/youtube-key/test` | R2 [연결 확인]: 1단위짜리 호출. `result`: ok·no_key·rejected·quota·network·error와 쉬운 말 한 줄 |
+| `GET /api/llm/models` | R2: 이 PC의 Ollama 모델(일반 → 코드용 → 임베딩용), 지금 모델과 설치 여부 |
+| `GET /api/screens` | R2: 크롬 창을 띄울 모니터 목록(이름 · 고르면 쓸 안전한 위치) |
+| `POST /api/profiles/{name}/login` | R2 [로그인하기]: 그 프로필로 보통 크롬 창을 구글 로그인 화면으로 연다(로그인은 사람이). 창을 닫으면 한 번 저절로 확인 |
+| `POST /api/profiles/{name}/check` | R2 [로그인 확인]: 창 없이 유튜브에서 로그인 상태·채널 이름만 읽어 저장. 게시 중이면 409 `profile_check_busy` |
+| `POST /api/profiles/{name}/open` | R2 [유튜브 열기]: 그 프로필로 유튜브 첫 화면 |
 | `GET /sandbox/watch?v=&profile=&fail=` | 통제된 테스트 페이지(실제 유튜브가 아님). `GET`·`POST /sandbox/api/comments`가 `sandbox_comments` 표에 댓글을 저장한다 |
 
 영상 목록·영상 항목 응답(`GET /api/videos`, `POST /api/videos/resolve`, `GET /api/videos/{id}`)의 영상마다 `commented: {sandbox, youtube}`(그 대상에 게시 완료했는지)가 붙는다(7단계, 기존 필드는 그대로).
@@ -138,10 +151,13 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 
 ## 설정
 
+**프로그램 안에서 설정한다(R2).** 설정 화면에서 바꾸고 [저장]하면 바로 적용된다. 값은 `%LOCALAPPDATA%\JGMarketingAgent\settings.json`에, YouTube API 키는 Windows가 암호화해 같은 폴더의 `youtube_key.bin`에 둔다(저장소 밖, 평문 없음). 읽는 순서는 프로그램에서 저장한 값 → `.env`(개발용, 선택) → `config.yaml`(기본값). 자세한 것은 [DESIGN 8.1절](docs/DESIGN.md#81-프로그램-안에서-설정-r2-2026-11-17).
+
 | 파일 | 내용 | 커밋 |
 |---|---|---|
+| `%LOCALAPPDATA%\JGMarketingAgent\` | 설정 화면에서 저장한 값(`settings.json`)과 암호화한 API 키(`youtube_key.bin`). [기본값으로]는 `settings.json`만 지운다 | 저장소 밖 |
 | `config.yaml` | 프로필(`profiles`, 순서대로 폴더 profile-1…), 기본 작업 방식(`browser.default_target`: sandbox → 테스트 페이지 자동 실행, assist → 수동 승인 후 게시), 브라우저(`browser.headless` 기본 false — 테스트는 true, `browser.window_position` 기본 `60,-1060`, `browser.typing_delay_ms` 기본 `[60, 160]`, `browser.chrome_path` 비면 자동으로 찾음. 프로필 폴더는 환경 변수 `JG_PROFILES_DIR`로 바꿀 수 있음), 댓글 글자 수·브랜드·홍보 표기, 하루 상한, 자막 출처(`transcript.provider: manual`), 모델에 넣을 영상 자료 길이(`llm.context_chars`, 기본 6,000자), 운명원에 대해 쓸 수 있는 사실 문장(`brand.facts`, 기본 「운명원은 연애 사주 상담을 하는 곳이다」 한 줄), 규칙 검사에 더할 표현(`validator.extra_patterns`, 항목 모양 `{code: V8·V9·V10, pattern: 정규식}`, 기본 빈 목록), AI 설정(`llm.active`: `llm.providers`에서 고른 이름, 기본 `ollama` · `timeout_seconds` 180 · `num_ctx` 8192 · `keep_alive` 30m. 옛 키 `llm.provider`도 읽는다. 공급자 항목의 `api_key_env`에는 환경 변수 **이름**만 적고, 그 이름은 자동으로 비밀값·로그 가리기 대상이 된다) 등 규칙 ([DESIGN 8절](docs/DESIGN.md#8-설정)) | 함 |
-| `.env` | `YOUTUBE_API_KEY`(2단계부터 사용), `OLLAMA_BASE_URL`(기본 `http://127.0.0.1:11434`), `OLLAMA_MODEL`(기본 `qwen3.8:27b` — 5단계 비교로 정함. 초안을 읽어 보고 바꿔도 된다). 선택: `APP_DB_PATH`(기본 `data/app.sqlite3`) | 금지 |
+| `.env` | **개발용, 선택.** `YOUTUBE_API_KEY`(2단계부터 사용), `OLLAMA_BASE_URL`(기본 `http://127.0.0.1:11434`), `OLLAMA_MODEL`(기본 `qwen3.8:27b` — 5단계 비교로 정함. 초안을 읽어 보고 바꿔도 된다). 선택: `APP_DB_PATH`(기본 `data/app.sqlite3`) | 금지 |
 
 ## 단계
 
@@ -159,6 +175,7 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | 8 | 브라우저 연결 | 진행 중 (코드·자동 테스트·e2e·2번 모니터 창 실행 1회 완료, 대표 화면 확인과 실제 유튜브 열기(assist) 확인 남음) |
 | 9 | 대시보드 완성 | 진행 중 (코드·자동 테스트·화면 흐름 e2e·4가지 화면 크기 측정 완료, 대표가 처음부터 끝까지 한 번 써 보는 확인 남음) |
 | R1 | 프로그램형 화면 (프로그램화 2차) | 진행 중 (코드·자동 테스트·흐름 e2e·5가지 화면 크기 측정 완료, 대표가 프로그램 창에서 써 보는 확인 남음) |
+| R2 | 설정과 프로필 로그인을 프로그램 안에서 | 진행 중 (코드·자동 테스트·화면 e2e 완료, 대표가 실제 키 저장·구글 로그인을 해 보는 확인 남음) |
 | 10 | 가점 | 미시작 |
 | 11 | 시연 준비 | 미시작 |
 

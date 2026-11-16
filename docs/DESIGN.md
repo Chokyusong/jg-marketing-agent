@@ -318,14 +318,18 @@ comment:
   max_chars: 120
   brand: 운명원
   disclosure: "[광고]"
+  disclose_default: true  # R2: 새 초안에 홍보 표기를 붙이는 기본값(R3에서 적용)
 brand:
   facts:
     - 운명원은 연애 사주 상담을 하는 곳이다
 limits:
   daily_max_comments: 10
+posting:
+  confirm_before_post: false  # R2: 게시 직전에 한 번 더 확인(R3에서 적용)
 discover:
   query: 연애 고민
   max_results: 12
+  shorts_under_seconds: 181   # R2: 이보다 짧은 영상을 쇼츠로 본다(유튜브 쇼츠는 3분까지)
 rising:
   query: 연애
   min_views: 1000
@@ -347,7 +351,48 @@ llm:
     ollama: {type: ollama}
 ```
 
-`.env` (커밋 금지): `YOUTUBE_API_KEY`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`. 외부 LLM 키는 `llm.providers.*.api_key_env`에 적은 이름으로(12단계).
+`.env` (커밋 금지, **개발용 선택**): `YOUTUBE_API_KEY`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`. 외부 LLM 키는 `llm.providers.*.api_key_env`에 적은 이름으로(12단계). R2부터 사용자는 `.env`와 `config.yaml`을 열지 않는다(아래 8.1).
+
+### 8.1 프로그램 안에서 설정 (R2, 2026-11-17)
+
+- **읽는 순서**: 사용자 설정 → 환경 변수·`.env`(개발용, 없어도 됨) → `config.yaml`(기본값).
+  사용자 설정은 `%LOCALAPPDATA%\JGMarketingAgent\settings.json`(`{"version": 1, "values": {칸 이름: 값}}`).
+  테스트는 `load_settings(user_dir=…)`나 환경 변수 `JG_USER_DIR`로 임시 폴더를 쓴다(`app/user_settings.py`).
+- **바꿀 수 있는 칸**(`app/user_settings.FIELDS`, 칸 이름 = `config.yaml` 경로):
+  - 유튜브 연결: API 키(따로 저장, 아래).
+  - AI 모델: `llm.model`.
+  - 댓글 규칙: `comment.min_chars`(10~500)·`comment.max_chars`(20~1000, 최소 < 최대, 홍보 표기 + 10자 이상), `comment.brand`, `brand.facts`(10줄까지), `comment.disclosure`, `comment.disclose_default`.
+  - 게시: `limits.daily_max_comments`(1~50), `posting.confirm_before_post`, `browser.typing_speed`(느리게 120~260ms · 보통 60~160ms · 빠르게 25~70ms), `browser.window_screen`.
+  - 영상 찾기: `discover.query`·`discover.max_results`(1~50)·`discover.exclude_shorts`·`discover.shorts_under_seconds`(10~3600, 기본 181).
+- **저장**(`PUT /api/settings`, 바꾼 칸만):
+  - 칸마다 검사해 틀리면 422 `settings_invalid`와 `fields`(칸 이름 → 한국어 이유). 하나라도 틀리면 아무것도 저장하지 않는다.
+  - 기본값과 같은 값은 파일에 두지 않는다(나중에 `config.yaml` 기본값이 바뀌면 따라간다).
+  - 저장하면 서비스 묶음을 새 설정으로 다시 만들어 **바로 적용**한다(`ServiceHolder.update_settings`). 프로그램을 다시 켤 필요가 없다.
+  - 게시 작업이 돌고 있으면 409 `settings_busy`(「지금 게시 중입니다. 끝난 뒤 다시 저장해 주세요」).
+  - 로그인 창 목록(`LoginWindows`)은 서비스를 다시 만들어도 남는다.
+- **[기본값으로]**(`POST /api/settings/reset`)는 `settings.json`을 지운다. 저장한 API 키는 남긴다.
+- **모델**: 프로그램에서 고른 모델 > `.env`의 `OLLAMA_MODEL` > 코드 기본값.
+  모델 목록은 `GET /api/llm/models`(Ollama `/api/tags`). 일반 모델이 위, 코드용·임베딩용은 아래에 표시만 다르게.
+- **YouTube API 키**:
+  - Windows DPAPI(현재 사용자, ctypes)로 암호화해 `youtube_key.bin`에 둔다. 평문은 파일·응답·화면·로그 어디에도 없다.
+  - 프로그램에 저장한 키 > `.env`의 키. 응답에는 `key_configured`와 출처(`program` 프로그램에 저장 / `dev_file` 개발용 설정 파일)만 싣는다.
+  - 저장한 키도 로그 가리기 대상이다.
+  - Windows가 아니면 저장을 거절하고(503 `secret_store_unavailable`) `.env`를 안내한다.
+  - [연결 확인]은 1단위짜리 호출(`i18nLanguages`)로 결과를 쉬운 말로 알린다(연결됨 · 키 없음 · 키 거부 · 할당량 · 인터넷 · 알 수 없음).
+- **크롬 창 위치**: 좌표를 치지 않는다. 설정 화면에서 모니터를 고르면(`GET /api/screens`) 그 모니터 왼쪽 위에서 `+60,+60`을 `browser.window_position`에 저장한다.
+- `comment.disclose_default`·`posting.confirm_before_post`는 R2에서는 저장·읽기만 한다(화면에 「곧 적용」). 게시 동작에는 R3에서 쓴다.
+
+### 8.2 프로필 로그인 (R2, 2026-11-17)
+
+- **[로그인하기]**(`POST /api/profiles/{name}/login`):
+  - 그 프로필 폴더로 보통 크롬 창을 구글 로그인 주소로 연다. 인자 목록으로 열고 셸을 쓰지 않으며, 자동화 표시 인자가 없다(`app/browser/login.py`).
+  - 로그인은 사람이 그 창에서 한다. 프로그램은 아이디·비밀번호를 받거나 저장하거나 치지 않는다.
+  - 창을 닫으면 한 번 저절로 [로그인 확인]을 돈다.
+- **[로그인 확인]**(`POST /api/profiles/{name}/check`):
+  - 창 없이 유튜브를 열어 로그인 표시와 채널 이름만 읽는다(`youtube_driver.SELECTORS`, 누르기·입력 없음).
+  - Playwright는 기존 작업 스레드에서만 돈다. 게시 중이면 409 `profile_check_busy`, 프로필 크롬이 열려 있으면 409 `profile_in_use`.
+  - 결과는 DB `profile_logins` 표에 남아 프로필 화면·아래 줄·③ 프로필 고르기에 보인다.
+- **[유튜브 열기]**(`POST /api/profiles/{name}/open`)는 그 프로필로 유튜브 첫 화면을 연다(로그아웃은 그 창에서 사람이 한다).
 
 기존 `.env.example`의 `DAILY_MAX_ACTIONS`는 과제 용어와 맞춰 `config.yaml`의 `limits.daily_max_comments`로 옮긴다.
 
