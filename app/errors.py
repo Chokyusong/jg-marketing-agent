@@ -41,6 +41,7 @@ class ErrorKind(StrEnum):
     DRAFT_SUPERSEDED = "draft_superseded"  # 새 초안이나 다른 승인으로 밀려난 초안
     # 실제 데이터 보정(2026-11-16): 영상 자료에 연애 고민이 없으면 초안을 만들지 않는다
     NO_LOVE_CONCERN = "no_love_concern"
+    DISCLOSURE_REQUIRED = "disclosure_required"  # 표기를 끌 수 있는 것은 내 채널 영상뿐
     # 7단계: 운영 규칙(영상당 1개 · 하루 상한 · 승인한 초안만)
     ALREADY_COMMENTED = "already_commented"
     DAILY_LIMIT_REACHED = "daily_limit_reached"
@@ -173,6 +174,11 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
         "이 영상 자료에서 연애 고민을 찾지 못했습니다.",
         "자막을 붙여 넣고 다시 분석하거나 다른 영상을 골라 주세요. "
         "설명란이 광고·협찬 위주인 영상일 수 있습니다.",
+        422,
+    ),
+    ErrorKind.DISCLOSURE_REQUIRED: ErrorText(
+        "이 영상은 홍보 표기를 끌 수 없습니다.",
+        "표기를 끄려면 config.yaml의 own_video_ids에 내 채널 영상 ID를 넣어 주세요.",
         422,
     ),
     ErrorKind.ALREADY_COMMENTED: ErrorText(

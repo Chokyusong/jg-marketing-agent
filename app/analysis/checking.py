@@ -15,11 +15,21 @@ from app.analysis.validator import Validation, ValidatorRules, validate
 
 class CheckService:
     def __init__(
-        self, context: ContextService, *, rules: ValidatorRules, brand_facts: Sequence[str]
+        self,
+        context: ContextService,
+        *,
+        rules: ValidatorRules,
+        brand_facts: Sequence[str],
+        own_video_ids: Sequence[str] = (),
     ) -> None:
         self.context = context
         self.rules = rules
         self.brand_facts = tuple(brand_facts)
+        self.own_video_ids = frozenset(own_video_ids)
+
+    def is_own_video(self, video_id: str) -> bool:
+        """내 채널 영상(`config.yaml`의 `own_video_ids`)이면 홍보 표기를 켜고 끌 수 있다."""
+        return video_id in self.own_video_ids
 
     def check(
         self,
@@ -41,4 +51,5 @@ class CheckService:
             brand_facts=self.brand_facts,
             previous_texts=list(previous_texts),
             evidence_quote=evidence_quote,
+            disclosure_required=not self.is_own_video(video_id),
         )

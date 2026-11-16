@@ -703,3 +703,22 @@ def test_v12_ignores_configured_disclosure_and_brand():
     rules = ValidatorRules(brand="運命苑", disclosure="【AD】")
     text = "【AD】 하루에 한 번 연락이면 충분할까요라는 질문이 와닿았어요. 運命苑에서 상담받으세요."
     assert check(run(text, rules=rules), "V12").passed
+
+
+# ---------------------------------------------------------------- V4 내 채널 영상(표기 끔)
+
+
+def test_v4_label_optional_only_when_not_required():
+    body = GOOD.removeprefix("[광고] ")
+    assert not check(run(body), "V4").passed
+    off = V.validate(
+        body, context_text=CONTEXT, rules=RULES, brand_facts=FACTS, previous_texts=[],
+        disclosure_required=False,
+    )
+    assert check(off, "V4").passed and "표기 끔" in check(off, "V4").message
+    # 표기를 붙였으면 끈 상태여도 맨 앞이어야 한다
+    misplaced = V.validate(
+        f"{body} [광고]", context_text=CONTEXT, rules=RULES, brand_facts=FACTS,
+        previous_texts=[], disclosure_required=False,
+    )
+    assert not check(misplaced, "V4").passed

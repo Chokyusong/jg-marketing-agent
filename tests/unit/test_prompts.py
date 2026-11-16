@@ -92,6 +92,8 @@ def test_draft_system_states_the_rules():
 
 def test_body_limits_leave_room_for_disclosure():
     assert P.body_limits(min_chars=40, max_chars=120, disclosure="[광고]") == (35, 115)
+    # 표기를 끈 글(내 채널 영상): 본문이 곧 전체
+    assert P.body_limits(min_chars=40, max_chars=120, disclosure="") == (40, 120)
 
 
 def test_draft_user_includes_quote_and_failures():

@@ -395,7 +395,9 @@ def _v3_hashtags(text: str) -> CheckResult:
     return _check("V3", True, "# 기호 없음")
 
 
-def _v4_disclosure(text: str, rules: ValidatorRules) -> CheckResult:
+def _v4_disclosure(text: str, rules: ValidatorRules, *, required: bool = True) -> CheckResult:
+    """`required=False`는 내 채널 영상(`own_video_ids`)에서 표기를 끈 경우. 표기가 있으면
+    맨 앞이어야 하는 것은 같다."""
     mark = rules.disclosure
     if text.startswith(mark + " "):
         return _check("V4", True, f"맨 앞이 {mark}")
@@ -403,6 +405,8 @@ def _v4_disclosure(text: str, rules: ValidatorRules) -> CheckResult:
         return _check("V4", False, f"{mark} 바로 뒤에 한 칸을 띄우세요 — '{mark} 본문' 모양으로")
     if mark in text:
         return _check("V4", False, f"{mark}가 맨 앞에 있지 않습니다 — 글 맨 앞으로 옮기세요")
+    if not required:
+        return _check("V4", True, "내 채널 영상 · 표기 끔")
     return _check("V4", False, f"홍보 표기 {mark}가 없습니다 — 글을 '{mark} '로 시작하세요")
 
 
@@ -628,8 +632,12 @@ def validate(
     brand_facts: Sequence[str],
     previous_texts: Sequence[str],
     evidence_quote: str | None = None,
+    disclosure_required: bool = True,
 ) -> Validation:
     """V1~V12를 모두 돌린다. 하나라도 실패하면 `passed=False`.
+
+    - `disclosure_required`: 거짓이면 V4가 표기 없는 글도 통과시킨다(내 채널 영상에서 표기를 끈
+      경우만. 정하는 곳은 `CheckService` — `Settings.is_own_video`)
 
     - `context_text`: 대조할 영상 자료 전체(3단계 `search_text`: 제목·설명·자막·댓글, 자르지 않음)
     - `previous_texts`: 이전에 승인·게시한 글들(V11). 5단계 전까지는 빈 목록
@@ -644,7 +652,7 @@ def validate(
         _v1_length(clean, rules),
         _v2_links(clean),
         _v3_hashtags(clean),
-        _v4_disclosure(clean, rules),
+        _v4_disclosure(clean, rules, required=disclosure_required),
         _v5_brand(clean, rules),
         v6,
         v7,

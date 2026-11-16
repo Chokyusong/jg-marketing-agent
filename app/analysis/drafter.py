@@ -202,11 +202,18 @@ class DraftService:
 
     # ------------------------------------------------------------ 초안
 
-    def generate(self, video_id: str, *, avoid_quotes: Sequence[str] = ()) -> Draft:
-        """초안 하나를 만들어 저장한다. 같은 영상의 이전 'draft' 초안은 'superseded'가 된다."""
+    def generate(
+        self, video_id: str, *, avoid_quotes: Sequence[str] = (), disclose: bool = True
+    ) -> Draft:
+        """초안 하나를 만들어 저장한다. 같은 영상의 이전 'draft' 초안은 'superseded'가 된다.
+
+        `disclose=False`: 홍보 표기 없이 쓴다. 내 채널 영상(`own_video_ids`)에서만 된다.
+        """
         self._check_id(video_id)
+        if not disclose and not self.checks.is_own_video(video_id):
+            raise AppError(ErrorKind.DISCLOSURE_REQUIRED, detail=video_id)
         try:
-            draft = self._generate(video_id, avoid_quotes)
+            draft = self._generate(video_id, avoid_quotes, disclose)
         except AppError as exc:
             self._record("draft", "failure", video_id=video_id, reason=exc.message)
             raise
@@ -220,13 +227,14 @@ class DraftService:
         )
         return draft
 
-    def _generate(self, video_id: str, avoid_quotes: Sequence[str]) -> Draft:
+    def _generate(self, video_id: str, avoid_quotes: Sequence[str], disclose: bool) -> Draft:
         analysis = self.stored_analysis(video_id) or self.analyze(video_id)
         evidence = analyzer.pick_evidence(analysis.evidence, avoid_quotes)
         llm = self._llm()
         rules = self.rules
+        mark = rules.disclosure if disclose else ""  # 앞에 붙일 표기(끄면 빈 글)
         min_body, max_body = prompts.body_limits(
-            min_chars=rules.min_chars, max_chars=rules.max_chars, disclosure=rules.disclosure
+            min_chars=rules.min_chars, max_chars=rules.max_chars, disclosure=mark
         )
         system = prompts.draft_system(
             brand=rules.brand, disclosure=rules.disclosure, facts=self.brand_facts
@@ -270,7 +278,7 @@ class DraftService:
                 break  # 앞에서 받은 것 중 가장 나은 것을 저장한다
             attempts = attempt
             body = clean_body(data.get("body"), rules.disclosure)
-            text = with_disclosure(body, rules.disclosure)
+            text = with_disclosure(body, mark)
             tone = str(data.get("tone_label") or "")
             if tone not in prompts.TONE_LABELS:
                 tone = ""

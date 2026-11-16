@@ -290,8 +290,9 @@ def closing_sentence(body: str, *, brand: str, disclosure: str = "") -> str:
 
 
 def body_limits(*, min_chars: int, max_chars: int, disclosure: str) -> tuple[int, int]:
-    """본문(표기 뺀 것)의 길이 한도. 전체는 '표기 + 한 칸 + 본문'으로 센다(DESIGN 5.3)."""
-    extra = len(disclosure) + 1
+    """본문(표기 뺀 것)의 길이 한도. 전체는 '표기 + 한 칸 + 본문'으로 센다(DESIGN 5.3).
+    표기를 끈 글(내 채널 영상, `disclosure=""`)은 본문이 곧 전체다."""
+    extra = len(disclosure) + 1 if disclosure else 0
     return max(1, min_chars - extra), max_chars - extra
 
 

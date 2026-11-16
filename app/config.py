@@ -42,6 +42,7 @@ POST_TARGETS = ("sandbox", "youtube")  # 게시 대상: 통제된 테스트 페�
 DEFAULT_WINDOW_POSITION = (60, -1060)
 DEFAULT_TYPING_DELAY_MS = (60, 160)
 PROFILES_DIR_ENV = "JG_PROFILES_DIR"  # 프로필 폴더 위치를 바꿀 때(테스트·다른 PC). 비우면 아래 기본
+_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
 def default_profiles_root(environ: dict[str, str] | None = None) -> Path:
@@ -123,6 +124,12 @@ class Settings:
     profiles: tuple[str, ...] = DEFAULT_PROFILES
     default_target: str = "sandbox"
     browser: BrowserSettings = field(default_factory=BrowserSettings)
+    # 내 채널 영상(`own_video_ids`). 이 영상에서만 홍보 표기를 켜고 끌 수 있고, 실제 유튜브에
+    # 자동으로 입력·게시한다. 그 밖의 영상은 표기가 늘 붙는다
+    own_video_ids: tuple[str, ...] = ()
+
+    def is_own_video(self, video_id: str | None) -> bool:
+        return bool(video_id) and video_id in self.own_video_ids
 
     @property
     def youtube_key_configured(self) -> bool:
@@ -175,6 +182,19 @@ def _brand_facts(brand: Any) -> tuple[str, ...]:
     if not isinstance(raw, list):
         raise ValueError("brand.facts는 문장 목록이어야 합니다.")
     return tuple(str(f).strip() for f in raw if str(f).strip())
+
+
+def _own_video_ids(raw: Any) -> tuple[str, ...]:
+    """`own_video_ids`(내 채널 영상 ID 목록, 11자). 없으면 빈 목록."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ValueError("own_video_ids는 영상 ID 목록이어야 합니다(예: [dQw4w9WgXcQ]).")
+    ids = tuple(str(v).strip() for v in raw if str(v).strip())
+    bad = [v for v in ids if not _VIDEO_ID.match(v)]
+    if bad:
+        raise ValueError(f"own_video_ids에 영상 ID 형식(11자)이 아닌 값이 있습니다: {bad[0]}")
+    return tuple(dict.fromkeys(ids))
 
 
 def _profiles(raw: Any) -> tuple[str, ...]:
@@ -335,4 +355,5 @@ def load_settings(
         profiles=_profiles(rules.get("profiles")),
         default_target=_default_target(rules.get("browser")),
         browser=_browser_settings(rules.get("browser"), env),
+        own_video_ids=_own_video_ids(rules.get("own_video_ids")),
     )

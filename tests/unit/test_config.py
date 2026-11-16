@@ -161,3 +161,26 @@ def test_browser_settings_reject_bad_values(make_config, browser):
 
     with pytest.raises(ValueError):
         load_settings(make_config({"browser": browser}), env_path=None, environ={})
+
+
+# ---------------------------------------------------------------- 내 채널 영상(own_video_ids)
+
+
+def test_own_video_ids_default_empty(clean_env, tmp_path):
+    settings = load_settings(env_path=tmp_path / "없음.env")
+    assert settings.own_video_ids == ()
+    assert settings.is_own_video("BBBBBBBBBB2") is False
+
+
+def test_own_video_ids_read_and_deduplicated(make_config):
+    path = make_config({"own_video_ids": ["BBBBBBBBBB2", " BBBBBBBBBB2 ", "AAAAAAAAAA1"]})
+    settings = load_settings(path, env_path=None, environ={})
+    assert settings.own_video_ids == ("BBBBBBBBBB2", "AAAAAAAAAA1")
+    assert settings.is_own_video("AAAAAAAAAA1") and not settings.is_own_video("CCCCCCCCCC3")
+    assert not settings.is_own_video(None)
+
+
+@pytest.mark.parametrize("raw", ["BBBBBBBBBB2", ["짧은값"], ["https://youtu.be/BBBBBBBBBB2"]])
+def test_own_video_ids_must_be_a_list_of_ids(make_config, raw):
+    with pytest.raises(ValueError, match="own_video_ids"):
+        load_settings(make_config({"own_video_ids": raw}), env_path=None, environ={})
