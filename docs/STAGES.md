@@ -1,7 +1,10 @@
 # 단계별 개발 계획
 
 - 구조와 규칙의 기준은 [DESIGN.md](DESIGN.md)다. 이 문서는 순서와 완료 기준만 적는다.
-- 화면 모양과 구성의 기준은 [UI_SPEC.md](UI_SPEC.md)다(대표가 준 디자인 레퍼런스).
+- 화면 모양과 구성의 기준은 [UI_SPEC.md](UI_SPEC.md)다(대표가 넣은 목업).
+- **단계마다 만들 파일·함수·API·테스트의 상세는 [PLAYBOOK.md](PLAYBOOK.md)에 있다.** 이 문서는 상태 표기와 완료 기준 요약이다.
+- **실행 순서: 2 마무리 → 3 → 6 → 4 → 5 → 7 → 8 → 9 → 10 → 11.** 6단계(규칙 검사)를 4·5단계보다 먼저 한다(PLAYBOOK 2절).
+- 앞 단계가 `[-]`여도 남은 것이 "사람이 확인할 것"뿐이면 다음 단계를 시작해도 된다.
 - 한 번에 한 단계만 한다. 단계가 끝나면 `scripts/verify.ps1`이 통과해야 다음으로 간다.
 - 상태 표기: `[ ]` 미시작 · `[-]` 진행 중 · `[x]` 완료 기준 충족
 
@@ -62,9 +65,10 @@ FastAPI 앱, 읽기 전용 3열 화면, `/api/health`, 테스트 2개.
 
 ### [ ] 4단계 — Ollama 연동
 
-- `app/llm/base.py`, `app/llm/ollama.py`: JSON 스키마 출력, 시간 제한, 재시도, 모델 없음·서버 꺼짐 오류.
-- `scripts/eval_drafts.py`: 설치된 모델을 표본 맥락으로 비교(규칙 통과율, 응답 시간, 결과물).
-- 완료 기준: 가짜 응답으로 정상·깨진 JSON·시간 초과·서버 꺼짐 테스트. 모델 비교 결과를 `docs/MODEL_EVAL.md`에 적고 기본 모델을 정한다(대표 결정).
+- `app/llm/base.py`, `app/llm/registry.py`, `app/llm/ollama.py`: JSON 스키마 출력, 시간 제한, 재시도, 모델 없음·서버 꺼짐 오류.
+- LLM을 바꿔 끼우는 틀을 이 단계에서 잡는다(DESIGN 5.2.1): 규격 하나, 설정의 `llm.active`로 공급자 선택. 구현하는 공급자는 Ollama 하나.
+- `scripts/ollama_smoke.py`: 설치된 모델마다 한국어 JSON 한 번을 시켜 성공 여부와 시간을 본다. `GET /api/status`에 AI 항목 추가.
+- 완료 기준: 가짜 응답으로 정상·깨진 JSON·시간 초과·서버 꺼짐·모델 없음 테스트. 확인 결과를 `docs/MODEL_EVAL.md`에 적는다. (초안 품질로 모델을 고르는 비교는 5단계 끝으로 옮겼다.)
 - 주의: `ollama list`와 `ollama show <모델>`로 실제 설치 모델과 기능을 먼저 확인한다. `.env.example`의 모델 이름은 이 PC에 없는 이름이었다.
 
 ### [ ] 5단계 — 분석과 초안
@@ -107,3 +111,8 @@ FastAPI 앱, 읽기 전용 3열 화면, `/api/health`, 테스트 2개.
 
 - 한국어 README(설치·실행·설정·테스트), `docs/DEVIATIONS.md`(원문과 다른 점), `docs/INTENT.md`(제작 의도), 시연 순서 대본, 시연용 저장 데이터.
 - 완료 기준: 새 폴더에 내려받아 README대로 실행된다. 공개 저장소에 비밀값이 없다. 시연 대본대로 2~3분 안에 끝난다.
+
+### [ ] 12단계 — 다른 LLM 물리기 (제출 뒤, 또는 로컬 모델 품질이 모자랄 때 앞당김)
+
+- 설정의 `llm.active`만 바꿔 다른 LLM을 쓴다(DESIGN 5.2.1, PLAYBOOK 12단계). 어댑터 하나가 한 걸음: `openai_compatible`(OpenAI·Grok·Gemini 호환 주소 등, API 키) → `anthropic`(Claude API, API 키) → `cli`(로그인된 Codex·Claude Code·Gemini CLI를 대신 실행) → 화면에서 공급자 고르기.
+- 완료 기준: 분석·초안 코드를 바꾸지 않고 공급자만 바꿔 초안이 나온다. 자동 테스트는 키·CLI·인터넷 없이 통과. 키가 로그·응답에 없다. CLI 방식은 빈 폴더·도구 꺼짐·비대화 모드·시간 제한 조건이 테스트로 확인된다. CLI의 로그인 토큰 파일을 읽지 않는다.

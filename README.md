@@ -97,7 +97,8 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 
 - [AGENTS.md](AGENTS.md) — 작업 규칙(사람·AI 공통)
 - [docs/DESIGN.md](docs/DESIGN.md) — 구조와 규칙의 기준
-- [docs/STAGES.md](docs/STAGES.md) — 단계별 계획과 상태
+- [docs/PLAYBOOK.md](docs/PLAYBOOK.md) — 완성까지의 단계별 실행 계획(순서, 파일, API, 테스트)
+- [docs/STAGES.md](docs/STAGES.md) — 단계별 상태와 완료 기준
 - [docs/UI_SPEC.md](docs/UI_SPEC.md) — 화면 기준
 
 ## 오픈소스 출처

@@ -93,8 +93,10 @@ app/
     manual.py        사용자가 붙여 넣은 자막
     unofficial.py    비공식 자막 조회 (기본 꺼짐, 설정으로 켬)
   llm/
-    base.py          LLM 공통 규격 (generate_json)
+    base.py          LLM 공통 규격 (generate_json), JSON 꺼내기·스키마 확인 공통 코드
+    registry.py      설정의 llm.active 이름으로 공급자를 만들어 준다
     ollama.py        Ollama /api/chat 구현
+    (12단계) openai_compatible.py, anthropic.py, cli.py
     prompts.py       분석·초안·재작성 프롬프트
   analysis/
     context.py       영상 맥락 묶음 만들기 (자막 → 없으면 제목·설명, 인기 댓글)
@@ -163,6 +165,57 @@ config.yaml          비밀이 아닌 규칙 (과제 설정 예시와 같은 모
 2. **초안** (높은 온도): `{ body, used_quote }`. 분석 결과와 브랜드 사실 목록만 보고 쓴다.
 
 둘 다 Ollama `/api/chat`에 JSON 스키마(`format`)를 주고 `stream: false`로 받는다. 생각 과정을 내보내는 모델은 생각 출력을 끈다.
+
+### 5.2.1 LLM 공급자 (바꿔 끼울 수 있게)
+
+지금 쓰는 것은 Ollama 하나다. 하지만 분석·초안 코드는 "어느 LLM인지" 모르게 만들고, 설정만 바꿔 다른 LLM을 물릴 수 있게 한다(대표 지시, 2026-11-16).
+
+```text
+analyzer / drafter
+      │  generate_json(system, user, schema, …)   ← 이 규격 하나만 안다
+      ▼
+[LLM 등록부]  config.yaml의 llm.active 이름으로 공급자를 고른다
+      ├ ollama             로컬 서버            인증 없음                    ← 4단계에서 구현
+      ├ openai_compatible  OpenAI 호환 API      .env의 API 키                ← 12단계
+      │                    (OpenAI · xAI Grok · Gemini 호환 주소 · OpenRouter 등 주소만 바꿔 씀)
+      ├ anthropic          Claude API           .env의 API 키                ← 12단계
+      └ cli                로그인된 CLI 실행     CLI 자신의 로그인을 그대로 씀  ← 12단계
+                           (Codex · Claude Code · Gemini CLI)
+```
+
+**인증 세 가지**
+
+| 방식 | 무엇 | 이 앱이 다루는 비밀값 |
+|---|---|---|
+| 없음 | 로컬 Ollama | 없음 |
+| API 키 | 각 회사 API | `.env`에 키. 이름은 설정의 `api_key_env`로 지정. 로그 가리기 대상 |
+| CLI 로그인 재사용 | 이미 로그인해 둔 CLI를 이 앱이 대신 실행(구독 계정을 그대로 씀) | 없음. 토큰은 CLI가 갖고 있고 이 앱은 읽지 않는다 |
+
+- "헤르메스처럼 로그인된 계정으로 물리기"는 **CLI를 대신 실행하는 방식**으로 한다. CLI가 저장해 둔 로그인 토큰 파일을 이 앱이 읽어서 API를 직접 부르는 방식은 쓰지 않는다. 약관 위반 소지가 있고, 공개 저장소 프로젝트가 남의 토큰 파일을 건드리게 되기 때문이다.
+- **CLI 방식의 안전 조건.** 영상 자막과 댓글은 남이 쓴 글이다. 파일·명령 도구를 가진 CLI에 그대로 넣으면 그 글 속의 지시를 따를 위험이 있다. 그래서 CLI는 (1) 빈 임시 폴더에서 (2) 도구 사용을 끄거나 읽기 전용으로 (3) 한 번 답하고 끝나는 모드로 (4) 시간 제한을 걸어 실행한다. 프롬프트는 명령줄 인자가 아니라 표준 입력으로 넘긴다.
+- **JSON 출력.** 스키마 강제를 지원하는 공급자는 그 기능을 쓰고, 아닌 공급자는 프롬프트에 스키마를 넣은 뒤 받은 글에서 JSON을 꺼내 스키마와 맞는지 코드로 확인한다. 안 맞으면 한 번 다시 시킨다. 이 확인은 공통 코드에 둔다.
+- **화면 표시.** 위 줄 AI 상태에 지금 공급자와 모델, 그리고 "로컬"인지 "외부"인지를 보인다. 외부 공급자를 쓰면 영상 제목·설명·자막·댓글이 그 회사로 전송된다는 것을 설정 화면에 적는다.
+- 기본값은 계속 Ollama다. 외부 공급자는 비용이 들 수 있다.
+
+설정 모양(목표):
+
+```yaml
+llm:
+  active: ollama
+  timeout_seconds: 180
+  context_chars: 6000
+  providers:
+    ollama:     { type: ollama }                       # 주소·모델은 .env의 OLLAMA_BASE_URL, OLLAMA_MODEL
+    openai:     { type: openai_compatible, base_url: "https://api.openai.com/v1", model: "", api_key_env: OPENAI_API_KEY }
+    grok:       { type: openai_compatible, base_url: "https://api.x.ai/v1",       model: "", api_key_env: XAI_API_KEY }
+    gemini:     { type: openai_compatible, base_url: "",                          model: "", api_key_env: GEMINI_API_KEY }
+    claude:     { type: anthropic,                                                model: "", api_key_env: ANTHROPIC_API_KEY }
+    codex-cli:  { type: cli, command: [] }             # 실행 명령과 옵션은 구현할 때 각 CLI의 --help와 문서로 확인
+    claude-cli: { type: cli, command: [] }
+    gemini-cli: { type: cli, command: [] }
+```
+
+주소·모델 이름·CLI 옵션은 자주 바뀐다. 구현할 때 각 회사 문서로 확인하고, 문서에 없는 값을 지어 넣지 않는다.
 
 ### 5.3 댓글 형식
 
