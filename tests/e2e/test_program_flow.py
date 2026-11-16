@@ -115,7 +115,8 @@ def test_full_flow_select_auto_draft_one_click_post_and_screens_keep_state(live)
         page.click("#nav-settings")
         page.wait_for_selector("#settings-body .set-group")
         heads = page.locator("#settings-body .set-group h3").all_text_contents()
-        assert heads == ["유튜브 연결", "AI 모델", "댓글 규칙", "게시", "영상 찾기"]
+        assert heads == ["유튜브 연결", "AI 모델", "댓글 규칙", "게시", "영상 찾기",
+                         "뜨기 직전 영상"]  # R4: 뜨기 직전 영상 조건
         assert page.is_disabled("#settings-save")
         assert page.is_enabled("#warmup-btn")
 

@@ -168,3 +168,41 @@ def test_program_screen_fits_without_page_scroll(fit_app):
     for driver in fit_app["drivers"]:
         for url in driver.visited:
             assert url.startswith(f"{base}/sandbox/"), url
+
+
+def test_rising_list_fits_and_blocks_posting(fit_app):
+    """R4: [뜨기 직전 영상] 목록(줄마다 「시간당 n회」)과 고른 영상의 ③ 막힘이 한 화면에 들어간다.
+
+    목록은 지어낸 검색 응답에 뜨기 직전 표시만 덧붙여 돌려준다(가짜, 실제 유튜브를 부르지 않는다).
+    ②칸 자막 줄은 자동 읽기가 막혀 있어(tests/conftest.py) 「자막을 읽지 못해 …」 문구로 잰다.
+    """
+    base = fit_app["base"]
+
+    def rising(route):
+        res = route.fetch(url=base + "/api/videos")
+        data = res.json()
+        for n, item in enumerate(data["items"]):
+            item.update(source="rising", rising=True, views_per_hour=4321.0 - n * 100)
+        data.update(mode="rising", checked=50, rising={
+            "query": "연애", "min_views": 1000, "max_views": 5000,
+            "min_views_per_hour": 150, "window_hours": 34})
+        route.fulfill(response=res, json=data)
+
+    with headless_page(base) as (page, errors):
+        page.route(base + "/api/videos/rising*", rising)
+        page.goto(base + "/")
+        page.click("#rising-btn")
+        page.wait_for_selector(f'.vid[data-id="{PICK}"] .rising-rate')
+        assert page.text_content(f'.vid[data-id="{PICK}"] .rising-tag') == "뜨기 직전"
+        assert "시간당" in page.text_content(f'.vid[data-id="{PICK}"] .rising-rate')
+        assert "뜨기 직전 영상" in page.text_content("#result-meta")
+        page.click(f'.vid[data-id="{PICK}"]')
+        wait_draft(page, 2)
+        page.wait_for_function(
+            "document.getElementById('job-why').textContent.startsWith("
+            "'뜨기 직전 영상은 초안까지만 만듭니다')")
+        assert page.is_disabled("#job-primary")
+        assert "자막을 읽지 못해 제목과 설명으로 대신합니다" in page.text_content("#col-analyze")
+        for w, h in sorted(FULL):
+            _check_one(measure(page, w, h), f"뜨기 직전 {w}x{h}", True)
+        assert errors == []
