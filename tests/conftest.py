@@ -57,6 +57,36 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(skip_e2e)
 
 
+# ---------------------------------------------------------------- 실제 유튜브 막기(R3)
+
+
+@pytest.fixture(autouse=True)
+def _never_real_youtube(monkeypatch):
+    """자동 테스트는 실제 유튜브에 접속하지 않는다(R3: 실제 게시가 기본이 되어 더 조심한다).
+
+    실제 게시 실행기는 가짜 페이지를 끼운 것(`prepare_context`가 있는 것)만 열 수 있다. 설정 기본값
+    그대로 실제 실행기가 만들어지면 크롬을 띄우기 전에 실패한다. 진짜 로그인 확인도 막는다.
+    """
+    from app.browser import login, youtube_driver
+
+    real_open = youtube_driver.PlaywrightYouTubeDriver.open
+
+    def guarded_open(self, user_data_dir, url):
+        if self.prepare_context is None:
+            raise AssertionError(f"자동 테스트가 실제 유튜브를 열려고 했다: {url}")
+        return real_open(self, user_data_dir, url)
+
+    real_check = login.check_login
+
+    def guarded_check(*args, **kwargs):
+        if kwargs.get("prepare_context") is None:
+            raise AssertionError("자동 테스트가 실제 유튜브 로그인 확인을 하려고 했다")
+        return real_check(*args, **kwargs)
+
+    monkeypatch.setattr(youtube_driver.PlaywrightYouTubeDriver, "open", guarded_open)
+    monkeypatch.setattr(login, "check_login", guarded_check)
+
+
 # ---------------------------------------------------------------- 임시 저장소·설정
 
 

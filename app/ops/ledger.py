@@ -1,7 +1,8 @@
 """작업 기록(`runs` 표, DESIGN 4절 · PLAYBOOK 7단계).
 
 - 지우지 않는 기록이다(표의 트리거가 DELETE를 막는다). 고치지 않고 새 줄을 더한다.
-- 한 줄: 시각, 한국 날짜, 작업(analyze·draft·approve·post), 영상, 프로필, 댓글, 대상, 결과, 사유.
+- 한 줄: 시각, 한국 날짜, 작업(analyze·draft·approve·post), 영상, 프로필, 댓글, 대상, 결과, 사유,
+  그 댓글이 광고 표기를 붙였는지(R3, `disclosed`).
 - 결과: post는 success/failure, 5단계의 분석·초안·승인은 info(실패하면 failure와 사유).
 - 오늘 통계(`today_stats`)는 이 표와 `posts`에서 센다. 성공률은 오늘 게시 시도가 없으면 None.
 - 게시 결과 줄은 `rules.mark_posted`·`mark_failed`가 상태를 바꾸는 같은 거래 안에서
@@ -42,6 +43,7 @@ class Run:
     job_id: str
     draft_id: int | None
     post_id: int | None
+    disclosed: bool | None = None  # R3: 그 댓글이 광고 표기를 붙였는지(댓글이 없는 줄은 None)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -79,6 +81,7 @@ def insert(
     draft_id: int | None = None,
     post_id: int | None = None,
     day: str | None = None,
+    disclosed: bool | None = None,
 ) -> int:
     """열린 연결에 기록 한 줄을 넣는다(거래는 부르는 쪽이 연다). 제목이 비면 videos에서 찾는다."""
     if action not in ACTIONS:
@@ -92,8 +95,8 @@ def insert(
         video_title = row["title"] if row else ""
     cur = conn.execute(
         "INSERT INTO runs(at, day, action, video_id, video_title, profile, comment_text, target, "
-        "result, reason, screenshot_path, job_id, draft_id, post_id) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "result, reason, screenshot_path, job_id, draft_id, post_id, disclosed) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             at,
             day or kst_day(datetime.fromisoformat(at)),
@@ -109,6 +112,7 @@ def insert(
             job_id,
             draft_id,
             post_id,
+            None if disclosed is None else int(bool(disclosed)),
         ),
     )
     return int(cur.lastrowid)
@@ -195,4 +199,5 @@ def _row(row: sqlite3.Row) -> Run:
         job_id=row["job_id"],
         draft_id=row["draft_id"],
         post_id=row["post_id"],
+        disclosed=None if row["disclosed"] is None else bool(row["disclosed"]),
     )

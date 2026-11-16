@@ -214,6 +214,22 @@ def test_v4_fail(text, word):
     assert not v4.passed and word in v4.message and "[광고]" in v4.message
 
 
+def test_v4_off_passes_without_label_and_length_counts_full_text():
+    """R3: 광고 표기를 끈 초안은 V4가 「표기 끔」으로 통과. 글자 수(V1)는 늘 전체 글로 센다."""
+    bare = GOOD.replace("[광고] ", "")
+    off = validate(bare, context_text=CONTEXT, rules=RULES, brand_facts=FACTS,
+                   previous_texts=[], disclosure_required=False)
+    v4 = check(off, "V4")
+    assert v4.passed and v4.message == "표기 끔"
+    assert off.char_count == len(bare)
+    on = run(GOOD)
+    assert on.char_count == len(GOOD)  # 표기 포함
+    # 끈 초안에 표기가 남아 있어도 막지 않는다(사람이 붙여 쓴 글)
+    kept = validate(GOOD, context_text=CONTEXT, rules=RULES, brand_facts=FACTS,
+                    previous_texts=[], disclosure_required=False)
+    assert check(kept, "V4").passed
+
+
 # ---------------------------------------------------------------- V5 브랜드 이름 1~2번
 
 

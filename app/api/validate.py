@@ -21,6 +21,9 @@ def validate_text(body: ValidateIn, services: ServicesDep) -> ValidationOut:
     이전 글 비교(V11)는 다른 영상에서 승인한 초안들과 한다(5단계부터 DB에서 꺼낸다).
     """
     result = services.checks.check(
-        body.video_id, body.text, previous_texts=services.drafts.previous_texts(body.video_id)
+        body.video_id,
+        body.text,
+        previous_texts=services.drafts.previous_texts(body.video_id),
+        disclose=body.disclose,
     )
     return ValidationOut.from_validation(result, services.checks.rules)

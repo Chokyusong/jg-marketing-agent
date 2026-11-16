@@ -63,8 +63,9 @@ from app.user_settings import (
 
 router = APIRouter(prefix="/api", tags=["settings"])
 
-# 값은 저장하지만 동작에는 R3에서 쓰는 칸(화면에 「곧 적용」)
-APPLIES_LATER = ["comment.disclose_default", "posting.confirm_before_post"]
+# 값은 저장하지만 동작에는 아직 쓰지 않는 칸(화면에 「곧 적용」). R3에서 광고 표기 기본값과
+# 게시 직전 확인을 게시에 연결해 지금은 비어 있다(응답 모양은 그대로 둔다)
+APPLIES_LATER: list[str] = []
 
 
 def _xy(point: tuple[int, int] | None) -> str | None:
@@ -175,7 +176,6 @@ def settings_view(request: Request, services: Services) -> SettingsOut:
             max_chars=int(comment.get("max_chars", 120)),
             disclosure=str(comment.get("disclosure", "[광고]")),
             brand=str(comment.get("brand", "운명원")),
-            own_video_count=len(s.own_video_ids),
         ),
         brand_facts=list(s.brand_facts),
         daily_max_comments=s.daily_max_comments,

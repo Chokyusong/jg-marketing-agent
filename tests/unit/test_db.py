@@ -192,3 +192,30 @@ def test_immediate_rolls_back_on_error(tmp_db_path):
     with db.session(tmp_db_path) as conn:
         rows = conn.execute("SELECT day FROM quota_usage").fetchall()
     assert [r["day"] for r in rows] == ["2026-11-17"]
+
+
+# ---------------------------------------------------------------- R3: 광고 표기 켬/끔 기록
+
+
+def test_r3_disclosed_columns_and_backfill(tmp_db_path):
+    import sqlite3
+
+    last = len(db.MIGRATIONS) - 1  # R3 덩어리 바로 앞까지 만든 DB
+    conn = sqlite3.connect(tmp_db_path)
+    for i in range(last):
+        conn.executescript("BEGIN;" + db.MIGRATIONS[i] + f"PRAGMA user_version = {i + 1};COMMIT;")
+    now = "2026-11-16T03:00:00+00:00"
+    conn.execute("INSERT INTO videos(video_id, title, fetched_at, source) "
+                 "VALUES ('BBBBBBBBBB2', 't', ?, 'search')", (now,))
+    for body in ("[광고] 표기가 붙은 예전 초안", "표기 없는 예전 초안"):
+        conn.execute(
+            "INSERT INTO drafts(video_id, body, validation_json, passed, status, created_at, "
+            "updated_at) VALUES ('BBBBBBBBBB2', ?, '{}', 1, 'draft', ?, ?)", (body, now, now))
+    conn.commit()
+    conn.close()
+    assert db.init_db(tmp_db_path) == db.SCHEMA_VERSION == last + 1
+    with db.session(tmp_db_path) as conn:
+        rows = conn.execute("SELECT body, disclosed FROM drafts ORDER BY id").fetchall()
+        assert [r["disclosed"] for r in rows] == [1, 0]
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(runs)")}
+        assert "disclosed" in cols

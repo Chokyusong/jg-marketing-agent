@@ -118,6 +118,8 @@ def create_app(
                 "daily_limit_options": daily_limit_options(current.daily_max_comments),
                 "profiles": list(current.profiles),
                 "default_target": current.default_target,
+                "confirm_before_post": current.confirm_before_post,
+                "disclose_default": current.disclose_default,
                 "disclosure": comment.get("disclosure", "[광고]"),
                 "min_chars": int(comment.get("min_chars", 40)),
                 "max_chars": int(comment.get("max_chars", 120)),

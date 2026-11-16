@@ -334,12 +334,19 @@ def test_draft_box_is_on(page):
     assert 'id="approve-btn"' not in page
 
 
-def test_disclosure_toggle_starts_on_and_locked(page):
-    # 「광고 표기 붙이기」: 켠 채 잠겨 있다가 내 채널 영상(맥락 응답 own_video)일 때만 끌 수 있다
+def test_disclosure_toggle_starts_from_the_setting(page, make_client):
+    # 「광고 표기 붙이기」(R3): 모든 영상에서 켜고 끌 수 있다. 처음 상태는 comment.disclose_default.
+    # 영상을 고르기 전에는(초안 칸이 잠겨 있을 때) 같이 잠겨 있다
     draft = _section(page, 'id="draft-box"', 'class="draft-edit"')
     assert 'id="disclose-toggle"' in draft and "광고 표기 붙이기" in draft
     assert '<input type="checkbox" id="disclose" checked disabled />' in draft
-    assert "내 채널 영상에서만 끌 수 있습니다" in draft  # 왜 잠겼는지 title로 알린다
+    assert 'data-disclose-default="true"' in page
+    assert "끄면 광고 표기 없이 댓글을 답니다" in draft  # title로 알린다
+    assert "내 채널" not in draft
+    off = make_client(key=None, overrides={"comment": {"disclose_default": False}})
+    page_off = off.get("/").text
+    assert '<input type="checkbox" id="disclose" disabled />' in page_off
+    assert 'data-disclose-default="false"' in page_off
 
 
 def test_draft_js_checks_after_pause_and_folds_passed_items(make_client):
@@ -349,7 +356,8 @@ def test_draft_js_checks_after_pause_and_folds_passed_items(make_client):
     assert "video_id: videoId, text" in api
     js = client.get("/static/js/draft.js").text
     assert "const DEBOUNCE_MS = 400;" in js  # 입력이 0.4초 멈추면 검사
-    assert "api.validate(videoId, text)" in js
+    assert "api.validate(videoId, text, discloseOn())" in js
+    assert "api.setDisclosure(" in js  # 켬/끔은 저장한 초안을 모델 없이 고친다
     for text in ("'검사 통과'", "'검토 필요'", "'승인됨'", "개 중 ", "개 통과", "개 모두 통과",
                  "checks-fail", "class: 'disclosure'", "normalize('NFC').trim()"):
         assert text in js
@@ -458,10 +466,13 @@ def test_execute_settings_are_on(page):
     assert '<option value="" selected>자동 배정</option>' in settings
     for name in ("유튜브1", "유튜브2", "유튜브3"):
         assert f'<option value="{name}">{name}</option>' in settings
-    # 연습 모드 스위치: 처음 값은 기본 작업 대상(config.yaml browser.default_target = 연습 페이지)
-    assert re.search(r'id="practice-mode" role="switch"[^>]*checked', settings)
+    # 연습 모드 스위치(R3): 처음 값은 기본 게시 방식(config.yaml browser.default_target = 실제 게시)
+    # → 꺼져 있다
+    assert re.search(r'id="practice-mode" role="switch"[^>]*>', settings)
+    assert not re.search(r'id="practice-mode" role="switch"[^>]*checked', settings)
     assert '<span class="label" id="practice-label">연습 모드</span>' in settings
-    assert "켜짐 · 연습 페이지에 답니다" in settings
+    assert "꺼짐 · 실제 유튜브에 답니다" in settings
+    assert 'data-confirm="false"' in execute  # 게시 직전 확인(기본 끔)
     # 하루 상한은 설정값 이하로만 고른다
     assert re.findall(r'<option value="(\d+)"[^>]*>\d+개까지', settings) == ["10", "5", "3", "1"]
     assert '<option value="10" selected>10개까지</option>' in settings
@@ -524,11 +535,10 @@ def test_job_box_has_four_steps_and_only_needed_buttons(page):
     assert steps == [("1", "프로필 여는 중"), ("2", "입력 중"), ("3", "게시"), ("4", "확인")]
     # 상태에 따라 필요한 것만 보인다: 작은 단추 줄과 실패 이유는 처음에 숨김
     assert 'class="job-actions" id="job-actions" hidden' in box
-    for bid, text in (("job-copy", "댓글 복사"), ("job-not-posted", "게시 안 함"),
-                      ("job-cancel", "그만두기")):
-        assert f'id="{bid}" hidden>{text}</button>' in box
-    view = ('id="job-view" href="#" target="_blank" rel="noopener noreferrer" hidden>'
-            '유튜브에서 내 댓글 보기')
+    assert 'id="job-cancel" hidden>그만두기</button>' in box
+    # R3: 사람이 직접 게시하던 방식의 단추([댓글 복사]·[게시 안 함])는 없다
+    assert 'id="job-copy"' not in box and 'id="job-not-posted"' not in box
+    view = 'id="job-view" href="#" target="_blank" rel="noopener noreferrer" hidden>댓글 보기'
     assert view in box
     assert 'id="job-shot"' in box and "화면 캡처 보기" in box
     assert 'id="job-error" role="alert" hidden' in box
@@ -552,17 +562,19 @@ def test_job_js_wires_the_job_apis(make_client):
     client = make_client(key=None)
     api = client.get("/static/js/api.js").text
     for snippet in ("request('/api/jobs', {", "`/api/jobs/${encodeURIComponent(id)}`",
-                    "/approve`", "/confirm`", "/cancel`", "JSON.stringify({ posted })"):
+                    "/approve`", "/cancel`"):
         assert snippet in api, snippet
     js = client.get("/static/js/job.js").text
     for text in ("const POLL_MS = 500;", "api.startJob(", "api.approveJob(job.id)",
-                 "api.confirmJob(job.id, true)", "api.confirmJob(job.id, false)",
-                 "api.cancelJob(job.id)", "navigator.clipboard.writeText(job.comment_text)",
+                 "api.cancelJob(job.id)",
                  "refreshOps();", "commented: { ...(v.commented || {}), [job.target]: true }",
                  "연습 모드 · 실제 유튜브가 아니라", "video.commented[target]",
-                 "ops.stats.remaining <= 0", "active_job_id", "게시했어요", "'게시'",
+                 "ops.stats.remaining <= 0", "active_job_id", "'게시'",
                  "'다시 시도'", "프로필 여는 중", "입력 중", "게시 완료"):
         assert text in js, text
+    # R3: 사람이 직접 게시하던 방식(댓글 복사·「게시했어요」)은 화면에서 뺐다
+    for gone in ("api.confirmJob(", "navigator.clipboard", "게시했어요"):
+        assert gone not in js, gone
     # [댓글 달기] 한 번: 저장·승인(ensureApproved) 다음에 시작
     start = js.split("function start() {", 1)[1].split("\n}\n", 1)[0]
     assert start.index("await ensureApproved()") < start.index("api.startJob(")

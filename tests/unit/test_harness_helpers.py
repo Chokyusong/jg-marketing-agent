@@ -16,7 +16,9 @@ def test_config_yaml_matches_design(base_config):
         "disclose_default": True,  # R2: 광고 표기 기본값(켬)
     }
     assert base_config["limits"]["daily_max_comments"] == 10
-    assert base_config["browser"]["default_target"] == "sandbox"
+    assert base_config["browser"]["default_target"] == "youtube"  # R3: 실제 게시가 기본
+    assert base_config["posting"]["confirm_before_post"] is False  # R3: [댓글 달기] 한 번으로
+    assert "own_video_ids" not in base_config  # R3: 내 채널 영상 구분 없음
     assert base_config["browser"]["window_position"] == "60,-1060"
     assert base_config["transcript"]["provider"] == "manual"
 

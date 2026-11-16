@@ -1,13 +1,14 @@
 """게시 작업 API(8단계). 얇게: 입력 검증 → 작업 서비스 → 응답.
 
 - `POST /api/jobs` — 작업 시작(승인한 초안 + 그 대상에서 댓글 안 단 영상 + 오늘 남은 횟수).
-  sandbox는 이 앱의 `/sandbox/watch` 주소를 연다. 주소는 요청 머리말(Host)이 아니라 서버가 실제로
-  듣고 있는 주소·포트로 만든다.
+  `target`: youtube(실제 게시, 그 영상의 유튜브 주소만 연다) | sandbox(연습 모드). 옛 이름
+  assist·youtube_auto도 실제 게시로 받는다. 연습 페이지 주소는 요청 머리말(Host)이 아니라 서버가
+  실제로 듣고 있는 주소·포트로 만든다.
 - `GET /api/jobs/{id}` — 진행 상태(화면이 0.5초마다 물어 온다)
-- `POST /api/jobs/{id}/approve` — sandbox 승인 대기에서 [게시 승인]
-- `POST /api/jobs/{id}/confirm` — assist에서 [게시했어요] / [게시 안 함]
+- `POST /api/jobs/{id}/approve` — 게시 직전 확인(설정 켬)의 게시 대기에서 [게시]
+- `POST /api/jobs/{id}/confirm` — 옛 API(사람이 직접 게시하던 방식). R3부터는 늘 `job_wrong_state`
 - `POST /api/jobs/{id}/cancel`
-- `GET /api/jobs/{id}/screenshot` — 실패한 sandbox 작업의 화면 캡처(PNG)
+- `GET /api/jobs/{id}/screenshot` — 실패한 작업의 화면 캡처(PNG)
 """
 
 from __future__ import annotations

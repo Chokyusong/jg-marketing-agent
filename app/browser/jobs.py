@@ -1,42 +1,51 @@
-"""게시 작업(job) 서비스 — 8단계(DESIGN 6.2 · PLAYBOOK 8단계).
+"""게시 작업(job) 서비스 — 8단계(DESIGN 6.2 · PLAYBOOK 8단계), R3에서 실제 게시를 기본으로.
 
 ```text
 start(video_id, draft_id, profile, target) -> job_id
-                                승인한 초안 확인 → rules.reserve → 작업 스레드에
-approve(job_id)                 승인 대기 중인 sandbox 작업의 게시를 허락
-confirm(job_id, posted)         assist(실제 유튜브)에서 사람이 「게시했어요 / 게시 안 함」
+                                시작 전 확인 → rules.reserve → 작업 스레드에
+approve(job_id)                 게시 직전 확인(설정 켬)에서 사람이 [게시]
 cancel(job_id)
 get(job_id) -> JobView          상태, 지난 단계, 메시지, 실패 사유, 캡처 유무, 댓글 보기 주소
 ```
 
-상태: 대기(queued) → 프로필 실행(launching) → 댓글 입력(typing) → **승인 대기(awaiting_approval)**
-→ 게시 중(posting) → 확인(verifying) → 게시 완료(posted) / 실패(failed).
-assist는 대기 → 프로필 실행 → 사람 게시 대기(awaiting_confirm) → 확인 → 게시 완료 / 실패.
+게시 방식은 둘(R3):
+- **실제 게시**(`youtube`, 기본): 고른 프로필의 크롬으로 **그 영상의 유튜브 주소 하나만** 열어
+  (`youtube_driver.PlaywrightYouTubeDriver`) 한 글자씩 입력하고 「댓글」을 누르고 내 댓글을 찾는다.
+  어떤 영상이든 된다. 옛 대상 이름 `assist`·`youtube_auto`도 실제 게시로 받는다.
+- **연습 모드**(`sandbox`): 이 앱의 `/sandbox/watch` 주소만 연다
+  (`sandbox_driver.require_sandbox_url`).
 
-- **한 번에 작업 하나.** 진행 중인 작업이 있으면 `start`가 `job_busy`로 거절한다.
+상태: 대기(queued) → 프로필 여는 중(launching) → 입력 중(typing)
+→ [게시 직전 확인을 켰을 때만] 게시 대기(awaiting_approval)
+→ 게시 중(posting) → 확인 중(verifying) → 게시 완료(posted) / 실패(failed).
+
+- **[댓글 달기] 한 번으로 끝까지.** 사람이 [댓글 달기]를 누르면 화면이 그 초안을 승인하고
+  작업을 시작한다. 서버는 승인한 초안만 받는다(`rules.reserve`가 승인 여부를 본다 — 승인은 규칙
+  검사를 통과한 글만 된다). 설정 「게시 직전 확인」(`confirm_before_post`, 기본 끔)을 켜면 입력 뒤
+  멈추고, 화면의 [게시](`approve()`)를 받아야 「댓글」을 누른다.
+- **시작 전 확인**(하나라도 걸리면 아무것도 남기지 않고 거절): 한 번에 작업 하나 · 댓글이 막힌
+  영상(맥락을 모을 때 YouTube가 알려 준 것) · 자동 입력 도구와 크롬 · 프로필(실제 게시는 최근 로그인
+  확인에서 로그인 안 됨으로 나온 프로필이면 「로그인하기」 안내, 확인한 적이 없거나 오래됐으면
+  실행기가 열 때 직접 본다) · 그 프로필 창이 열려 있지 않은지 · 승인한 초안 · 영상당 1개 ·
+  오늘 상한.
 - 작업은 **전용 작업 스레드 하나**에서 돈다. Playwright는 그 스레드에서만 만들고 쓴다
   (스레드에 안전하지 않다). 그래서 다른 스레드(API 요청)는 이벤트 깃발만 세운다.
-- 승인 없이는 게시 단계로 가지 않는다: 작업 스레드가 승인 깃발을 기다리고,
-  깃발은 `approve()`만 세운다.
 - 상태가 바뀔 때마다 `job_events`에 한 줄. 끝나면 `rules.mark_posted` / `mark_failed`가
-  상태를 바꾸는 같은 거래 안에서 작업 기록(`runs`)에 결과 한 줄을 남긴다
-  (그래서 `Ledger.record`를 따로 부르지 않는다 — 부르면 같은 결과가 두 줄 생긴다).
-- 실패하면 `error_screenshots/<작업ID>.png`(sandbox·auto만. assist는 화면을 찍지 않는다).
-- **sandbox**: 이 앱의 `/sandbox/watch` 주소만 연다(`sandbox_driver.require_sandbox_url`).
-- **assist**: 크롬을 프로필 폴더와 영상 주소로 실행만 한다(`chrome.assist_args`, 셸 없이).
-  실제 유튜브 화면은 건드리지 않는다. 사람이 [게시했어요]를 누르면
-  YouTube 키가 있을 때만 Data API로 찾아본다.
-- **auto(내 채널 영상 자동 게시)**: `own_video_ids`에 넣은 영상만(`own_video`가 참일 때만 시작).
-  `youtube_driver.PlaywrightYouTubeDriver`로 그 영상 페이지를 열어 sandbox와 같은 순서
-  (입력 → 승인 대기 → 「댓글」 → 확인)로 돈다. 「댓글」을 누른 뒤에는 페이지·Data API로 못 찾아도
-  실패로 되돌리지 않고 「게시됨(확인 못 함)」으로 남긴다(다시 시도해 같은 댓글이 두 번 달리지 않게).
+  상태를 바꾸는 같은 거래 안에서 작업 기록(`runs`)에 결과 한 줄을 남긴다(그 댓글이 광고 표기를
+  붙였는지도). `Ledger.record`를 따로 부르지 않는다 — 부르면 같은 결과가 두 줄 생긴다.
+- 실패하면 사유와 `error_screenshots/<작업ID>.png`(크롬 화면이 열린 뒤 실패한 경우).
+- 실제 게시에서 「댓글」을 누른 뒤에는 페이지·Data API로 못 찾아도 실패로 되돌리지 않고
+  「게시됨(확인 못 함)」으로 남긴다(다시 시도해 같은 댓글이 두 번 달리지 않게).
+- 실행기가 로그인 안 됨을 보면 그 프로필의 로그인 확인 결과(`profile_logins`)를 「로그인 안 됨」으로
+  고쳐 둔다(프로필 화면에 바로 보인다).
 - **작업 스레드에서 도는 짧은 일(R2).** 프로필 로그인 확인처럼 Playwright를 쓰는 다른 일도
   `run_task(fn)`로 같은 작업 스레드에서 돌린다. 게시 작업이 진행 중이면 받지 않고, 도는 동안에는
   새 게시를 받지 않는다. `busy()`는 둘 중 하나라도 돌고 있는지, `close_if_idle()`은 쉬고 있을 때만
   더 받지 않게 닫는다(설정을 저장해 서비스를 다시 만들 때).
-- **창 위치(9단계).** 창이 보이는 실행(assist, 또는 headless가 아닌 sandbox)은 띄우기 전에
-  `browser.window_position`이 실제 모니터 안인지 본다(`screens.check_window_position`). 밖이면
-  주 모니터의 안전한 위치로 바꿔 띄우고 작업 기록(job_events)에 그렇게 했다고 남긴다.
+- **창 위치(9단계).** 창이 보이는 실행(headless가 아닐 때)은 띄우기 전에 `browser.window_position`이
+  실제 모니터 안인지 본다(`screens.check_window_position`). 밖이면 주 모니터의 안전한 위치로 바꿔
+  띄우고 작업 기록(job_events)에 그렇게 했다고 남긴다.
+- 프로그램 창을 닫으면(`shutdown`) 진행 중인 작업을 취소하고 크롬을 닫는다.
 """
 
 from __future__ import annotations
@@ -50,20 +59,13 @@ import threading
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode, urlsplit
 
 from app import db
-from app.browser.chrome import (
-    Launcher,
-    assist_args,
-    ensure_profile_dir,
-    popen_launcher,
-    require_profile_free,
-    stop_process,
-)
+from app.browser.chrome import ensure_profile_dir, require_profile_free
 from app.browser.sandbox_driver import (
     LOCAL_HOSTS,
     BrowserDriver,
@@ -88,61 +90,59 @@ STATES = (
     "launching",
     "typing",
     "awaiting_approval",
-    "awaiting_confirm",
     "posting",
     "verifying",
     "posted",
     "failed",
 )
 FINAL_STATES = ("posted", "failed")
+# 과제 PDF의 말: 프로필 여는 중 → 입력 중 → 게시 완료
 STATE_LABELS = {
-    "queued": "대기",
-    "launching": "프로필 실행",
-    "typing": "댓글 입력",
-    "awaiting_approval": "승인 대기",
-    "awaiting_confirm": "게시 확인 대기",
+    "queued": "준비 중",
+    "launching": "프로필 여는 중",
+    "typing": "입력 중",
+    "awaiting_approval": "게시 대기",
     "posting": "게시 중",
     "verifying": "확인 중",
     "posted": "게시 완료",
     "failed": "실패",
 }
-# 화면의 진행 단계 표시 6개(UI_SPEC A4: 대기 · 프로필 실행 · 댓글 입력 · 승인 대기 · 게시 · 확인)
-# 에서 지금 있는 칸(0~5). 게시 완료는 6(모두 지남)
+# 진행 단계 표시(대기 · 프로필 여는 중 · 입력 중 · 게시 대기 · 게시 · 확인)에서 지금 칸(0~5).
+# 게시 완료는 6(모두 지남). 게시 직전 확인을 끈 작업은 3번 칸을 건너뛴다
 STEP_INDEX = {
     "queued": 0,
     "launching": 1,
     "typing": 2,
     "awaiting_approval": 3,
-    "awaiting_confirm": 3,
     "posting": 4,
     "verifying": 5,
     "posted": 6,
 }
-MODES = ("sandbox", "assist", "auto")
-APPROVAL_TIMEOUT_SECONDS = 5 * 60  # sandbox: 승인 대기 5분
-CONFIRM_TIMEOUT_SECONDS = 10 * 60  # assist: 사람 게시 대기 10분
+MODES = ("sandbox", "youtube")  # 연습 모드 | 실제 게시
+APPROVAL_TIMEOUT_SECONDS = 5 * 60  # 게시 직전 확인(켬): [게시]를 기다리는 시간
 STALE_AFTER = timedelta(minutes=15)  # 이보다 오래 예약으로 남은 게시는 꺼진 작업의 흔적으로 본다
+# 이보다 최근에 「로그인 안 됨」으로 확인된 프로필은 시작 전에 막는다(오래됐으면 실행기가 직접 본다)
+LOGIN_TRUST = timedelta(hours=1)
 KEEP_JOBS = 50
 WAIT_STEP_SECONDS = 0.1
 
-REASON_APPROVAL_TIMEOUT = "승인 시간 초과(5분 안에 [게시 승인]을 누르지 않았습니다)"
-REASON_CONFIRM_TIMEOUT = "확인 시간 초과(10분 안에 [게시했어요]·[게시 안 함]을 누르지 않았습니다)"
-REASON_CANCELLED = "사용자가 작업을 취소했습니다"
-REASON_NOT_POSTED = "게시 안 함(사람이 [게시 안 함]을 눌렀습니다)"
+REASON_APPROVAL_TIMEOUT = "게시 대기 시간 초과(5분 안에 [게시]를 누르지 않았습니다)"
+REASON_CANCELLED = "사용자가 게시를 그만뒀습니다"
 REASON_STALE = "프로그램이 게시 작업 중에 꺼졌습니다"
 NOTE_UNVERIFIED = "게시됨(확인 못 함)"
 
 
 def mode_of(target: str) -> tuple[str, str]:
-    """화면·API의 대상 이름 → (작업 방식, 게시 기록의 대상). assist와 youtube는 같은 것."""
+    """화면·API의 대상 이름 → (게시 방식, 게시 기록의 대상).
+
+    sandbox = 연습 모드. youtube = 실제 게시. 옛 이름 assist·youtube_auto도 실제 게시다(R3).
+    """
     t = (target or "").strip().lower()
     if t == "sandbox":
         return "sandbox", "sandbox"
-    if t in ("assist", "youtube"):
-        return "assist", "youtube"
-    if t == "youtube_auto":  # 내 채널 영상 자동 게시
-        return "auto", "youtube"
-    raise ValueError(f"알 수 없는 대상: {target!r} (sandbox | assist | youtube_auto)")
+    if t in ("youtube", "assist", "youtube_auto"):
+        return "youtube", "youtube"
+    raise ValueError(f"알 수 없는 대상: {target!r} (youtube | sandbox)")
 
 
 def new_job_id(clock: Clock) -> str:
@@ -156,10 +156,10 @@ def is_job_id(value: str) -> bool:
 
 
 def sandbox_url(base_url: str, video_id: str, profile: str, fail: str = "") -> str:
-    """이 앱의 테스트 페이지 주소. `base_url`은 로컬 주소(http://127.0.0.1:포트)만."""
+    """이 앱의 연습 페이지 주소. `base_url`은 로컬 주소(http://127.0.0.1:포트)만."""
     parts = urlsplit(base_url)
     if parts.scheme != "http" or (parts.hostname or "").lower() not in LOCAL_HOSTS:
-        raise ValueError(f"테스트 페이지는 이 PC의 앱 주소에서만 엽니다: {base_url!r}")
+        raise ValueError(f"연습 페이지는 이 PC의 앱 주소에서만 엽니다: {base_url!r}")
     query = {"v": video_id, "profile": profile}
     if fail:
         query["fail"] = fail
@@ -187,7 +187,7 @@ class JobEvent:
 @dataclass
 class Job:
     id: str
-    mode: str  # sandbox | assist | auto
+    mode: str  # sandbox | youtube
     target: str  # sandbox | youtube (게시 기록의 대상)
     video_id: str
     draft_id: int
@@ -195,24 +195,23 @@ class Job:
     profile: str
     folder: str
     comment_text: str
-    open_url: str  # 크롬이 여는 주소(sandbox 페이지 / 실제 유튜브 영상)
+    open_url: str  # 크롬이 여는 주소(연습 페이지 / 그 영상의 유튜브 주소)
     view_url: str  # [댓글 보기] 주소
     created_at: str
+    confirm_before_post: bool = False  # 입력 뒤 사람의 [게시]를 기다리는지(시작할 때의 설정)
+    disclosed: bool = True  # 그 댓글이 광고 표기를 붙였는지
     state: str = "queued"
     message: str = ""
     reason: str = ""
     failed_step: int | None = None
-    verified: bool | None = None  # assist: Data API로 찾았는지(키가 없거나 못 찾으면 거짓)
+    verified: bool | None = None  # 내 댓글을 찾았는지(실제 게시에서 못 찾으면 거짓)
     screenshot: Path | None = None
     finished_at: str | None = None
-    deadline: float | None = None  # 승인·확인을 기다리는 마감(time.monotonic)
+    deadline: float | None = None  # [게시]를 기다리는 마감(time.monotonic)
     events: list[JobEvent] = field(default_factory=list)
     approve_flag: threading.Event = field(default_factory=threading.Event)
-    confirm_flag: threading.Event = field(default_factory=threading.Event)
-    confirm_posted: bool | None = None
     cancel_flag: threading.Event = field(default_factory=threading.Event)
-    proc: Any = None  # assist: 실행한 크롬 프로세스
-    driver: Any = None  # sandbox·auto: 아직 닫지 않은 실행기(닫으면 None)
+    driver: Any = None  # 아직 닫지 않은 실행기(닫으면 None)
     chrome: Path | None = None  # chrome.exe 위치
     profile_path: Path | None = None  # 프로필 폴더(API에는 싣지 않는다)
     window_position: tuple[int, int] | None = None  # 실제로 띄운 창 위치(화면 밖이면 바꾼 값)
@@ -243,18 +242,20 @@ class JobView:
     verified: bool | None
     has_screenshot: bool
     view_url: str
-    waiting_for: str | None  # approve | confirm | None
-    seconds_left: int | None  # 승인·확인 마감까지 남은 초
+    waiting_for: str | None  # approve | None
+    seconds_left: int | None  # [게시] 마감까지 남은 초
     created_at: str
     finished_at: str | None
     events: list[JobEvent]
+    confirm_before_post: bool = False
+    disclosed: bool = True
 
 
 VerifyComment = Callable[
     [str, str], bool | None
 ]  # (video_id, text) -> 찾음/못 찾음/확인 불가(None)
 DriverFactory = Callable[[BrowserSettings], BrowserDriver]
-# (브라우저 설정, 내 채널 영상 ID) -> 그 영상만 여는 실행기
+# (브라우저 설정, 이번 작업의 영상 ID) -> 그 영상만 여는 실행기
 YouTubeDriverFactory = Callable[[BrowserSettings, str], BrowserDriver]
 
 
@@ -270,10 +271,6 @@ def default_youtube_driver_factory(settings: BrowserSettings, video_id: str) -> 
     return PlaywrightYouTubeDriver(
         video_id=video_id, headless=settings.headless, window_position=settings.window_position
     )
-
-
-def _no_own_videos(_video_id: str) -> bool:
-    return False
 
 
 class _Task:
@@ -308,21 +305,19 @@ class JobService:
         browser: BrowserSettings,
         chrome_finder: Callable[[], Path | None],
         driver_factory: DriverFactory = default_driver_factory,
-        launcher: Launcher = popen_launcher,
         verify_comment: VerifyComment | None = None,
         playwright_ready: Callable[[], bool] = playwright_installed,
         clock: Clock = utc_now,
         approval_timeout: float = APPROVAL_TIMEOUT_SECONDS,
-        confirm_timeout: float = CONFIRM_TIMEOUT_SECONDS,
         rng: random.Random | None = None,
         screens: Callable[[], Sequence[Monitor]] | None = None,
         youtube_driver_factory: YouTubeDriverFactory = default_youtube_driver_factory,
-        own_video: Callable[[str], bool] = _no_own_videos,
+        confirm_before_post: bool = False,
     ) -> None:
         self.db_path = db_path
-        # 내 채널 영상 자동 게시: 실행기 만들기와 「내 채널 영상인지」(config.yaml own_video_ids)
-        self.youtube_driver_factory = youtube_driver_factory
-        self.own_video = own_video
+        self.youtube_driver_factory = youtube_driver_factory  # 실제 게시 실행기 만들기
+        # 설정 「게시 직전 확인」(R3). 끄면(기본) 입력을 마치고 바로 「댓글」을 누른다
+        self.confirm_before_post = bool(confirm_before_post)
         # 모니터 목록을 읽는 함수(9단계). None이면 확인하지 않고 설정값 그대로 띄운다
         self.screens = screens
         self.rules = rules
@@ -330,17 +325,15 @@ class JobService:
         self.browser = browser
         self.chrome_finder = chrome_finder
         self.driver_factory = driver_factory
-        self.launcher = launcher
         self.verify_comment = verify_comment
         self.playwright_ready = playwright_ready
         self.clock = clock
         self.approval_timeout = float(approval_timeout)
-        self.confirm_timeout = float(confirm_timeout)
         self.rng = rng or random.Random()
         self._lock = threading.RLock()
         self._jobs: dict[str, Job] = {}
         self._active: Job | None = None
-        self._queue: queue.Queue[Job | None] = queue.Queue()
+        self._queue: queue.Queue[Job | _Task | None] = queue.Queue()
         self._worker: threading.Thread | None = None
         self._closed = False
         self._task: _Task | None = None  # 작업 스레드에서 도는 짧은 일(로그인 확인)
@@ -358,7 +351,7 @@ class JobService:
         daily_limit: int | None = None,
         fail: str = "",
     ) -> str:
-        """작업을 만들고 작업 스레드에 넣는다. 막히면 AppError(예약 전이면 아무것도 안 남긴다)."""
+        """시작 전 확인을 하고 작업을 작업 스레드에 넣는다. 막히면 AppError(아무것도 안 남긴다)."""
         mode, post_target = mode_of(target)
         if not is_video_id(video_id):
             raise AppError(ErrorKind.INVALID_URL, detail="영상 ID 형식이 아님")
@@ -374,14 +367,18 @@ class JobService:
             if self._task is not None:
                 raise AppError(ErrorKind.JOB_BUSY, detail="프로필 로그인을 확인하는 중")
             self.recover_stale()
-            if mode == "auto" and not self.own_video(video_id):
-                raise AppError(ErrorKind.AUTO_POST_OWN_ONLY, detail=video_id)
-            if mode in ("sandbox", "auto") and not self.playwright_ready():
+            live = mode == "youtube"
+            if live and self._comments_disabled(video_id):
+                raise AppError(ErrorKind.COMMENTS_DISABLED, detail=video_id)
+            if not self.playwright_ready():
                 raise AppError(ErrorKind.PLAYWRIGHT_MISSING)
             chrome = self.chrome_finder()
             if chrome is None:
                 raise AppError(ErrorKind.CHROME_NOT_FOUND)
-            chosen = self.profiles.resolve(profile or None, post_target)
+            signed_out = self._recently_signed_out() if live else set()
+            chosen = self.profiles.resolve(profile or None, post_target, avoid=signed_out)
+            if chosen.name in signed_out:
+                raise AppError(ErrorKind.PROFILE_NOT_SIGNED_IN, detail=chosen.name)
             folder_path = ensure_profile_dir(self.browser.profiles_root, chosen.folder)
             require_profile_free(folder_path)
             if mode == "sandbox":
@@ -392,6 +389,7 @@ class JobService:
             post_id = self.rules.reserve(
                 video_id, post_target, chosen.name, int(draft_id), daily_limit=daily_limit
             )
+            body, disclosed = self._draft(int(draft_id))
             job = Job(
                 id=new_job_id(self.clock),
                 mode=mode,
@@ -401,10 +399,12 @@ class JobService:
                 post_id=post_id,
                 profile=chosen.name,
                 folder=chosen.folder,
-                comment_text=self._draft_body(int(draft_id)),
+                comment_text=body,
                 open_url=open_url,
                 view_url=view_url,
                 created_at=self.clock().isoformat(),
+                confirm_before_post=self.confirm_before_post,
+                disclosed=disclosed,
                 chrome=chrome,
                 profile_path=folder_path,
             )
@@ -416,14 +416,60 @@ class JobService:
             self._queue.put(job)
             return job.id
 
-    def _draft_body(self, draft_id: int) -> str:
+    def _draft(self, draft_id: int) -> tuple[str, bool]:
         with db.session(self.db_path) as conn:
-            row = conn.execute("SELECT body FROM drafts WHERE id = ?", (draft_id,)).fetchone()
-        return row["body"] if row else ""
+            row = conn.execute(
+                "SELECT body, disclosed FROM drafts WHERE id = ?", (draft_id,)
+            ).fetchone()
+        return (row["body"], bool(row["disclosed"])) if row else ("", True)
+
+    def _comments_disabled(self, video_id: str) -> bool:
+        """맥락을 모을 때 YouTube가 「댓글 막힘」을 알려 준 영상인지."""
+        with db.session(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT comments_disabled FROM video_context WHERE video_id = ?", (video_id,)
+            ).fetchone()
+        return bool(row and row["comments_disabled"])
+
+    def _recently_signed_out(self) -> set[str]:
+        """최근(`LOGIN_TRUST` 안에) 로그인 확인에서 「로그인 안 됨」으로 나온 프로필 이름들."""
+        cutoff = self.clock() - LOGIN_TRUST
+        with db.session(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT profile, checked_at FROM profile_logins WHERE state = 'signed_out'"
+            ).fetchall()
+        out: set[str] = set()
+        for row in rows:
+            try:
+                at = datetime.fromisoformat(row["checked_at"])
+            except (TypeError, ValueError):
+                continue
+            if at.tzinfo is None:
+                at = at.replace(tzinfo=UTC)
+            if at >= cutoff:
+                out.add(row["profile"])
+        return out
+
+    def _save_signed_out(self, profile: str) -> None:
+        """실행기가 로그인 안 됨을 봤다: 프로필 화면의 로그인 상태도 그렇게 고쳐 둔다."""
+        now = self.clock().isoformat()
+        try:
+            with db.session(self.db_path) as conn:
+                conn.execute(
+                    "INSERT INTO profile_logins(profile, state, channel, checked_at, note) "
+                    "VALUES (?, 'signed_out', '', ?, '게시할 때 확인') "
+                    "ON CONFLICT(profile) DO UPDATE "
+                    "SET state='signed_out', channel='', checked_at=excluded.checked_at, "
+                    "note=excluded.note",
+                    (profile, now),
+                )
+        except Exception:  # 기록을 못 고쳐도 작업 실패 사유는 남는다
+            log.exception("로그인 상태를 고치지 못했습니다(%s)", profile)
 
     # ------------------------------------------------------------ 사람의 응답
 
     def approve(self, job_id: str) -> JobView:
+        """게시 직전 확인(설정 켬)에서 사람이 [게시]를 눌렀다."""
         with self._lock:
             job = self._require(job_id)
             if job.state != "awaiting_approval":
@@ -432,26 +478,18 @@ class JobService:
                 )
             if not job.approve_flag.is_set():
                 job.approve_flag.set()
-                self._event(job, job.state, "사람이 게시를 승인했습니다", change=False)
+                self._event(job, job.state, "사람이 [게시]를 눌렀습니다", change=False)
             return self._view(job)
 
-    def confirm(self, job_id: str, posted: bool) -> JobView:
+    def confirm(self, job_id: str, posted: bool) -> JobView:  # noqa: ARG002 - 옛 API
+        """옛 API(사람이 직접 게시하던 방식의 「게시했어요」).
+
+        R3부터 그런 작업이 없어 늘 거절한다."""
         with self._lock:
             job = self._require(job_id)
-            if job.mode != "assist" or job.state != "awaiting_confirm":
-                raise AppError(
-                    ErrorKind.JOB_WRONG_STATE, detail=f"지금 상태: {STATE_LABELS[job.state]}"
-                )
-            if not job.confirm_flag.is_set():
-                job.confirm_posted = bool(posted)
-                job.confirm_flag.set()
-                text = (
-                    "사람이 「게시했어요」를 눌렀습니다"
-                    if posted
-                    else "사람이 「게시 안 함」을 눌렀습니다"
-                )
-                self._event(job, job.state, text, change=False)
-            return self._view(job)
+            raise AppError(
+                ErrorKind.JOB_WRONG_STATE, detail=f"지금 상태: {STATE_LABELS[job.state]}"
+            )
 
     def cancel(self, job_id: str) -> JobView:
         with self._lock:
@@ -460,7 +498,7 @@ class JobService:
                 raise AppError(ErrorKind.JOB_WRONG_STATE, detail="이미 끝난 작업")
             if not job.cancel_flag.is_set():
                 job.cancel_flag.set()
-                self._event(job, job.state, "취소 요청을 받았습니다", change=False)
+                self._event(job, job.state, "그만두기 요청을 받았습니다", change=False)
             return self._view(job)
 
     # ------------------------------------------------------------ 조회
@@ -499,7 +537,7 @@ class JobService:
                 raise AppError(ErrorKind.PROFILE_CHECK_BUSY)
             task = self._task = _Task(fn)
             self._ensure_worker()
-            self._queue.put(task)  # type: ignore[arg-type]
+            self._queue.put(task)
         try:
             if not task.done.wait(timeout):
                 raise AppError(ErrorKind.PROFILE_CHECK_FAILED, detail="시간 초과")
@@ -556,7 +594,7 @@ class JobService:
         return job
 
     def _view(self, job: Job) -> JobView:
-        waiting = {"awaiting_approval": "approve", "awaiting_confirm": "confirm"}.get(job.state)
+        waiting = "approve" if job.state == "awaiting_approval" else None
         left = None
         if waiting and job.deadline is not None:
             left = max(0, int(job.deadline - time.monotonic()))
@@ -584,6 +622,8 @@ class JobService:
             created_at=job.created_at,
             finished_at=job.finished_at,
             events=list(job.events),
+            confirm_before_post=job.confirm_before_post,
+            disclosed=job.disclosed,
         )
 
     # ------------------------------------------------------------ 기록
@@ -664,21 +704,15 @@ class JobService:
         try:
             if job.cancel_flag.is_set():
                 raise JobCancelled
-            if job.mode in ("sandbox", "auto"):
-                browser = self.browser
-                if not browser.headless:  # 창이 보일 때만 위치를 확인한다
-                    browser = replace(browser, window_position=self._place_window(job))
-                if job.mode == "sandbox":
-                    driver = job.driver = self.driver_factory(browser)
-                    self._run_sandbox(job, driver)
-                else:
-                    driver = job.driver = self.youtube_driver_factory(browser, job.video_id)
-                    self._run_auto(job, driver)
+            browser = self.browser
+            if not browser.headless:  # 창이 보일 때만 위치를 확인한다
+                browser = replace(browser, window_position=self._place_window(job))
+            if job.mode == "sandbox":
+                driver = job.driver = self.driver_factory(browser)
             else:
-                self._run_assist(job)
+                driver = job.driver = self.youtube_driver_factory(browser, job.video_id)
+            self._run_steps(job, driver)
         except JobCancelled:
-            if job.mode == "assist":
-                stop_process(job.proc)  # 취소했으면 우리가 연 크롬을 닫는다(끝을 알리기 전에)
             self._fail(job, REASON_CANCELLED, driver=driver, screenshot=False)
         except JobFailed as exc:
             self._fail(job, exc.reason, driver=driver, screenshot=exc.screenshot)
@@ -709,7 +743,7 @@ class JobService:
 
     @staticmethod
     def _close_driver(job: Job) -> None:
-        """sandbox 실행기를 한 번만 닫는다."""
+        """실행기를 한 번만 닫는다."""
         driver, job.driver = job.driver, None
         if driver is not None:
             driver.close()
@@ -736,49 +770,24 @@ class JobService:
             with self._lock:
                 job.deadline = None
 
-    def _run_sandbox(self, job: Job, driver: BrowserDriver) -> None:
-        self._event(job, "launching", f"{job.profile}({job.folder}) 프로필로 크롬을 여는 중")
-        try:
-            driver.open(job.profile_path, job.open_url)  # type: ignore[arg-type]
-        except DriverError as exc:
-            raise JobFailed(exc.reason, screenshot=exc.screenshot) from None
-        self._check_cancel(job)
-        self._event(job, "typing", "테스트 페이지 댓글 상자에 한 글자씩 입력하는 중")
-        try:
-            driver.type_comment(
-                job.comment_text, self.browser.typing_delay_ms, job.cancel_flag.is_set
-            )
-        except Stopped:
-            raise JobCancelled from None
-        except DriverError as exc:
-            raise JobFailed(exc.reason, screenshot=exc.screenshot) from None
-        self._check_cancel(job)
-        self._event(
-            job, "awaiting_approval", "입력을 마쳤습니다. 대시보드에서 [게시 승인]을 눌러 주세요"
-        )
-        self._wait_for(job, job.approve_flag, self.approval_timeout, REASON_APPROVAL_TIMEOUT)
-        self._event(job, "posting", "승인을 받아 「댓글」 단추를 누르는 중")
-        try:
-            driver.click_post()
-            self._event(job, "verifying", "페이지에서 내 댓글을 찾는 중")
-            driver.verify_posted(job.comment_text)
-        except DriverError as exc:
-            raise JobFailed(exc.reason, screenshot=exc.screenshot) from None
-        self._close_driver(job)  # 끝났다고 알리기 전에 크롬을 닫아 프로필 폴더를 풀어 둔다
-        self._finish_posted(
-            job, verified=True, note="", message="테스트 페이지에 댓글이 달린 것을 확인했습니다"
-        )
+    def _driver_failed(self, job: Job, exc: DriverError) -> JobFailed:
+        if job.mode == "youtube" and exc.code == "signed_out":
+            self._save_signed_out(job.profile)
+        return JobFailed(exc.reason, screenshot=exc.screenshot)
 
-    def _run_auto(self, job: Job, driver: BrowserDriver) -> None:
-        """내 채널 영상: 실제 YouTube 페이지에서 입력 → 승인 대기 → 「댓글」 → 확인."""
-        where = f"{job.profile}({job.folder})"
-        self._event(job, "launching", f"{where} 프로필로 크롬에서 내 채널 영상을 여는 중")
+    def _run_steps(self, job: Job, driver: BrowserDriver) -> None:
+        """프로필 여는 중 → 입력 중 → (게시 대기) → 게시 중 → 확인 중 → 게시 완료."""
+        live = job.mode == "youtube"
+        where = "유튜브 영상으로" if live else "연습 페이지로"
+        self._event(
+            job, "launching", f"{job.profile}({job.folder}) 프로필로 크롬을 열어 {where} 가는 중"
+        )
         try:
             driver.open(job.profile_path, job.open_url)  # type: ignore[arg-type]
         except DriverError as exc:
-            raise JobFailed(exc.reason, screenshot=exc.screenshot) from None
+            raise self._driver_failed(job, exc) from None
         self._check_cancel(job)
-        self._event(job, "typing", "YouTube 댓글 상자에 한 글자씩 입력하는 중")
+        self._event(job, "typing", "댓글 입력 자리를 눌러 한 글자씩 입력하는 중")
         try:
             driver.type_comment(
                 job.comment_text, self.browser.typing_delay_ms, job.cancel_flag.is_set
@@ -786,21 +795,36 @@ class JobService:
         except Stopped:
             raise JobCancelled from None
         except DriverError as exc:
-            raise JobFailed(exc.reason, screenshot=exc.screenshot) from None
+            raise self._driver_failed(job, exc) from None
         self._check_cancel(job)
-        self._event(
-            job,
-            "awaiting_approval",
-            "입력을 마쳤습니다. 크롬 창의 글을 보고 대시보드에서 [게시 승인]을 눌러 주세요",
-        )
-        self._wait_for(job, job.approve_flag, self.approval_timeout, REASON_APPROVAL_TIMEOUT)
-        self._event(job, "posting", "승인을 받아 YouTube 「댓글」 단추를 누르는 중")
+        if job.confirm_before_post:
+            self._event(
+                job,
+                "awaiting_approval",
+                "입력을 마쳤습니다. 크롬 창의 글을 보고 [게시]를 눌러 주세요",
+            )
+            self._wait_for(job, job.approve_flag, self.approval_timeout, REASON_APPROVAL_TIMEOUT)
+            self._event(job, "posting", "[게시]를 받아 「댓글」 단추를 누르는 중")
+        else:
+            self._event(job, "posting", "입력을 마쳤습니다. 「댓글」 단추를 누르는 중")
+        self._check_cancel(job)
         try:
             driver.click_post()
         except DriverError as exc:
-            raise JobFailed(exc.reason, screenshot=exc.screenshot) from None
-        # 여기부터는 이미 눌렀다. 못 찾아도 실패로 되돌리지 않는다(다시 달면 두 번 달린다)
-        self._event(job, "verifying", "YouTube 페이지에서 내 댓글을 찾는 중")
+            raise self._driver_failed(job, exc) from None
+        self._event(job, "verifying", "페이지에서 내 댓글을 찾는 중")
+        if not live:
+            try:
+                driver.verify_posted(job.comment_text)
+            except DriverError as exc:
+                raise JobFailed(exc.reason, screenshot=exc.screenshot) from None
+            self._close_driver(job)  # 끝났다고 알리기 전에 크롬을 닫아 프로필 폴더를 풀어 둔다
+            self._finish_posted(
+                job, verified=True, note="", message="연습 페이지에 댓글이 달린 것을 확인했습니다"
+            )
+            return
+        # 실제 게시: 여기부터는 이미 눌렀다. 못 찾아도 실패로 되돌리지 않는다
+        # (다시 달면 두 번 달린다)
         found: bool | None
         try:
             driver.verify_posted(job.comment_text)
@@ -815,7 +839,7 @@ class JobService:
         self._close_driver(job)
         if found:
             self._finish_posted(
-                job, verified=True, note="", message="YouTube에 내 댓글이 달린 것을 확인했습니다"
+                job, verified=True, note="", message="유튜브에 내 댓글이 달린 것을 확인했습니다"
             )
         else:
             self._finish_posted(
@@ -824,51 +848,6 @@ class JobService:
                 note=NOTE_UNVERIFIED,
                 message="게시됨(확인 못 함) — 「댓글」을 눌렀지만 페이지·Data API에서 "
                 "내 댓글을 찾지 못했습니다. [댓글 보기]로 확인해 주세요",
-            )
-
-    def _run_assist(self, job: Job) -> None:
-        self._event(
-            job, "launching", f"{job.profile}({job.folder}) 프로필로 크롬에서 영상을 여는 중"
-        )
-        args = assist_args(
-            job.chrome,  # type: ignore[arg-type]
-            job.profile_path,  # type: ignore[arg-type]
-            job.open_url,
-            self._place_window(job),
-        )
-        try:
-            job.proc = self.launcher(args)
-        except OSError as exc:
-            raise JobFailed(
-                f"크롬을 실행하지 못했습니다: {exc.strerror or exc}", screenshot=False
-            ) from None
-        self._check_cancel(job)
-        self._event(
-            job,
-            "awaiting_confirm",
-            "크롬에서 초안을 붙여 넣고 직접 게시한 뒤 [게시했어요] 또는 [게시 안 함]을 눌러 주세요",
-        )
-        self._wait_for(job, job.confirm_flag, self.confirm_timeout, REASON_CONFIRM_TIMEOUT)
-        if not job.confirm_posted:
-            raise JobFailed(REASON_NOT_POSTED, screenshot=False)
-        self._event(job, "verifying", "YouTube Data API로 댓글을 찾아보는 중")
-        found: bool | None = None
-        if self.verify_comment is not None:
-            try:
-                found = self.verify_comment(job.video_id, job.comment_text)
-            except Exception:  # 확인을 못 해도 사람이 게시했다고 했으니 게시로 본다
-                found = None
-        if found:
-            self._finish_posted(
-                job, verified=True, note="", message="Data API로 댓글을 확인했습니다"
-            )
-        else:
-            self._finish_posted(
-                job,
-                verified=False,
-                note=NOTE_UNVERIFIED,
-                message="게시됨(확인 못 함) — 사람이 게시했다고 알렸고, "
-                "Data API로는 찾지 못했거나 키가 없습니다",
             )
 
     def _finish_posted(self, job: Job, *, verified: bool, note: str, message: str) -> None:
@@ -882,7 +861,7 @@ class JobService:
         self, job: Job, reason: str, *, driver: BrowserDriver | None, screenshot: bool = True
     ) -> None:
         shot: Path | None = None
-        if driver is not None and screenshot and job.mode in ("sandbox", "auto"):
+        if driver is not None and screenshot:
             path = Path(self.browser.screenshot_dir) / f"{job.id}.png"
             if driver.screenshot(path):
                 shot = path
@@ -918,6 +897,4 @@ class JobService:
             return True
         self._queue.put(None)
         worker.join(timeout)
-        if job is not None and job.mode == "assist" and job.cancel_flag.is_set():
-            stop_process(job.proc)
         return not worker.is_alive()

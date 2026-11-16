@@ -3,7 +3,11 @@
 초안 만들기 흐름
 1. 근거 구절 하나를 고른다(`avoid_quotes`에 없는 것, 자막 > 제목 > 댓글 > 설명 순).
    분석이 연애 고민을 찾지 못하면(`no_love_concern`) 초안을 만들지 않고 그 오류로 멈춘다.
-2. 모델은 **본문만** 쓴다. 홍보 표기 `[광고] `는 코드가 앞에 붙인다(모델이 빼먹을 수 없게).
+2. 모델은 **본문만** 쓴다. 광고 표기 `[광고] `는 코드가 앞에 붙인다(모델이 빼먹을 수 없게).
+   R3: 표기는 모든 영상에서 켜고 끌 수 있다(`disclose`, 비우면 설정의 「광고 표기 기본값」).
+   초안마다 표기를 붙였는지(`drafts.disclosed`)를 남기고, 검사 V4는 켠 초안에만 표기를 요구한다.
+   켬/끔을 바꾸면(`set_disclosure`) 저장된 글에서 표기만 붙이거나 떼고 다시 검사한다
+   (모델을 부르지 않는다).
 3. 6단계 `CheckService.check()`(= `validate()`)로 검사한다. 걸리면 실패 문구를 넣어 다시 쓰게 한다
    (모두 3번까지).
 4. 세 번 다 걸리면 실패가 가장 적은 것을 저장하고 걸린 항목을 표시한다(사람이 고친다).
@@ -65,6 +69,7 @@ class Draft:
     updated_at: str
     approved_at: str | None
     first_passed: bool = False  # 첫 시도에서 통과했는지(모델 비교용)
+    disclosed: bool = True  # R3: 광고 표기를 붙인 초안인지(끈 초안은 V4가 「표기 끔」으로 통과)
 
 
 def clean_body(raw: Any, disclosure: str) -> str:
@@ -80,6 +85,14 @@ def clean_body(raw: Any, disclosure: str) -> str:
 
 def with_disclosure(body: str, disclosure: str) -> str:
     return f"{disclosure} {body}".strip()
+
+
+def toggle_disclosure(text: str, disclosure: str, on: bool) -> str:
+    """글 맨 앞의 광고 표기만 붙이거나 뗀다(나머지 글은 그대로)."""
+    rest = text.strip()
+    if disclosure and rest.startswith(disclosure):
+        rest = rest[len(disclosure) :].lstrip()
+    return with_disclosure(rest, disclosure) if on else rest
 
 
 def _validation_to_json(v: Validation) -> str:
@@ -110,6 +123,7 @@ class DraftService:
         brand_facts: Sequence[str] = (),
         max_attempts: int = MAX_ATTEMPTS,
         ledger: Ledger | None = None,
+        disclose_default: bool = True,
     ) -> None:
         self.context = context
         self.checks = checks
@@ -119,6 +133,7 @@ class DraftService:
         self.brand_facts = tuple(brand_facts)
         self.max_attempts = max_attempts
         self.ledger = ledger
+        self.disclose_default = bool(disclose_default)  # R3: 설정의 「광고 표기 기본값」
 
     @property
     def rules(self):
@@ -203,15 +218,14 @@ class DraftService:
     # ------------------------------------------------------------ 초안
 
     def generate(
-        self, video_id: str, *, avoid_quotes: Sequence[str] = (), disclose: bool = True
+        self, video_id: str, *, avoid_quotes: Sequence[str] = (), disclose: bool | None = None
     ) -> Draft:
         """초안 하나를 만들어 저장한다. 같은 영상의 이전 'draft' 초안은 'superseded'가 된다.
 
-        `disclose=False`: 홍보 표기 없이 쓴다. 내 채널 영상(`own_video_ids`)에서만 된다.
+        `disclose`: 광고 표기를 붙일지(어떤 영상이든). None이면 설정의 「광고 표기 기본값」.
         """
         self._check_id(video_id)
-        if not disclose and not self.checks.is_own_video(video_id):
-            raise AppError(ErrorKind.DISCLOSURE_REQUIRED, detail=video_id)
+        disclose = self.disclose_default if disclose is None else bool(disclose)
         try:
             draft = self._generate(video_id, avoid_quotes, disclose)
         except AppError as exc:
@@ -223,7 +237,7 @@ class DraftService:
             reason = f"규칙 검사 {len(draft.validation.failures)}개 걸림 · {draft.attempts}번 시도"
         self._record(
             "draft", "info", video_id=video_id, comment_text=draft.body, reason=reason,
-            draft_id=draft.id,
+            draft_id=draft.id, disclosed=draft.disclosed,
         )
         return draft
 
@@ -283,7 +297,8 @@ class DraftService:
             if tone not in prompts.TONE_LABELS:
                 tone = ""
             validation = self.checks.check(
-                video_id, text, previous_texts=previous, evidence_quote=evidence.quote
+                video_id, text, previous_texts=previous, evidence_quote=evidence.quote,
+                disclose=disclose,
             )
             fails = len(validation.failures)
             if best is None or fails < best[0]:
@@ -306,7 +321,8 @@ class DraftService:
             cur = conn.execute(
                 "INSERT INTO drafts(video_id, body, evidence_quote, evidence_source, tone_label, "
                 "model, attempts, first_passed, validation_json, passed, status, edited_by_human, "
-                "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,'draft',0,?,?)",
+                "created_at, updated_at, disclosed) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,'draft',0,?,?,?)",
                 (
                     video_id,
                     text,
@@ -320,6 +336,7 @@ class DraftService:
                     int(validation.passed),
                     now,
                     now,
+                    int(disclose),
                 ),
             )
             draft_id = int(cur.lastrowid)
@@ -347,7 +364,7 @@ class DraftService:
         if draft.status == "superseded":
             raise AppError(ErrorKind.DRAFT_SUPERSEDED, detail=f"초안 {draft_id}")
         clean = unicodedata.normalize("NFC", text or "").strip()
-        validation = self._recheck(draft.video_id, clean, None)
+        validation = self._recheck(draft.video_id, clean, None, disclose=draft.disclosed)
         quote = validation.evidence_quote or draft.evidence_quote
         source = self._source_of(draft.video_id, quote) or draft.evidence_source
         changed = clean != draft.body
@@ -372,6 +389,41 @@ class DraftService:
             )
         return self.get(draft_id)
 
+    def set_disclosure(self, draft_id: int, on: bool) -> Draft:
+        """R3: 광고 표기를 켜거나 끈다. 저장된 글에서 표기만 붙이거나 떼고 다시 검사한다.
+
+        모델을 부르지 않는다. 사람이 고친 표시(`edited_by_human`)와 근거 구절은 그대로 둔다.
+        글이 바뀌면 승인은 풀린다(다시 [댓글 달기]를 누르면 그때 승인한다). 표기를 붙여 글자 수가
+        넘치면 검사에 걸린 채로 저장된다(화면이 걸린 항목을 보인다).
+        """
+        draft = self.get(draft_id)
+        if draft.status == "superseded":
+            raise AppError(ErrorKind.DRAFT_SUPERSEDED, detail=f"초안 {draft_id}")
+        on = bool(on)
+        text = toggle_disclosure(draft.body, self.rules.disclosure, on)
+        if on == draft.disclosed and text == draft.body:
+            return draft
+        quote = None if draft.edited_by_human else draft.evidence_quote
+        validation = self._recheck(draft.video_id, text, quote, disclose=on)
+        changed = text != draft.body
+        now = self._now()
+        with db.session(self.db_path) as conn:
+            conn.execute(
+                "UPDATE drafts SET body=?, disclosed=?, validation_json=?, passed=?, status=?, "
+                "approved_at=?, updated_at=? WHERE id=?",
+                (
+                    text,
+                    int(on),
+                    _validation_to_json(validation),
+                    int(validation.passed),
+                    "draft" if changed else draft.status,
+                    None if changed else draft.approved_at,
+                    now,
+                    draft_id,
+                ),
+            )
+        return self.get(draft_id)
+
     def approve(self, draft_id: int) -> Draft:
         """지금 글을 다시 검사해 통과한 것만 승인한다. 아니면 409와 걸린 항목."""
         draft = self.get(draft_id)
@@ -383,13 +435,13 @@ class DraftService:
                 reason = f"규칙 검사 {len(exc.extra.get('failures', []))}개 걸림 · 승인 안 됨"
             self._record(
                 "approve", "failure", video_id=draft.video_id, comment_text=draft.body,
-                reason=reason, draft_id=draft.id,
+                reason=reason, draft_id=draft.id, disclosed=draft.disclosed,
             )
             raise
         self._record(
             "approve", "info", video_id=approved.video_id, comment_text=approved.body,
             reason="사람이 승인" + (" · 고친 글" if approved.edited_by_human else ""),
-            draft_id=approved.id,
+            draft_id=approved.id, disclosed=approved.disclosed,
         )
         return approved
 
@@ -398,7 +450,7 @@ class DraftService:
         if draft.status == "superseded":
             raise AppError(ErrorKind.DRAFT_SUPERSEDED, detail=f"초안 {draft_id}")
         quote = None if draft.edited_by_human else draft.evidence_quote
-        validation = self._recheck(draft.video_id, draft.body, quote)
+        validation = self._recheck(draft.video_id, draft.body, quote, disclose=draft.disclosed)
         now = self._now()
         with db.session(self.db_path) as conn:
             conn.execute(
@@ -444,9 +496,15 @@ class DraftService:
         if self.ledger is not None:
             self.ledger.record(action, result, **fields)
 
-    def _recheck(self, video_id: str, text: str, quote: str | None) -> Validation:
+    def _recheck(
+        self, video_id: str, text: str, quote: str | None, *, disclose: bool = True
+    ) -> Validation:
         return self.checks.check(
-            video_id, text, previous_texts=self.previous_texts(video_id), evidence_quote=quote
+            video_id,
+            text,
+            previous_texts=self.previous_texts(video_id),
+            evidence_quote=quote,
+            disclose=disclose,
         )
 
     def _source_of(self, video_id: str, quote: str) -> str | None:
@@ -485,6 +543,7 @@ class DraftService:
             updated_at=row["updated_at"],
             approved_at=row["approved_at"],
             first_passed=bool(row["first_passed"]),
+            disclosed=bool(row["disclosed"]),
         )
 
 

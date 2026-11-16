@@ -123,7 +123,6 @@ def build_services(
         context,
         rules=ValidatorRules.from_config(settings.rules, settings.validator_extra_patterns),
         brand_facts=settings.brand_facts,
-        own_video_ids=settings.own_video_ids,
     )
     llm: LLMClient | None = None
     llm_error: AppError | None = None
@@ -158,6 +157,7 @@ def build_services(
         clock=clock,
         brand_facts=settings.brand_facts,
         ledger=services.ledger,
+        disclose_default=settings.disclose_default,
     )
     services.hooks = browser_hooks or BrowserHooks()
     services.jobs = build_jobs(services, clock=clock)
@@ -186,7 +186,9 @@ def build_jobs(services: Services, *, clock: Clock = utc_now) -> JobService:
     client = services.videos.client
 
     def verify_comment(video_id: str, text: str) -> bool | None:
-        """assist: 사람이 게시했다고 한 댓글을 Data API로 찾는다. 키가 없으면 None(확인 못 함)."""
+        """실제 게시: 페이지에서 못 찾은 내 댓글을 Data API로 찾는다.
+
+        키가 없으면 None(확인 못 함)."""
         if not settings.youtube_key_configured:
             return None
         wanted = " ".join(text.split())
@@ -200,14 +202,10 @@ def build_jobs(services: Services, *, clock: Clock = utc_now) -> JobService:
         extra["driver_factory"] = hooks.driver_factory
     if hooks.youtube_driver_factory is not None:
         extra["youtube_driver_factory"] = hooks.youtube_driver_factory
-    if hooks.launcher is not None:
-        extra["launcher"] = hooks.launcher
     if hooks.playwright_ready is not None:
         extra["playwright_ready"] = hooks.playwright_ready
     if hooks.approval_timeout is not None:
         extra["approval_timeout"] = hooks.approval_timeout
-    if hooks.confirm_timeout is not None:
-        extra["confirm_timeout"] = hooks.confirm_timeout
     return JobService(
         db_path=settings.db_path,
         rules=services.rules,
@@ -217,7 +215,7 @@ def build_jobs(services: Services, *, clock: Clock = utc_now) -> JobService:
         verify_comment=hooks.verify_comment or verify_comment,
         clock=clock,
         screens=services.monitors,
-        own_video=settings.is_own_video,
+        confirm_before_post=settings.confirm_before_post,
         **extra,
     )
 

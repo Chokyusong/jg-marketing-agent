@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import Services, get_services
 from app.browser.chrome import profile_dir
+from app.browser.jobs import LOGIN_TRUST
 from app.errors import AppError, ErrorKind
 from app.schemas import (
     AIStatusOut,
@@ -64,6 +65,9 @@ def browser_status(services: Services) -> BrowserStatusOut:
             for p in services.profiles.list_profiles()
         ],
         active_job_id=services.jobs.active_id(),
+        confirm_before_post=services.settings.confirm_before_post,
+        disclose_default=services.settings.disclose_default,
+        login_trust_seconds=int(LOGIN_TRUST.total_seconds()),
     )
 
 

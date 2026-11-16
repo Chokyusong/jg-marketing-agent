@@ -1,8 +1,11 @@
-"""게시 작업 서비스(8단계): 상태 전이 · 승인 없이는 게시 안 함 · 시간 초과 · 취소 · 한 번에 하나 ·
-실패하면 mark_failed와 기록 · 성공하면 mark_posted.
+"""게시 작업 서비스(8단계 · R3): 상태 전이 · 승인한 초안만 · 게시 직전 확인 켬/끔 · 시간 초과 ·
+취소 · 한 번에 하나 · 실패하면 mark_failed와 기록 · 성공하면 mark_posted · 실제 게시(어떤 영상이든).
 
-브라우저는 띄우지 않는다. 테스트 페이지 실행기(`BrowserDriver`)를 가짜로, assist의 크롬 실행 함수를
-가짜로 바꾼다. 네트워크·크롬·Playwright 없이 돈다.
+브라우저는 띄우지 않는다. 연습 페이지 실행기와 실제 유튜브 실행기를 모두 가짜(`FakeDriver`)로
+바꾼다. 네트워크·크롬·Playwright·실제 유튜브 없이 돈다.
+
+옛 승인 흐름 시험은 `confirm_before_post=True`(입력 뒤 [게시]를 기다림)로 돈다. 기본(끔)은
+「[댓글 달기] 한 번으로 끝까지」 시험에서 따로 본다.
 """
 
 from __future__ import annotations
@@ -21,8 +24,6 @@ from app.browser.jobs import (
     NOTE_UNVERIFIED,
     REASON_APPROVAL_TIMEOUT,
     REASON_CANCELLED,
-    REASON_CONFIRM_TIMEOUT,
-    REASON_NOT_POSTED,
     REASON_STALE,
     JobService,
     mode_of,
@@ -57,8 +58,17 @@ class Clock:
 class FakeDriver:
     """테스트 페이지 실행기 대신. 부른 순서를 남기고, 정한 단계에서 실패하거나 멈춘다."""
 
-    def __init__(self, *, fail_on: str = "", hold_typing: threading.Event | None = None):
+    def __init__(
+        self,
+        *,
+        fail_on: str = "",
+        hold_typing: threading.Event | None = None,
+        fail_code: str = "",
+        fail_reason: str = "",
+    ):
         self.fail_on = fail_on
+        self.fail_code = fail_code
+        self.fail_reason = fail_reason
         self.hold_typing = hold_typing
         self.calls: list[str] = []
         self.typed: list[str] = []
@@ -71,7 +81,7 @@ class FakeDriver:
         self.calls.append(name)
         self.thread_names.add(threading.current_thread().name)
         if self.fail_on == name:
-            raise DriverError(f"가짜 실패: {name}")
+            raise DriverError(self.fail_reason or f"가짜 실패: {name}", code=self.fail_code)
 
     def open(self, user_data_dir: Path, url: str) -> None:
         self.opened.append((user_data_dir, url))
@@ -107,24 +117,6 @@ class FakeDriver:
         self.closed = True
 
 
-class FakeProc:
-    def __init__(self, args):
-        self.args = list(args)
-        self.terminated = False
-
-    def poll(self):
-        return 0 if self.terminated else None
-
-    def terminate(self):
-        self.terminated = True
-
-    def wait(self, timeout=None):
-        return 0
-
-    def kill(self):
-        self.terminated = True
-
-
 @pytest.fixture
 def clock() -> Clock:
     return Clock()
@@ -136,9 +128,13 @@ def path(tmp_db_path):
     return tmp_db_path
 
 
-def add_draft(path, video_id: str, *, status: str = "approved") -> tuple[int, str]:
+def add_draft(
+    path, video_id: str, *, status: str = "approved", disclosed: bool = True
+) -> tuple[int, str]:
     now = "2026-11-16T03:00:00+00:00"
-    body = f"[광고] {video_id} 영상의 첫 장면 이야기에 공감해요. 운명원에 상담해 보세요."
+    body = f"{video_id} 영상의 첫 장면 이야기에 공감해요. 운명원에 상담해 보세요."
+    if disclosed:
+        body = "[광고] " + body
     with db.session(path) as conn:
         conn.execute(
             "INSERT OR IGNORE INTO videos(video_id, title, fetched_at, source) "
@@ -147,8 +143,8 @@ def add_draft(path, video_id: str, *, status: str = "approved") -> tuple[int, st
         )
         cur = conn.execute(
             "INSERT INTO drafts(video_id, body, validation_json, passed, status, created_at, "
-            "updated_at, approved_at) VALUES (?, ?, '{}', 1, ?, ?, ?, ?)",
-            (video_id, body, status, now, now, now),
+            "updated_at, approved_at, disclosed) VALUES (?, ?, '{}', 1, ?, ?, ?, ?, ?)",
+            (video_id, body, status, now, now, now, int(disclosed)),
         )
         return int(cur.lastrowid), body
 
@@ -158,7 +154,7 @@ class Env:
         self.path = path
         self.clock = clock
         self.drivers: list[FakeDriver] = []
-        self.procs: list[FakeProc] = []
+        self.youtube_calls: list[str] = []  # 실제 유튜브 실행기에 넘긴 영상 ID
         self.driver_kw = kw.pop("driver_kw", {})
         limit = kw.pop("limit", 10)
         self.rules = PostRules(path, daily_limit=limit, profiles=PROFILES, clock=clock)
@@ -178,11 +174,11 @@ class Env:
             browser=self.browser,
             chrome_finder=lambda: self.chrome,
             driver_factory=self._driver,
-            launcher=self._launch,
+            youtube_driver_factory=self._youtube_driver,
             playwright_ready=lambda: True,
             clock=clock,
             approval_timeout=5.0,
-            confirm_timeout=5.0,
+            confirm_before_post=True,
         )
         defaults.update(kw)
         self.jobs = JobService(**defaults)
@@ -192,13 +188,12 @@ class Env:
         self.drivers.append(d)
         return d
 
-    def _launch(self, args):
-        p = FakeProc(args)
-        self.procs.append(p)
-        return p
+    def _youtube_driver(self, settings, video_id):
+        self.youtube_calls.append(video_id)
+        return self._driver(settings)
 
-    def start(self, n=1, *, target="sandbox", profile=None, **kw):
-        draft_id, body = add_draft(self.path, vid(n))
+    def start(self, n=1, *, target="sandbox", profile=None, disclosed=True, **kw):
+        draft_id, body = add_draft(self.path, vid(n), disclosed=disclosed)
         job_id = self.jobs.start(vid(n), draft_id, profile, target, base_url=BASE, **kw)
         return job_id, draft_id, body
 
@@ -315,9 +310,9 @@ def test_approval_timeout_fails_with_screenshot_and_record(env):
     assert run["screenshot_path"].endswith(f"{job_id}.png")
 
 
-def test_approval_timeout_default_is_five_minutes_and_confirm_ten():
+def test_approval_timeout_default_is_five_minutes():
     assert jobs_mod.APPROVAL_TIMEOUT_SECONDS == 300
-    assert jobs_mod.CONFIRM_TIMEOUT_SECONDS == 600
+    assert not hasattr(jobs_mod, "CONFIRM_TIMEOUT_SECONDS")  # 사람이 직접 게시하던 방식은 없다
 
 
 @pytest.mark.parametrize("step", ["open", "type", "click", "verify"])
@@ -436,9 +431,12 @@ def test_missing_chrome_or_playwright_is_refused_before_reserving(env):
         e2.start(2)
     assert str(exc.value.kind) == "playwright_missing"
     assert e2.post_rows() == []
-    # assist는 Playwright가 없어도 된다(크롬을 열기만 한다)
-    job_id, *_ = e2.start(3, target="assist")
-    assert e2.jobs.wait_for_state(job_id, "awaiting_confirm", 5).state == "awaiting_confirm"
+    # 실제 게시도 자동 입력 도구가 있어야 한다(R3: 크롬만 여는 방식은 없다)
+    for target in ("youtube", "assist"):
+        with pytest.raises(AppError) as exc:
+            e2.start(3, target=target)
+        assert str(exc.value.kind) == "playwright_missing"
+    assert e2.post_rows() == [] and e2.youtube_calls == []
 
 
 def test_profile_in_use_is_reported(env, monkeypatch):
@@ -473,109 +471,292 @@ def test_unknown_job_and_bad_ids(env):
         assert str(exc.value.kind) == "job_not_found"
 
 
-# ---------------------------------------------------------------- assist(실제 유튜브): 열기만
+# ---------------------------------------------------------------- [댓글 달기] 한 번으로 끝까지(R3)
 
 
-def test_assist_only_launches_chrome_with_profile_position_and_url(env):
-    def no_driver(settings):
-        raise AssertionError("assist에서 테스트 페이지 실행기(Playwright)를 쓰면 안 된다")
+def test_default_posts_right_after_typing_without_waiting(env):
+    """게시 직전 확인을 끄면(기본) 입력을 마치고 바로 「댓글」을 누른다."""
+    e = env(confirm_before_post=False)
+    job_id, _, body = e.start(1)
+    view = e.jobs.wait(job_id, 5)
+    assert view.state == "posted" and view.verified is True
+    assert view.confirm_before_post is False and view.waiting_for is None
+    assert states(view) == ["queued", "launching", "typing", "posting", "verifying", "posted"]
+    assert e.drivers[0].calls == ["open", "type", "click", "verify", "close"]
+    assert "".join(e.drivers[0].typed) == body
 
-    e = env(driver_factory=no_driver)
-    job_id, *_ = e.start(1, target="assist")
-    view = e.jobs.wait_for_state(job_id, "awaiting_confirm", 5)
-    assert view.mode == "assist" and view.target == "youtube" and view.waiting_for == "confirm"
-    (proc,) = e.procs
-    folder = e.browser.profiles_root / "profile-1"
-    assert proc.args == [
-        str(e.chrome),
-        f"--user-data-dir={folder}",
-        "--window-position=60,-1060",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--new-window",
-        f"https://www.youtube.com/watch?v={vid(1)}",
-    ]
-    assert not any("remote-debugging" in a or "automation" in a for a in proc.args)
+
+def test_job_service_default_is_confirm_off(path, tmp_path, clock):
+    e = Env(path, tmp_path, clock)
+    try:
+        assert JobService.__init__.__kwdefaults__["confirm_before_post"] is False
+        e.jobs.confirm_before_post = False
+        job_id, *_ = e.start(1)
+        assert e.jobs.wait(job_id, 5).state == "posted"
+    finally:
+        e.jobs.shutdown(timeout=5)
+
+
+def test_approve_is_refused_when_confirm_is_off(env):
+    hold = threading.Event()
+    e = env(confirm_before_post=False, driver_kw={"hold_typing": hold})
+    job_id, *_ = e.start(1)
+    e.jobs.wait_for_state(job_id, "typing", 5)
     with pytest.raises(AppError) as exc:
-        e.jobs.approve(job_id)  # assist에는 자동 게시 승인이 없다
+        e.jobs.approve(job_id)
     assert str(exc.value.kind) == "job_wrong_state"
+    hold.set()
+    assert e.jobs.wait(job_id, 5).state == "posted"
 
 
-def test_assist_posted_without_key_is_unverified(env):
-    e = env(verify_comment=lambda v, t: None)
-    job_id, _, body = e.start(1, target="assist")
-    e.jobs.wait_for_state(job_id, "awaiting_confirm", 5)
-    e.jobs.confirm(job_id, True)
+# ---------------------------------------------------------------- 실제 게시(youtube): 어떤 영상이든
+
+
+def test_real_posting_works_for_any_video(env):
+    """내 채널 영상 목록 없이 아무 영상 ID로 시작해도 실제 게시가 된다(R3)."""
+    e = env(confirm_before_post=False)
+    job_id, _, body = e.start(7, target="youtube")
+    view = e.jobs.wait(job_id, 5)
+    assert view.mode == "youtube" and view.target == "youtube"
+    assert view.state == "posted" and view.verified is True
+    assert states(view) == ["queued", "launching", "typing", "posting", "verifying", "posted"]
+    driver = e.drivers[0]
+    assert driver.calls == ["open", "type", "click", "verify", "close"]
+    assert "".join(driver.typed) == body
+    assert driver.thread_names == {"jg-browser-worker"}
+    assert e.youtube_calls == [vid(7)]  # 실행기는 이번 작업의 영상 하나만 연다
+    (_, url), = driver.opened
+    assert url == f"https://www.youtube.com/watch?v={vid(7)}" == view.view_url
+    assert [(p["status"], p["target"]) for p in e.post_rows()] == [("posted", "youtube")]
+    (run,) = [r for r in e.run_rows() if r["action"] == "post"]
+    assert run["result"] == "success" and run["target"] == "youtube" and run["disclosed"] == 1
+
+
+@pytest.mark.parametrize("name", ["assist", "youtube_auto", "youtube"])
+def test_legacy_target_names_start_real_posting(env, name):
+    e = env(confirm_before_post=False)
+    job_id, *_ = e.start(2, target=name)
+    view = e.jobs.wait(job_id, 5)
+    assert view.mode == "youtube" and view.state == "posted"
+    assert e.youtube_calls == [vid(2)]
+
+
+def test_real_posting_with_confirm_waits_for_post_button(env):
+    e = env(confirm_before_post=True)
+    job_id, *_ = e.start(1, target="youtube")
+    view = e.jobs.wait_for_state(job_id, "awaiting_approval", 5)
+    assert view.waiting_for == "approve" and view.confirm_before_post is True
+    time.sleep(0.3)
+    assert "click" not in e.drivers[0].calls  # [게시] 전에는 누르지 않는다
+    e.jobs.approve(job_id)
+    view = e.jobs.wait(job_id, 5)
+    assert view.state == "posted"
+    assert states(view) == [
+        "queued", "launching", "typing", "awaiting_approval", "posting", "verifying", "posted"
+    ]
+    events = [ev.message for ev in e.jobs.events_in_db(job_id)]
+    assert "사람이 [게시]를 눌렀습니다" in events
+
+
+def test_real_posting_without_ad_label_is_recorded(env):
+    e = env(confirm_before_post=False)
+    job_id, _, body = e.start(3, target="youtube", disclosed=False)
+    view = e.jobs.wait(job_id, 5)
+    assert not body.startswith("[광고]")
+    assert view.state == "posted" and view.disclosed is False
+    (run,) = [r for r in e.run_rows() if r["action"] == "post"]
+    assert run["disclosed"] == 0
+
+
+def test_real_posting_verify_miss_is_posted_unverified_not_failed(env):
+    """「댓글」을 누른 뒤에는 못 찾아도 실패로 되돌리지 않는다(다시 달면 두 번 달린다)."""
+    e = env(
+        confirm_before_post=False,
+        driver_kw={"fail_on": "verify"},
+        verify_comment=lambda v, t: False,
+    )
+    job_id, *_ = e.start(1, target="youtube")
     view = e.jobs.wait(job_id, 5)
     assert view.state == "posted" and view.verified is False
     assert view.message.startswith(NOTE_UNVERIFIED)
+    assert e.post_rows()[0]["status"] == "posted"
     (run,) = [r for r in e.run_rows() if r["action"] == "post"]
     assert run["result"] == "success" and run["reason"] == NOTE_UNVERIFIED
-    assert run["target"] == "youtube" and run["comment_text"] == body
-    assert view.view_url == f"https://www.youtube.com/watch?v={vid(1)}"
-    assert e.procs[0].terminated is False  # 사람이 쓰는 크롬은 닫지 않는다
 
 
-def test_assist_posted_and_found_by_api(env):
-    seen = []
+def test_real_posting_verify_miss_without_key_or_api_error_is_unverified(env):
+    def boom(v, t):
+        raise RuntimeError("quota")
 
-    def found(video_id, text):
-        seen.append((video_id, text))
-        return True
+    for n, verify in ((5, None), (6, boom)):
+        e = env(confirm_before_post=False, driver_kw={"fail_on": "verify"}, verify_comment=verify)
+        job_id, *_ = e.start(n, target="youtube")
+        view = e.jobs.wait(job_id, 5)
+        assert view.state == "posted" and view.verified is False
+        e.jobs.shutdown(timeout=5)
 
-    e = env(verify_comment=found)
-    job_id, _, body = e.start(1, target="assist")
-    e.jobs.wait_for_state(job_id, "awaiting_confirm", 5)
-    e.jobs.confirm(job_id, True)
+
+def test_real_posting_verify_miss_found_by_data_api(env):
+    e = env(
+        confirm_before_post=False,
+        driver_kw={"fail_on": "verify"},
+        verify_comment=lambda v, t: True,
+    )
+    job_id, *_ = e.start(1, target="youtube")
     view = e.jobs.wait(job_id, 5)
-    assert view.verified is True and seen == [(vid(1), body)]
+    assert view.state == "posted" and view.verified is True
 
 
-def test_assist_verify_error_still_counts_as_posted(env):
-    def broken(video_id, text):
-        raise AppError("network")
-
-    e = env(verify_comment=broken)
-    job_id, *_ = e.start(1, target="assist")
-    e.jobs.wait_for_state(job_id, "awaiting_confirm", 5)
-    e.jobs.confirm(job_id, True)
-    assert e.jobs.wait(job_id, 5).verified is False
-
-
-def test_assist_not_posted(env):
-    e = env()
-    job_id, *_ = e.start(1, target="assist")
-    e.jobs.wait_for_state(job_id, "awaiting_confirm", 5)
-    e.jobs.confirm(job_id, False)
+@pytest.mark.parametrize("step", ["open", "type", "click"])
+def test_real_posting_failure_before_posting_marks_failed(env, step):
+    e = env(confirm_before_post=False, driver_kw={"fail_on": step})
+    job_id, *_ = e.start(1, target="youtube")
     view = e.jobs.wait(job_id, 5)
-    assert view.state == "failed" and view.reason == REASON_NOT_POSTED
-    assert not view.has_screenshot  # 실제 유튜브 화면은 찍지 않는다
+    assert view.state == "failed" and view.reason == f"가짜 실패: {step}"
+    assert view.has_screenshot is True  # 실패 화면을 이 PC에만 남긴다
     assert e.post_rows()[0]["status"] == "failed"
+    (run,) = [r for r in e.run_rows() if r["action"] == "post"]
+    assert run["result"] == "failure" and run["screenshot_path"].endswith(f"{job_id}.png")
+    assert e.drivers[0].closed
 
 
-def test_assist_confirm_timeout(env):
-    e = env(confirm_timeout=0.2)
-    job_id, *_ = e.start(1, target="assist")
+def test_missing_element_reason_names_the_element(env):
+    """실행기가 요소를 못 찾으면 어느 요소인지가 실패 사유에 그대로 남는다(화면 캡처와 함께)."""
+    from app.browser.youtube_driver import missing_text
+
+    reason = missing_text("submit")
+    e = env(confirm_before_post=False, driver_kw={"fail_on": "click", "fail_reason": reason})
+    job_id, *_ = e.start(1, target="youtube")
     view = e.jobs.wait(job_id, 5)
-    assert view.state == "failed" and view.reason == REASON_CONFIRM_TIMEOUT
+    assert view.state == "failed" and view.reason == reason
+    assert "「댓글」 게시 단추" in view.reason and "ytd-commentbox #submit-button" in view.reason
+    assert view.has_screenshot
+    assert e.post_rows()[0]["reason"] == reason
 
 
-def test_assist_cancel_closes_the_chrome_we_opened(env):
+# ---------------------------------------------------------------- 실제 게시: 시작 전 확인
+
+
+def _login(path, profile: str, state: str, at: datetime) -> None:
+    with db.session(path) as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO profile_logins(profile, state, channel, checked_at, note) "
+            "VALUES (?, ?, '', ?, '')",
+            (profile, state, at.isoformat()),
+        )
+
+
+def test_signed_out_seen_by_driver_fails_and_updates_profile_login(env, path):
+    from app.browser.youtube_driver import CODE_SIGNED_OUT, TEXT_NOT_SIGNED_IN
+
+    e = env(
+        confirm_before_post=False,
+        driver_kw={"fail_on": "open", "fail_code": CODE_SIGNED_OUT,
+                   "fail_reason": TEXT_NOT_SIGNED_IN},
+    )
+    job_id, *_ = e.start(1, target="youtube", profile="유튜브2")
+    view = e.jobs.wait(job_id, 5)
+    assert view.state == "failed" and view.reason == TEXT_NOT_SIGNED_IN
+    assert "[로그인하기]" in view.reason
+    with db.session(path) as conn:
+        row = conn.execute("SELECT * FROM profile_logins WHERE profile='유튜브2'").fetchone()
+    assert row["state"] == "signed_out"
+
+
+def test_recently_signed_out_profile_is_refused_before_reserving(env, path, clock):
+    e = env(confirm_before_post=False)
+    _login(path, "유튜브1", "signed_out", clock() - timedelta(minutes=5))
+    with pytest.raises(AppError) as exc:
+        e.start(1, target="youtube", profile="유튜브1")
+    assert str(exc.value.kind) == "profile_not_signed_in"
+    assert "[로그인하기]" in exc.value.action
+    assert e.post_rows() == [] and e.drivers == []
+    # 자동 배정은 로그인 안 된 프로필을 건너뛴다
+    job_id, *_ = e.start(2, target="youtube")
+    assert e.jobs.get(job_id).profile == "유튜브2"
+    e.jobs.wait(job_id, 5)
+
+
+def test_old_signed_out_result_lets_the_driver_check(env, path, clock):
+    e = env(confirm_before_post=False)
+    _login(path, "유튜브1", "signed_out", clock() - timedelta(hours=2))
+    job_id, *_ = e.start(1, target="youtube", profile="유튜브1")
+    assert e.jobs.wait(job_id, 5).state == "posted"
+
+
+def test_signed_out_result_does_not_block_practice_mode(env, path, clock):
+    e = env(confirm_before_post=False)
+    _login(path, "유튜브1", "signed_out", clock())
+    job_id, *_ = e.start(1, target="sandbox", profile="유튜브1")
+    assert e.jobs.wait(job_id, 5).state == "posted"
+
+
+def test_all_profiles_signed_out_is_refused(env, path, clock):
+    e = env(confirm_before_post=False)
+    for name in PROFILES:
+        _login(path, name, "signed_out", clock())
+    with pytest.raises(AppError) as exc:
+        e.start(1, target="youtube")
+    assert str(exc.value.kind) == "profile_not_signed_in"
+    assert e.post_rows() == []
+
+
+def test_comments_disabled_video_is_refused(env, path):
+    e = env(confirm_before_post=False)
+    draft_id, _ = add_draft(path, vid(4))
+    with db.session(path) as conn:
+        conn.execute(
+            "INSERT INTO video_context(video_id, comments_disabled) VALUES (?, 1)", (vid(4),)
+        )
+    with pytest.raises(AppError) as exc:
+        e.jobs.start(vid(4), draft_id, None, "youtube", base_url=BASE)
+    assert str(exc.value.kind) == "comments_disabled"
+    assert e.post_rows() == [] and e.drivers == []
+
+
+@pytest.mark.parametrize("target", ["youtube", "assist"])
+def test_rules_apply_to_real_posting(env, path, target):
+    """영상당 1개 · 오늘 상한 · 승인 안 한 초안 거절은 실제 게시에도 그대로."""
+    e = env(confirm_before_post=False, limit=2)
+    job_id, draft_id, _ = e.start(1, target=target)
+    assert e.jobs.wait(job_id, 5).state == "posted"
+    with pytest.raises(AppError) as exc:
+        e.jobs.start(vid(1), draft_id, "유튜브2", target, base_url=BASE)
+    assert str(exc.value.kind) == "already_commented"
+    unapproved, _ = add_draft(path, vid(2), status="draft")
+    with pytest.raises(AppError) as exc:
+        e.jobs.start(vid(2), unapproved, None, target, base_url=BASE)
+    assert str(exc.value.kind) == "draft_not_approved"
+    job_id, *_ = e.start(3, target=target)
+    assert e.jobs.wait(job_id, 5).state == "posted"
+    with pytest.raises(AppError) as exc:
+        e.start(4, target=target)
+    assert str(exc.value.kind) == "daily_limit_reached"
+    assert len(e.drivers) == 2
+
+
+def test_profile_in_use_is_reported_for_real_posting(env, monkeypatch):
+    e = env(confirm_before_post=False)
+
+    def busy(path):
+        raise AppError("profile_in_use", detail=Path(path).name)
+
+    monkeypatch.setattr(jobs_mod, "require_profile_free", busy)
+    with pytest.raises(AppError) as exc:
+        e.start(1, target="youtube")
+    assert str(exc.value.kind) == "profile_in_use"
+    assert e.post_rows() == [] and e.youtube_calls == []
+
+
+def test_old_confirm_api_always_refuses(env):
     e = env()
-    job_id, *_ = e.start(1, target="assist")
-    e.jobs.wait_for_state(job_id, "awaiting_confirm", 5)
-    e.jobs.cancel(job_id)
-    assert e.jobs.wait(job_id, 5).reason == REASON_CANCELLED
-    assert e.procs[0].terminated is True
-
-
-def test_confirm_is_only_for_assist(env):
-    e = env()
-    job_id, *_ = e.start(1)
+    job_id, *_ = e.start(1, target="youtube")
     e.jobs.wait_for_state(job_id, "awaiting_approval", 5)
     with pytest.raises(AppError) as exc:
         e.jobs.confirm(job_id, True)
     assert str(exc.value.kind) == "job_wrong_state"
+    e.jobs.cancel(job_id)
+    e.jobs.wait(job_id, 5)
 
 
 # ---------------------------------------------------------------- 닫기 · 남은 예약
@@ -594,12 +775,14 @@ def test_shutdown_cancels_active_job_and_stops_worker(env):
         e.start(2)  # 닫은 뒤에는 새 작업을 받지 않는다
 
 
-def test_shutdown_closes_assist_chrome(env):
+def test_shutdown_cancels_real_posting_and_closes_chrome(env):
     e = env()
-    job_id, *_ = e.start(1, target="assist")
-    e.jobs.wait_for_state(job_id, "awaiting_confirm", 5)
+    job_id, *_ = e.start(1, target="youtube")
+    e.jobs.wait_for_state(job_id, "awaiting_approval", 5)
     e.jobs.shutdown(timeout=5)
-    assert e.procs[0].terminated is True
+    view = e.jobs.get(job_id)
+    assert view.state == "failed" and view.reason == REASON_CANCELLED
+    assert e.drivers[0].closed and "click" not in e.drivers[0].calls
 
 
 def test_stale_reservation_is_released(env, path, clock):
@@ -618,9 +801,12 @@ def test_stale_reservation_is_released(env, path, clock):
 
 def test_mode_names():
     assert mode_of("sandbox") == ("sandbox", "sandbox")
-    assert mode_of("assist") == ("assist", "youtube") == mode_of("youtube")
-    with pytest.raises(ValueError):
-        mode_of("auto")
+    # R3: 실제 게시 하나. 옛 이름 assist·youtube_auto도 실제 게시로 받는다
+    for name in ("youtube", "assist", "youtube_auto", " YouTube "):
+        assert mode_of(name) == ("youtube", "youtube")
+    for bad in ("auto", "", "own"):
+        with pytest.raises(ValueError):
+            mode_of(bad)
 
 
 def test_sandbox_url_is_local_only():
@@ -657,146 +843,3 @@ def test_chrome_is_closed_before_the_job_reports_its_end(env, fail_on):
     view = e.jobs.wait(job_id, 5)
     assert view.state == ("failed" if fail_on else "posted")
     assert seen and seen[0] not in ("posted", "failed")
-
-
-# ---------------------------------------------------------------- 내 채널 영상 자동 게시(auto)
-
-
-class OwnEnv(Env):
-    """auto 작업용: 내 채널 영상은 vid(1)뿐. YouTube 실행기도 가짜(FakeDriver)."""
-
-    def __init__(self, path, tmp_path, clock, **kw):
-        self.youtube_calls: list[str] = []
-        kw.setdefault("own_video", lambda v: v == vid(1))
-        kw.setdefault("youtube_driver_factory", self._youtube_driver)
-        super().__init__(path, tmp_path, clock, **kw)
-
-    def _youtube_driver(self, settings, video_id):
-        self.youtube_calls.append(video_id)
-        return self._driver(settings)
-
-
-@pytest.fixture
-def own_env(path, tmp_path, clock):
-    made: list[OwnEnv] = []
-
-    def _make(**kw) -> OwnEnv:
-        e = OwnEnv(path, tmp_path, clock, **kw)
-        made.append(e)
-        return e
-
-    yield _make
-    for e in made:
-        e.jobs.shutdown(timeout=5)
-
-
-def test_mode_name_for_own_video_auto_post():
-    assert mode_of("youtube_auto") == ("auto", "youtube")
-
-
-def test_auto_post_on_own_video_types_waits_for_approval_then_posts(own_env):
-    e = own_env()
-    job_id, _, body = e.start(1, target="youtube_auto")
-    view = e.jobs.wait_for_state(job_id, "awaiting_approval", 5)
-    assert view.mode == "auto" and view.target == "youtube" and view.waiting_for == "approve"
-    driver = e.drivers[0]
-    assert "click" not in driver.calls  # 승인 전에는 누르지 않는다
-    e.jobs.approve(job_id)
-    view = e.jobs.wait(job_id, 5)
-    assert view.state == "posted" and view.verified is True
-    assert states(view) == [
-        "queued", "launching", "typing", "awaiting_approval", "posting", "verifying", "posted"
-    ]
-    assert driver.calls == ["open", "type", "click", "verify", "close"]
-    assert "".join(driver.typed) == body
-    assert e.youtube_calls == [vid(1)]  # 실행기는 그 영상 하나만 연다
-    (_, url), = driver.opened
-    assert url == f"https://www.youtube.com/watch?v={vid(1)}" == view.view_url
-    assert [(p["status"], p["target"]) for p in e.post_rows()] == [("posted", "youtube")]
-
-
-def test_auto_post_is_refused_for_other_videos_and_leaves_nothing(own_env):
-    e = own_env()
-    with pytest.raises(AppError) as err:
-        e.start(2, target="youtube_auto")
-    assert err.value.kind.value == "auto_post_own_only"
-    assert e.post_rows() == [] and e.drivers == [] and e.procs == []
-
-
-def test_auto_post_is_refused_when_no_own_videos(env):
-    e = env()  # own_video 기본값: 내 채널 영상 없음
-    with pytest.raises(AppError) as err:
-        e.start(1, target="youtube_auto")
-    assert err.value.kind.value == "auto_post_own_only"
-
-
-def test_auto_post_needs_playwright(own_env):
-    e = own_env(playwright_ready=lambda: False)
-    with pytest.raises(AppError) as err:
-        e.start(1, target="youtube_auto")
-    assert err.value.kind.value == "playwright_missing"
-    assert e.post_rows() == []
-
-
-def test_auto_post_verify_miss_is_posted_unverified_not_failed(own_env):
-    """「댓글」을 누른 뒤에는 못 찾아도 실패로 되돌리지 않는다(다시 달면 두 번 달린다)."""
-    e = own_env(driver_kw={"fail_on": "verify"}, verify_comment=lambda v, t: False)
-    job_id, *_ = e.start(1, target="youtube_auto")
-    e.jobs.wait_for_state(job_id, "awaiting_approval", 5)
-    e.jobs.approve(job_id)
-    view = e.jobs.wait(job_id, 5)
-    assert view.state == "posted" and view.verified is False
-    assert view.message.startswith(NOTE_UNVERIFIED)
-    assert e.post_rows()[0]["status"] == "posted"
-    (run,) = [r for r in e.run_rows() if r["action"] == "post"]
-    assert run["result"] == "success" and run["reason"] == NOTE_UNVERIFIED
-
-
-def test_auto_post_verify_miss_found_by_data_api(own_env):
-    e = own_env(driver_kw={"fail_on": "verify"}, verify_comment=lambda v, t: True)
-    job_id, *_ = e.start(1, target="youtube_auto")
-    e.jobs.wait_for_state(job_id, "awaiting_approval", 5)
-    e.jobs.approve(job_id)
-    view = e.jobs.wait(job_id, 5)
-    assert view.state == "posted" and view.verified is True
-
-
-@pytest.mark.parametrize("step", ["open", "type", "click"])
-def test_auto_post_failure_before_posting_marks_failed(own_env, step):
-    e = own_env(driver_kw={"fail_on": step})
-    job_id, *_ = e.start(1, target="youtube_auto")
-    if step == "click":
-        e.jobs.wait_for_state(job_id, "awaiting_approval", 5)
-        e.jobs.approve(job_id)
-    view = e.jobs.wait(job_id, 5)
-    assert view.state == "failed" and "가짜 실패" in view.reason
-    assert view.has_screenshot is True  # 실패 화면을 이 PC에만 남긴다
-    assert e.post_rows()[0]["status"] == "failed"
-    assert e.drivers[0].closed
-
-
-def test_auto_post_approval_timeout_and_cancel(own_env):
-    e = own_env(approval_timeout=0.2)
-    job_id, *_ = e.start(1, target="youtube_auto")
-    view = e.jobs.wait(job_id, 5)
-    assert view.state == "failed" and view.reason == REASON_APPROVAL_TIMEOUT
-    assert "click" not in e.drivers[0].calls
-
-    e2 = own_env()
-    draft_id, _ = add_draft(e2.path, vid(1))
-    job_id = e2.jobs.start(vid(1), draft_id, None, "youtube_auto", base_url=BASE)
-    e2.jobs.wait_for_state(job_id, "awaiting_approval", 5)
-    e2.jobs.cancel(job_id)
-    view = e2.jobs.wait(job_id, 5)
-    assert view.state == "failed" and view.reason == REASON_CANCELLED
-    assert "click" not in e2.drivers[0].calls
-
-
-def test_auto_mode_does_not_change_assist_for_own_video(own_env):
-    """내 채널 영상이라도 assist(수동)로 시작하면 크롬을 열기만 한다."""
-    e = own_env()
-    job_id, *_ = e.start(1, target="assist")
-    view = e.jobs.wait_for_state(job_id, "awaiting_confirm", 5)
-    assert view.mode == "assist" and e.youtube_calls == [] and len(e.procs) == 1
-    e.jobs.cancel(job_id)
-    e.jobs.wait(job_id, 5)

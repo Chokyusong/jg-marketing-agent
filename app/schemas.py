@@ -126,9 +126,13 @@ class BrowserStatusOut(BaseModel):
     """위 줄 BROWSER 상태(8단계)."""
 
     chrome_found: bool
-    playwright_ready: bool  # 테스트 페이지 자동 실행에 필요한 Playwright가 설치돼 있는지
+    playwright_ready: bool  # 자동 입력(실제 게시·연습 모드)에 필요한 Playwright가 설치돼 있는지
     profiles: list[BrowserProfileOut]
     active_job_id: str | None = None  # 진행 중인 게시 작업(화면을 새로 고쳐도 이어 보게)
+    # R3: 화면이 쓰는 게시 설정(설정 화면에서 바꾸면 바로 바뀐다)
+    confirm_before_post: bool = False  # 게시 직전 확인(켜면 입력 뒤 [게시])
+    disclose_default: bool = True  # 「광고 표기 붙이기」의 처음 상태
+    login_trust_seconds: int = 3600  # 이보다 최근의 「로그인 안 됨」 확인이면 [댓글 달기]를 막는다
 
 
 class StatusOut(BaseModel):
@@ -168,7 +172,8 @@ class ContextOut(BaseModel):
     context_chars: int
     built_at: str
     quota: QuotaOut
-    own_video: bool = False  # 내 채널 영상(own_video_ids) — 02칸 「홍보 표기」를 끌 수 있다
+    # 옛 화면 호환으로 남긴 칸. R3부터 광고 표기는 모든 영상에서 켜고 끌 수 있어 늘 false다
+    own_video: bool = False
 
     @classmethod
     def from_context(
@@ -203,6 +208,9 @@ class ValidateIn(BaseModel):
     video_id: str = Field(min_length=1, max_length=64)
     # 120자 한도를 넘는 글도 검사해서 "몇 자 줄이세요"를 알려 준다. 너무 긴 글만 막는다.
     text: str = Field(max_length=2000)
+    # R3: 광고 표기를 켰는지. 끄면 V4가 「표기 끔」으로 통과한다
+    # (표기가 있으면 맨 앞이어야 하는 것은 같다)
+    disclose: bool = True
 
 
 class CheckOut(BaseModel):
@@ -294,12 +302,18 @@ class DraftCreateIn(BaseModel):
     # [다른 초안 생성]: 이미 쓴 근거 구절. 비우면 서버가 그 영상 초안들의 근거를 피한다(another)
     avoid_quotes: list[str] = Field(default_factory=list, max_length=20)
     another: bool = False
-    # 홍보 표기를 붙일지. 거짓은 내 채널 영상(own_video_ids)에서만 된다(아니면 disclosure_required)
-    disclose: bool = True
+    # 광고 표기를 붙일지(R3: 모든 영상에서 켜고 끌 수 있다). 비우면 설정의 「광고 표기 기본값」
+    disclose: bool | None = None
 
 
 class DraftPatchIn(BaseModel):
     body: str = Field(max_length=2000)
+
+
+class DraftDisclosureIn(BaseModel):
+    """R3: 초안의 광고 표기를 붙이거나 뗀다(저장된 글에서 표기만 바꾸고 다시 검사)."""
+
+    disclose: bool
 
 
 class DraftOut(BaseModel):
@@ -320,12 +334,12 @@ class DraftOut(BaseModel):
     updated_at: str
     approved_at: str | None
     validation: ValidationOut
-    disclosed: bool = True  # 글이 홍보 표기로 시작하는지(내 채널 영상은 끌 수 있다)
+    disclosed: bool = True  # 광고 표기를 붙인 초안인지(R3: 모든 영상에서 켜고 끌 수 있다)
 
     @classmethod
     def from_draft(cls, d: Draft, rules: ValidatorRules) -> DraftOut:
         return cls(
-            disclosed=d.body.startswith(rules.disclosure),
+            disclosed=d.disclosed,
             id=d.id,
             video_id=d.video_id,
             body=d.body,
@@ -412,6 +426,7 @@ class RunOut(BaseModel):
     reason: str
     has_screenshot: bool
     job_id: str
+    disclosed: bool | None = None  # R3: 그 댓글이 광고 표기를 붙였는지(댓글이 없는 줄은 null)
 
     @classmethod
     def from_run(cls, r: Run) -> RunOut:
@@ -433,6 +448,7 @@ class RunOut(BaseModel):
             reason=r.reason,
             has_screenshot=bool(r.screenshot_path),
             job_id=r.job_id,
+            disclosed=r.disclosed,
         )
 
 
@@ -476,7 +492,8 @@ class JobIn(BaseModel):
     video_id: str
     draft_id: int
     profile: str = ""  # 비우면 자동 배정
-    # assist와 youtube는 같은 것. youtube_auto는 내 채널 영상 자동 게시(own_video_ids만)
+    # R3: sandbox = 연습 모드, youtube = 실제 게시(어떤 영상이든). 옛 이름 assist·youtube_auto도
+    # 받아서 실제 게시로 처리한다
     target: Literal["sandbox", "assist", "youtube", "youtube_auto"] = "sandbox"
     daily_limit: int | None = Field(default=None, ge=0, le=1000)  # 화면에서 낮춘 상한
     fail: Literal["", "hide_button", "slow", "reject"] = ""  # 테스트 페이지 실패 스위치(시험용)
@@ -499,7 +516,7 @@ class JobOut(BaseModel):
     """
 
     id: str
-    mode: Literal["sandbox", "assist", "auto"]
+    mode: Literal["sandbox", "youtube"]  # 연습 모드 | 실제 게시
     target: Literal["sandbox", "youtube"]
     target_label: str
     state: str
@@ -513,15 +530,17 @@ class JobOut(BaseModel):
     comment_text: str
     message: str
     reason: str  # 실패 사유(실패했을 때만)
-    verified: bool | None  # 게시를 확인했는지(assist에서 Data API로 못 찾으면 false)
+    verified: bool | None  # 게시를 확인했는지(「댓글」을 눌렀지만 내 댓글을 못 찾으면 false)
     has_screenshot: bool
     screenshot_url: str | None
     view_url: str  # [댓글 보기]
-    waiting_for: Literal["approve", "confirm"] | None
+    waiting_for: Literal["approve", "confirm"] | None  # approve: 게시 직전 확인(설정 켬)에서 [게시]
     seconds_left: int | None
     created_at: str
     finished_at: str | None
     events: list[JobEventOut]
+    confirm_before_post: bool = False  # 입력 뒤 [게시]를 기다리는 작업인지(설정 「게시 직전 확인」)
+    disclosed: bool = True  # 그 댓글이 광고 표기를 붙였는지
 
     @classmethod
     def from_view(cls, v) -> JobOut:  # v: app.browser.jobs.JobView
@@ -550,6 +569,8 @@ class JobOut(BaseModel):
             created_at=v.created_at,
             finished_at=v.finished_at,
             events=[JobEventOut(at=e.at, state=e.state, message=e.message) for e in v.events],
+            confirm_before_post=v.confirm_before_post,
+            disclosed=v.disclosed,
         )
 
 
@@ -561,7 +582,7 @@ class SettingsCommentOut(BaseModel):
     max_chars: int
     disclosure: str  # 홍보 표기([광고])
     brand: str
-    own_video_count: int = 0  # 등록한 내 채널 영상 수(ID는 보이지 않는다)
+    own_video_count: int = 0  # 옛 칸(R3부터 내 채널 영상 구분이 없어 늘 0)
 
 
 class SettingsProfileOut(BaseModel):

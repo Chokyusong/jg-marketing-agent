@@ -49,7 +49,6 @@ POST_TARGETS = ("sandbox", "youtube")  # 게시 대상: 통제된 테스트 페�
 DEFAULT_WINDOW_POSITION = (60, -1060)
 DEFAULT_TYPING_DELAY_MS = (60, 160)
 PROFILES_DIR_ENV = "JG_PROFILES_DIR"  # 프로필 폴더 위치를 바꿀 때(테스트·다른 PC). 비우면 아래 기본
-_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
 def default_profiles_root(environ: dict[str, str] | None = None) -> Path:
@@ -129,15 +128,13 @@ class Settings:
     llm: LLMSettings = field(default_factory=LLMSettings)
     # providers.*.api_key_env로 이름이 적힌 환경 변수의 값(가리기 전용, 12단계 전까지 쓰지 않음)
     llm_secret_values: tuple[str, ...] = field(default=(), repr=False)
-    # 7단계: 프로필 이름(순서가 곧 폴더 번호)과 기본 게시 대상(default_target: assist → youtube)
+    # 7단계: 프로필 이름(순서가 곧 폴더 번호)과 기본 게시 방식(R3: 실제 게시 youtube가 기본,
+    # 연습 모드는 sandbox. 옛 이름 assist도 youtube로 읽는다)
     profiles: tuple[str, ...] = DEFAULT_PROFILES
-    default_target: str = "sandbox"
+    default_target: str = "youtube"
     browser: BrowserSettings = field(default_factory=BrowserSettings)
-    # 내 채널 영상(`own_video_ids`). 이 영상에서만 홍보 표기를 켜고 끌 수 있고, 실제 유튜브에
-    # 자동으로 입력·게시한다. 그 밖의 영상은 표기가 늘 붙는다
-    own_video_ids: tuple[str, ...] = ()
-    # R2: 프로그램 안에서 바꾸는 값. 광고 표기 기본값과 게시 직전 확인은 R3이 게시에 쓴다
-    # (지금은 저장·읽기만)
+    # R2에서 저장, R3에서 동작에 쓴다: 광고 표기 기본값(초안의 「광고 표기 붙이기」 처음 상태)과
+    # 게시 직전 확인(켜면 입력 뒤 [게시]를 한 번 더 눌러야 게시). 옛 키 own_video_ids는 읽지 않는다
     disclose_default: bool = True
     confirm_before_post: bool = False
     typing_speed: str = "normal"  # slow | normal | fast (browser.typing_delay_ms와 같은 뜻)
@@ -145,9 +142,6 @@ class Settings:
     youtube_key_source: str | None = None  # program(프로그램에 저장) | dev_file(.env·환경 변수)
     user_values: dict[str, Any] = field(default_factory=dict, repr=False)  # 사용자가 바꾼 칸
     source: LoadSource | None = field(default=None, repr=False, compare=False)
-
-    def is_own_video(self, video_id: str | None) -> bool:
-        return bool(video_id) and video_id in self.own_video_ids
 
     @property
     def youtube_key_configured(self) -> bool:
@@ -217,19 +211,6 @@ def _brand_facts(brand: Any) -> tuple[str, ...]:
     return tuple(str(f).strip() for f in raw if str(f).strip())
 
 
-def _own_video_ids(raw: Any) -> tuple[str, ...]:
-    """`own_video_ids`(내 채널 영상 ID 목록, 11자). 없으면 빈 목록."""
-    if raw is None:
-        return ()
-    if not isinstance(raw, list):
-        raise ValueError("own_video_ids는 영상 ID 목록이어야 합니다(예: [dQw4w9WgXcQ]).")
-    ids = tuple(str(v).strip() for v in raw if str(v).strip())
-    bad = [v for v in ids if not _VIDEO_ID.match(v)]
-    if bad:
-        raise ValueError(f"own_video_ids에 영상 ID 형식(11자)이 아닌 값이 있습니다: {bad[0]}")
-    return tuple(dict.fromkeys(ids))
-
-
 def _profiles(raw: Any) -> tuple[str, ...]:
     """`profiles`(이름 목록). 없으면 과제 예시 세 개. 빈 이름·같은 이름은 켤 때 알린다."""
     if raw is None:
@@ -245,11 +226,13 @@ def _profiles(raw: Any) -> tuple[str, ...]:
 
 
 def _default_target(browser: Any) -> str:
-    """`browser.default_target`: sandbox | assist(실제 유튜브, 게시 기록의 대상 이름은 youtube)."""
-    raw = str((browser or {}).get("default_target") or "sandbox").strip().lower()
-    target = {"assist": "youtube"}.get(raw, raw)
+    """`browser.default_target`: youtube(실제 게시, 기본) | sandbox(연습 모드).
+
+    옛 이름 assist·youtube_auto도 실제 게시(youtube)로 읽는다."""
+    raw = str((browser or {}).get("default_target") or "youtube").strip().lower()
+    target = {"assist": "youtube", "youtube_auto": "youtube"}.get(raw, raw)
     if target not in POST_TARGETS:
-        raise ValueError("browser.default_target은 sandbox 또는 assist여야 합니다.")
+        raise ValueError("browser.default_target은 youtube 또는 sandbox여야 합니다.")
     return target
 
 
@@ -420,7 +403,6 @@ def load_settings(
         profiles=_profiles(rules.get("profiles")),
         default_target=_default_target(rules.get("browser")),
         browser=browser,
-        own_video_ids=_own_video_ids(rules.get("own_video_ids")),
         disclose_default=_flag(comment.get("disclose_default", True), "comment.disclose_default"),
         confirm_before_post=_flag(
             posting.get("confirm_before_post", False), "posting.confirm_before_post"

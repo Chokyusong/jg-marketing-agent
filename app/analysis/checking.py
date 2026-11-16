@@ -20,16 +20,10 @@ class CheckService:
         *,
         rules: ValidatorRules,
         brand_facts: Sequence[str],
-        own_video_ids: Sequence[str] = (),
     ) -> None:
         self.context = context
         self.rules = rules
         self.brand_facts = tuple(brand_facts)
-        self.own_video_ids = frozenset(own_video_ids)
-
-    def is_own_video(self, video_id: str) -> bool:
-        """내 채널 영상(`config.yaml`의 `own_video_ids`)이면 홍보 표기를 켜고 끌 수 있다."""
-        return video_id in self.own_video_ids
 
     def check(
         self,
@@ -38,10 +32,12 @@ class CheckService:
         *,
         previous_texts: Sequence[str] = (),
         evidence_quote: str | None = None,
+        disclose: bool = True,
     ) -> Validation:
         """영상의 맥락이 아직 없으면 만들어서(인기 댓글 1단위) 대조한다.
 
-        `previous_texts`(V11)는 이전에 승인·게시한 글. 초안 표가 생기는 5단계 전까지는 빈 목록.
+        `previous_texts`(V11)는 이전에 승인·게시한 글. `disclose`(R3)는 광고 표기를 켰는지 —
+        끄면 V4가 「표기 끔」으로 통과한다(어떤 영상이든).
         """
         context = self.context.current(video_id)
         return validate(
@@ -51,5 +47,5 @@ class CheckService:
             brand_facts=self.brand_facts,
             previous_texts=list(previous_texts),
             evidence_quote=evidence_quote,
-            disclosure_required=not self.is_own_video(video_id),
+            disclosure_required=disclose,
         )

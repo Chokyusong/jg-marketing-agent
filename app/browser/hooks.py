@@ -17,13 +17,12 @@ from typing import Any
 class BrowserHooks:
     chrome_finder: Callable[[], Path | None] | None = None
     driver_factory: Callable[[Any], Any] | None = None  # BrowserSettings -> BrowserDriver
-    # 내 채널 영상 자동 게시: (BrowserSettings, 영상 ID) -> BrowserDriver
+    # 실제 게시(R3, 어떤 영상이든): (BrowserSettings, 이번 작업의 영상 ID) -> BrowserDriver
     youtube_driver_factory: Callable[[Any, str], Any] | None = None
-    launcher: Callable[[Any], Any] | None = None  # 인자 목록 -> 프로세스
+    launcher: Callable[[Any], Any] | None = None  # 인자 목록 -> 프로세스(로그인 창 열기)
     playwright_ready: Callable[[], bool] | None = None
     verify_comment: Callable[[str, str], bool | None] | None = None
-    approval_timeout: float | None = None
-    confirm_timeout: float | None = None
+    approval_timeout: float | None = None  # 게시 직전 확인(켬)에서 [게시]를 기다리는 시간
     # 9단계: 모니터 목록 읽기(창 위치 확인). 비우면 Windows API(app/browser/screens.read_monitors)
     screens: Callable[[], Any] | None = None
     # R2: 프로필 로그인 확인(프로필 폴더 -> LoginResult). 비우면 창 없는 크롬으로 유튜브를 읽는다

@@ -14,6 +14,7 @@ from app.api.deps import Services, get_services
 from app.schemas import (
     AnalysisOut,
     DraftCreateIn,
+    DraftDisclosureIn,
     DraftListOut,
     DraftOut,
     DraftPatchIn,
@@ -61,6 +62,15 @@ def list_drafts(
 def update_draft(draft_id: int, body: DraftPatchIn, services: ServicesDep) -> DraftOut:
     """사람이 고친 글. 같은 규칙 검사를 다시 거친다."""
     draft = services.drafts.update_text(draft_id, body.body)
+    return DraftOut.from_draft(draft, services.checks.rules)
+
+
+@router.post("/drafts/{draft_id}/disclosure", response_model=DraftOut)
+def set_disclosure(draft_id: int, body: DraftDisclosureIn, services: ServicesDep) -> DraftOut:
+    """R3: 광고 표기 켬/끔. 저장된 글에서 표기만 붙이거나 떼고 다시 검사한다.
+
+    모델을 부르지 않는다."""
+    draft = services.drafts.set_disclosure(draft_id, body.disclose)
     return DraftOut.from_draft(draft, services.checks.rules)
 
 

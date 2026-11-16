@@ -212,10 +212,10 @@ class PostRules:
                 "UPDATE posts SET status=?, reason=?, updated_at=?, posted_at=? WHERE id=?",
                 (status, reason, stamp, stamp if status == "posted" else None, int(post_id)),
             )
+            draft = conn.execute(
+                "SELECT body, disclosed FROM drafts WHERE id = ?", (row["draft_id"],)
+            ).fetchone()
             if comment_text is None:
-                draft = conn.execute(
-                    "SELECT body FROM drafts WHERE id = ?", (row["draft_id"],)
-                ).fetchone()
                 comment_text = draft["body"] if draft else ""
             ledger.insert(
                 conn,
@@ -232,6 +232,7 @@ class PostRules:
                 job_id=job_id,
                 draft_id=row["draft_id"],
                 post_id=int(post_id),
+                disclosed=bool(draft["disclosed"]) if draft else None,  # R3: 표기를 붙였는지
             )
         return self.get(post_id)
 

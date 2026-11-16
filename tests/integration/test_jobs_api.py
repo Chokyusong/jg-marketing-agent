@@ -1,7 +1,10 @@
-"""게시 작업 API와 테스트 페이지(8단계) — 가짜 YouTube·가짜 LLM·가짜 테스트 페이지 실행기.
+"""게시 작업 API와 테스트 페이지(8단계 · R3) — 가짜 YouTube·가짜 LLM·가짜 실행기.
 
-크롬·Playwright를 띄우지 않는다(그건 tests/e2e).
+크롬·Playwright·실제 유튜브를 띄우지 않는다(연습 페이지 실행기와 실제 유튜브 실행기 모두 가짜).
 여기서는 API 모양, 규칙, 기록, 화면 갱신에 쓰는 값을 본다.
+
+기본은 설정 그대로(게시 직전 확인 끔 → [댓글 달기] 한 번으로 끝까지). 입력 뒤 [게시]를 기다리는
+흐름은 `setup_overrides`로 `posting.confirm_before_post`를 켜서 본다.
 """
 
 from __future__ import annotations
@@ -54,18 +57,31 @@ class FakeDriver:
         self.calls.append("close")
 
 
+CONFIRM_ON = {"posting": {"confirm_before_post": True}}
+
+
 @pytest.fixture
-def setup(mock_http, fixture_json, fake_key, make_client, fake_llm, tmp_path):
+def setup_overrides() -> dict:
+    return {}
+
+
+@pytest.fixture
+def setup(mock_http, fixture_json, fake_key, make_client, fake_llm, tmp_path, setup_overrides):
     drivers: list[FakeDriver] = []
     launched: list[list[str]] = []
-    options = {"fail_on": "", "screens": UPPER_AND_MAIN}
+    options = {"fail_on": "", "screens": UPPER_AND_MAIN, "youtube": [], "settings": []}
     chrome_exe = tmp_path / "chrome.exe"
     chrome_exe.write_bytes(b"")
 
     def factory(settings):
+        options["settings"].append(settings)
         d = FakeDriver(options["fail_on"])
         drivers.append(d)
         return d
+
+    def youtube_factory(settings, video_id):  # 실제 유튜브 실행기 대신(실제 유튜브에 가지 않는다)
+        options["youtube"].append(video_id)
+        return factory(settings)
 
     class Proc:
         def __init__(self, args):
@@ -83,6 +99,7 @@ def setup(mock_http, fixture_json, fake_key, make_client, fake_llm, tmp_path):
     hooks = BrowserHooks(
         chrome_finder=lambda: chrome_exe,
         driver_factory=factory,
+        youtube_driver_factory=youtube_factory,
         launcher=Proc,
         playwright_ready=lambda: True,
         screens=lambda: options["screens"],
@@ -90,7 +107,7 @@ def setup(mock_http, fixture_json, fake_key, make_client, fake_llm, tmp_path):
     mock = mock_http()
     add_search_and_videos(mock, fixture_json)
     mock.add("GET", f"{YT}/commentThreads", json=fixture_json("youtube/comment_threads.json"))
-    client = make_client(mock, key=fake_key, browser_hooks=hooks)
+    client = make_client(mock, key=fake_key, browser_hooks=hooks, overrides=setup_overrides)
     services = client.app.state.services.get()
 
     def approve_one() -> dict:
@@ -128,12 +145,10 @@ def test_sandbox_job_over_the_api(setup):
     assert job["target"] == "sandbox" and job["target_label"] == "테스트 페이지"
     assert job["profile"] == "유튜브1" and job["folder"] == "profile-1"
     assert job["comment_text"] == d["body"]
-    job = wait_state(client, job["id"], "awaiting_approval")
-    assert job["waiting_for"] == "approve" and job["step"] == 3
-    assert "click" not in drivers[0].calls
-    approved = client.post(f"/api/jobs/{job['id']}/approve")
-    assert approved.status_code == 200
-    job = wait_state(client, job["id"], "posted")
+    assert job["confirm_before_post"] is False and job["disclosed"] is True
+    job = wait_state(client, job["id"], "posted")  # [댓글 달기] 한 번으로 끝까지(기다리지 않는다)
+    assert "awaiting_approval" not in [e["state"] for e in job["events"]]
+    assert drivers[0].calls == ["open", "type", "click", "verify", "close"]
     assert job["state"] == "posted" and job["state_label"] == "게시 완료"
     assert job["verified"] is True
     assert job["view_url"].startswith(f"http://127.0.0.1:80/sandbox/watch?v={VID}")
@@ -152,6 +167,26 @@ def test_sandbox_job_over_the_api(setup):
     assert item["item"]["commented"]["sandbox"] is True
 
 
+@pytest.mark.parametrize("setup_overrides", [CONFIRM_ON])
+def test_confirm_before_post_waits_for_post_button(setup):
+    client, services, approve_one, drivers, _, _ = setup
+    d = approve_one()
+    job = client.post(
+        "/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": "youtube"}
+    ).json()
+    assert job["confirm_before_post"] is True
+    job = wait_state(client, job["id"], "awaiting_approval")
+    assert job["waiting_for"] == "approve" and job["step"] == 3
+    assert job["state_label"] == "게시 대기"
+    time.sleep(0.2)
+    assert "click" not in drivers[0].calls
+    approved = client.post(f"/api/jobs/{job['id']}/approve")
+    assert approved.status_code == 200
+    job = wait_state(client, job["id"], "posted")
+    assert job["state"] == "posted" and drivers[0].calls[-2:] == ["verify", "close"]
+
+
+@pytest.mark.parametrize("setup_overrides", [CONFIRM_ON])
 def test_second_start_on_same_video_is_refused(setup):
     client, services, approve_one, *_ = setup
     d = approve_one()
@@ -189,8 +224,6 @@ def test_failed_job_has_reason_and_screenshot(setup):
     options["fail_on"] = "click"
     d = approve_one()
     job = client.post("/api/jobs", json={"video_id": VID, "draft_id": d["id"]}).json()
-    wait_state(client, job["id"], "awaiting_approval")
-    client.post(f"/api/jobs/{job['id']}/approve")
     job = wait_state(client, job["id"], "failed")
     assert job["state"] == "failed" and "게시 단추" in job["reason"]
     assert job["has_screenshot"] and job["screenshot_url"] == f"/api/jobs/{job['id']}/screenshot"
@@ -216,45 +249,104 @@ def test_screenshot_of_past_job_is_found_in_capture_folder(setup):
     assert odd.status_code == 404 and odd.json()["error"]["kind"] == "job_not_found"
 
 
+@pytest.mark.parametrize("setup_overrides", [CONFIRM_ON])
 def test_wrong_state_unknown_job_and_missing_screenshot(setup):
     client, services, approve_one, *_ = setup
     assert client.get("/api/jobs/nope").status_code == 404
     assert client.post("/api/jobs/nope/approve").json()["error"]["kind"] == "job_not_found"
     d = approve_one()
     job = client.post("/api/jobs", json={"video_id": VID, "draft_id": d["id"]}).json()
+    wait_state(client, job["id"], "awaiting_approval")
+    # 옛 「게시했어요」 API는 남아 있지만 R3부터 받을 작업이 없어 늘 거절한다
     confirm = client.post(f"/api/jobs/{job['id']}/confirm", json={"posted": True})
     assert confirm.status_code == 409 and confirm.json()["error"]["kind"] == "job_wrong_state"
     assert client.get(f"/api/jobs/{job['id']}/screenshot").status_code == 404
     cancel = client.post(f"/api/jobs/{job['id']}/cancel")
     assert cancel.status_code == 200
     job = wait_state(client, job["id"], "failed")
-    assert job["reason"] == "사용자가 작업을 취소했습니다"
+    assert job["reason"] == "사용자가 게시를 그만뒀습니다"
 
 
-def test_assist_job_over_the_api(setup):
-    client, services, approve_one, drivers, launched, _ = setup
+def test_real_posting_over_the_api_for_any_video(setup):
+    """R3: 내 채널 영상 목록 없이 어떤 영상이든 실제 게시(가짜 실행기 — 실제 유튜브에 안 감)."""
+    client, services, approve_one, drivers, launched, options = setup
     d = approve_one()
     job = client.post(
-        "/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": "assist"}
+        "/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": "youtube"}
     ).json()
-    assert job["mode"] == "assist" and job["target"] == "youtube"
-    job = wait_state(client, job["id"], "awaiting_confirm")
-    assert job["waiting_for"] == "confirm"
-    assert drivers == []  # Playwright 실행기는 만들지도 않는다
-    (args,) = launched
-    assert args[-1] == f"https://www.youtube.com/watch?v={VID}"
-    assert any(a.startswith("--user-data-dir=") and a.endswith("profile-1") for a in args)
-    assert "--window-position=60,-1060" in args
-    assert not any("화면 밖" in e["message"] for e in job["events"])  # 위쪽 모니터 안이라 그대로
-    res = client.post(f"/api/jobs/{job['id']}/confirm", json={"posted": True})
-    assert res.status_code == 200
+    assert job["mode"] == "youtube" and job["target"] == "youtube"
     job = wait_state(client, job["id"], "posted")
-    # 가짜 commentThreads 응답에 내 댓글이 없으니 「확인 못 함」으로 끝난다
-    assert job["state"] == "posted" and job["verified"] is False
-    assert job["view_url"] == f"https://www.youtube.com/watch?v={VID}"
+    assert job["state"] == "posted" and job["verified"] is True
+    assert options["youtube"] == [VID] and launched == []  # 그 영상 하나만, 크롬을 따로 안 연다
+    assert drivers[0].opened == [f"https://www.youtube.com/watch?v={VID}"]
+    assert job["view_url"] == f"https://www.youtube.com/watch?v={VID}"  # [댓글 보기]
+    labels = [e["message"] for e in job["events"]]
+    assert any("유튜브 영상으로 가는 중" in m for m in labels)
     rec = client.get("/api/records").json()["items"][0]
-    assert rec["status_label"] == "게시 완료" and rec["reason"] == "게시됨(확인 못 함)"
-    assert rec["target"] == "youtube"
+    assert rec["status_label"] == "게시 완료" and rec["target"] == "youtube"
+    assert rec["disclosed"] is True
+    item = client.get(f"/api/videos/{VID}").json()
+    assert item["item"]["commented"]["youtube"] is True
+
+
+@pytest.mark.parametrize("name", ["assist", "youtube_auto"])
+def test_old_target_names_are_real_posting(setup, name):
+    client, services, approve_one, drivers, launched, options = setup
+    d = approve_one()
+    job = client.post(
+        "/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": name}
+    ).json()
+    assert job["mode"] == "youtube" and job["target"] == "youtube"
+    assert wait_state(client, job["id"], "posted")["state"] == "posted"
+    assert options["youtube"] == [VID] and launched == []
+
+
+def _comments_disabled(services) -> None:
+    from app import db
+
+    with db.session(services.settings.db_path) as conn:
+        cur = conn.execute(
+            "UPDATE video_context SET comments_disabled = 1 WHERE video_id = ?", (VID,)
+        )
+        if cur.rowcount == 0:
+            conn.execute(
+                "INSERT INTO video_context(video_id, comments_disabled) VALUES (?, 1)", (VID,)
+            )
+
+
+def test_real_posting_refused_for_comments_disabled_video(setup):
+    client, services, approve_one, drivers, *_ = setup
+    d = approve_one()
+    _comments_disabled(services)
+    res = client.post("/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": "youtube"})
+    assert res.status_code == 409 and res.json()["error"]["kind"] == "comments_disabled"
+    assert res.json()["error"]["action"]  # 무엇을 하면 되는지
+    assert drivers == []
+    # 연습 모드는 막지 않는다
+    ok = client.post("/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": "sandbox"})
+    assert ok.status_code == 200
+    wait_state(client, ok.json()["id"], "posted")
+
+
+def test_real_posting_refused_for_signed_out_profile(setup, clock):
+    client, services, approve_one, drivers, *_ = setup
+    d = approve_one()
+    from app import db
+
+    with db.session(services.settings.db_path) as conn:
+        conn.execute(
+            "INSERT INTO profile_logins(profile, state, channel, checked_at, note) "
+            "VALUES ('유튜브1', 'signed_out', '', ?, '')",
+            (clock().isoformat(),),
+        )
+    res = client.post(
+        "/api/jobs",
+        json={"video_id": VID, "draft_id": d["id"], "target": "youtube", "profile": "유튜브1"},
+    )
+    err = res.json()["error"]
+    assert res.status_code == 409 and err["kind"] == "profile_not_signed_in"
+    assert "로그인돼 있지 않아" in err["message"] and "[로그인하기]" in err["action"]
+    assert drivers == []
 
 
 def test_status_reports_browser_without_paths(setup, tmp_path):
@@ -346,19 +438,29 @@ def test_sandbox_assets_are_local(plain):
     assert css.status_code == 200 and "@import" not in css.text and "http" not in css.text
 
 
-def test_assist_window_moves_to_main_monitor_when_position_is_off_screen(setup):
+@pytest.mark.parametrize("setup_overrides", [{"browser": {"headless": False}}])
+def test_window_moves_to_main_monitor_when_position_is_off_screen(setup):
     """9단계: 모니터가 하나인 PC(심사자 PC)에서는 60,-1060이 화면 밖 → 주 모니터 60,60으로."""
     client, services, approve_one, drivers, launched, options = setup
     options["screens"] = [Monitor(0, 0, 1920, 1080, primary=True)]
     d = approve_one()
     job = client.post(
-        "/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": "assist"}
+        "/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": "youtube"}
     ).json()
-    job = wait_state(client, job["id"], "awaiting_confirm")
-    (args,) = launched
-    assert "--window-position=60,60" in args
-    assert "--window-position=60,-1060" not in args
+    job = wait_state(client, job["id"], "posted")
+    (settings,) = options["settings"]
+    assert settings.window_position == (60, 60)
     notes = [e["message"] for e in job["events"] if "화면 밖" in e["message"]]
     assert notes == ["크롬 창 위치(60,-1060)가 화면 밖이라 주 모니터(60,60)에 띄웁니다"]
-    client.post(f"/api/jobs/{job['id']}/cancel")
-    wait_state(client, job["id"], "failed")
+
+
+@pytest.mark.parametrize("setup_overrides", [{"browser": {"headless": False}}])
+def test_window_stays_on_upper_monitor_when_it_exists(setup):
+    client, services, approve_one, drivers, launched, options = setup
+    d = approve_one()
+    job = client.post(
+        "/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": "youtube"}
+    ).json()
+    job = wait_state(client, job["id"], "posted")
+    assert options["settings"][0].window_position == (60, -1060)
+    assert not any("화면 밖" in e["message"] for e in job["events"])

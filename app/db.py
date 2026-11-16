@@ -174,6 +174,15 @@ MIGRATIONS: list[str] = [
         note TEXT NOT NULL DEFAULT ''
     );
     """,
+    # R3: 광고 표기 켬/끔을 모든 영상에서. 초안마다 표기를 붙였는지(drafts.disclosed)와,
+    # 기록 줄마다 그 댓글이 표기를 붙였는지(runs.disclosed, 댓글이 없는 줄은 NULL)를 남긴다.
+    # 예전 초안은 글이 표기로 시작하는지로 채운다(기본 문구 [광고]).
+    """
+    ALTER TABLE drafts ADD COLUMN disclosed INTEGER NOT NULL DEFAULT 1
+        CHECK (disclosed IN (0, 1));
+    UPDATE drafts SET disclosed = CASE WHEN substr(body, 1, 4) = '[광고]' THEN 1 ELSE 0 END;
+    ALTER TABLE runs ADD COLUMN disclosed INTEGER CHECK (disclosed IN (0, 1));
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

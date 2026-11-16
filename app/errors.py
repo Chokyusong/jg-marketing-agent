@@ -41,7 +41,6 @@ class ErrorKind(StrEnum):
     DRAFT_SUPERSEDED = "draft_superseded"  # 새 초안이나 다른 승인으로 밀려난 초안
     # 실제 데이터 보정(2026-11-16): 영상 자료에 연애 고민이 없으면 초안을 만들지 않는다
     NO_LOVE_CONCERN = "no_love_concern"
-    DISCLOSURE_REQUIRED = "disclosure_required"  # 표기를 끌 수 있는 것은 내 채널 영상뿐
     # 7단계: 운영 규칙(영상당 1개 · 하루 상한 · 승인한 초안만)
     ALREADY_COMMENTED = "already_commented"
     DAILY_LIMIT_REACHED = "daily_limit_reached"
@@ -53,7 +52,6 @@ class ErrorKind(StrEnum):
     JOB_WRONG_STATE = "job_wrong_state"  # 지금 단계에서 할 수 없는 일(예: 입력 중에 게시 승인)
     CHROME_NOT_FOUND = "chrome_not_found"
     PLAYWRIGHT_MISSING = "playwright_missing"
-    AUTO_POST_OWN_ONLY = "auto_post_own_only"  # 실제 유튜브 자동 게시는 내 채널 영상만
     PROFILE_IN_USE = "profile_in_use"  # 같은 프로필 폴더를 다른 크롬이 쓰고 있다
     SCREENSHOT_NOT_FOUND = "screenshot_not_found"
     # R2: 프로그램 안의 설정과 프로필 로그인
@@ -65,6 +63,8 @@ class ErrorKind(StrEnum):
     KEY_BAD_SHAPE = "key_bad_shape"
     PROFILE_CHECK_BUSY = "profile_check_busy"  # 게시 중에는 로그인 확인을 하지 않는다
     PROFILE_CHECK_FAILED = "profile_check_failed"
+    # R3: 실제 게시 시작 전 확인 — 최근 로그인 확인에서 로그인 안 됨으로 나온 프로필
+    PROFILE_NOT_SIGNED_IN = "profile_not_signed_in"
 
 
 @dataclass(frozen=True)
@@ -186,25 +186,20 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
         "설명란이 광고·협찬 위주인 영상일 수 있습니다.",
         422,
     ),
-    ErrorKind.DISCLOSURE_REQUIRED: ErrorText(
-        "이 영상은 홍보 표기를 끌 수 없습니다.",
-        "표기를 끄려면 config.yaml의 own_video_ids에 내 채널 영상 ID를 넣어 주세요.",
-        422,
-    ),
     ErrorKind.ALREADY_COMMENTED: ErrorText(
         "이미 댓글을 단 영상입니다. 영상 하나에는 댓글을 하나만 답니다.",
-        "01에서 다른 영상을 골라 주세요. 게시가 실패한 영상만 다시 시도할 수 있습니다.",
+        "①에서 다른 영상을 골라 주세요. 게시가 실패한 영상만 다시 시도할 수 있습니다.",
         409,
     ),
     ErrorKind.DAILY_LIMIT_REACHED: ErrorText(
         "오늘 달 수 있는 댓글 수(하루 상한)를 다 썼습니다.",
         "한국 시각 자정이 지나면 다시 달 수 있습니다. 실패한 게시는 상한에 세지 않습니다. "
-        "상한은 config.yaml의 limits.daily_max_comments입니다.",
+        "상한은 설정 화면의 「게시」에서 바꿀 수 있습니다.",
         429,
     ),
     ErrorKind.DRAFT_NOT_APPROVED: ErrorText(
         "승인하지 않은 초안으로는 게시할 수 없습니다.",
-        "02에서 규칙 검사를 통과한 초안을 [이 초안 승인]으로 승인한 뒤 다시 시도해 주세요.",
+        "②의 초안이 규칙 검사를 통과한 뒤 ③의 [댓글 달기]를 다시 눌러 주세요.",
         409,
     ),
     ErrorKind.PROFILE_UNKNOWN: ErrorText(
@@ -215,17 +210,17 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
     ),
     ErrorKind.JOB_BUSY: ErrorText(
         "다른 게시 작업이 진행 중입니다. 작업은 한 번에 하나만 합니다.",
-        "03의 진행 중인 작업을 끝내거나 [작업 취소]를 누른 뒤 다시 시도해 주세요.",
+        "③의 진행 중인 게시가 끝나거나 [그만두기]를 누른 뒤 다시 시도해 주세요.",
         409,
     ),
     ErrorKind.JOB_NOT_FOUND: ErrorText(
         "게시 작업을 찾지 못했습니다. 프로그램을 다시 켰다면 이전 작업은 남지 않습니다.",
-        "작업 기록에서 결과를 확인하고, 필요하면 03에서 다시 시작해 주세요.",
+        "기록 화면에서 결과를 확인하고, 필요하면 ③에서 다시 시작해 주세요.",
         404,
     ),
     ErrorKind.JOB_WRONG_STATE: ErrorText(
         "지금 단계에서는 그 일을 할 수 없습니다.",
-        "03의 진행 단계 표시를 보고, 그 단계의 단추를 눌러 주세요.",
+        "③의 진행 상태를 보고, 그 단계의 단추를 눌러 주세요.",
         409,
     ),
     ErrorKind.CHROME_NOT_FOUND: ErrorText(
@@ -235,16 +230,10 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
         503,
     ),
     ErrorKind.PLAYWRIGHT_MISSING: ErrorText(
-        "테스트 페이지 자동 실행에 필요한 Playwright가 설치돼 있지 않습니다.",
+        "자동 입력에 필요한 도구(Playwright)가 설치돼 있지 않습니다.",
         "저장소 폴더에서 .venv\\Scripts\\python.exe -m pip install -r requirements.txt를 "
         "실행한 뒤 프로그램을 다시 켜 주세요.",
         503,
-    ),
-    ErrorKind.AUTO_POST_OWN_ONLY: ErrorText(
-        "실제 유튜브 자동 게시는 내 채널 영상에서만 할 수 있습니다.",
-        "다른 영상은 「수동 승인 후 게시」로 크롬을 열어 직접 게시해 주세요. 내 채널 영상이면 "
-        "config.yaml의 own_video_ids에 영상 ID를 넣고 프로그램을 다시 켜 주세요.",
-        422,
     ),
     ErrorKind.PROFILE_IN_USE: ErrorText(
         "그 프로필의 크롬 창이 이미 열려 있어 새로 열 수 없습니다.",
@@ -253,7 +242,7 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
     ),
     ErrorKind.SCREENSHOT_NOT_FOUND: ErrorText(
         "이 작업의 화면 캡처가 없습니다.",
-        "화면 캡처는 테스트 페이지에서 실패한 작업에만 남습니다.",
+        "화면 캡처는 크롬 화면이 열린 뒤 실패한 작업에만 남습니다.",
         404,
     ),
     ErrorKind.SETTINGS_INVALID: ErrorText(
@@ -296,6 +285,12 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
         "로그인 여부를 확인하지 못했습니다.",
         "인터넷 연결을 확인하고 잠시 뒤 [로그인 확인]을 다시 눌러 주세요.",
         502,
+    ),
+    ErrorKind.PROFILE_NOT_SIGNED_IN: ErrorText(
+        "이 프로필은 유튜브에 로그인돼 있지 않아 댓글을 달 수 없습니다.",
+        "프로필 화면에서 그 프로필의 [로그인하기]를 눌러 로그인해 주세요. 이미 로그인했다면 "
+        "[로그인 확인]을 눌러 주세요.",
+        409,
     ),
 }
 

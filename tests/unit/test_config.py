@@ -101,9 +101,12 @@ def test_extra_patterns_read_and_checked(make_config):
 def test_profiles_and_default_target(make_config):
     settings = load_settings(make_config(), env_path=None, environ={})
     assert settings.profiles == ("유튜브1", "유튜브2", "유튜브3")
-    assert settings.default_target == "sandbox"
-    path = make_config({"browser": {"default_target": "assist"}})
-    assert load_settings(path, env_path=None, environ={}).default_target == "youtube"
+    assert settings.default_target == "youtube"  # R3: 실제 게시가 기본
+    for old in ("assist", "youtube_auto", "youtube"):
+        path = make_config({"browser": {"default_target": old}})
+        assert load_settings(path, env_path=None, environ={}).default_target == "youtube"
+    path = make_config({"browser": {"default_target": "sandbox"}})
+    assert load_settings(path, env_path=None, environ={}).default_target == "sandbox"
 
 
 @pytest.mark.parametrize(
@@ -163,24 +166,13 @@ def test_browser_settings_reject_bad_values(make_config, browser):
         load_settings(make_config({"browser": browser}), env_path=None, environ={})
 
 
-# ---------------------------------------------------------------- 내 채널 영상(own_video_ids)
+# ---------------------------------------------------------------- 옛 own_video_ids(R3: 읽지 않음)
 
 
-def test_own_video_ids_default_empty(clean_env, tmp_path):
-    settings = load_settings(env_path=tmp_path / "없음.env")
-    assert settings.own_video_ids == ()
-    assert settings.is_own_video("BBBBBBBBBB2") is False
-
-
-def test_own_video_ids_read_and_deduplicated(make_config):
-    path = make_config({"own_video_ids": ["BBBBBBBBBB2", " BBBBBBBBBB2 ", "AAAAAAAAAA1"]})
-    settings = load_settings(path, env_path=None, environ={})
-    assert settings.own_video_ids == ("BBBBBBBBBB2", "AAAAAAAAAA1")
-    assert settings.is_own_video("AAAAAAAAAA1") and not settings.is_own_video("CCCCCCCCCC3")
-    assert not settings.is_own_video(None)
-
-
-@pytest.mark.parametrize("raw", ["BBBBBBBBBB2", ["짧은값"], ["https://youtu.be/BBBBBBBBBB2"]])
-def test_own_video_ids_must_be_a_list_of_ids(make_config, raw):
-    with pytest.raises(ValueError, match="own_video_ids"):
-        load_settings(make_config({"own_video_ids": raw}), env_path=None, environ={})
+@pytest.mark.parametrize(
+    "raw", [["BBBBBBBBBB2"], "BBBBBBBBBB2", ["짧은값"], ["https://youtu.be/BBBBBBBBBB2"], None]
+)
+def test_old_own_video_ids_key_is_ignored_silently(make_config, raw):
+    """R3부터 내 채널 영상을 따로 가르지 않는다. 옛 설정 파일에 키가 남아 있어도 조용히 무시한다."""
+    settings = load_settings(make_config({"own_video_ids": raw}), env_path=None, environ={})
+    assert not hasattr(settings, "own_video_ids") and not hasattr(settings, "is_own_video")

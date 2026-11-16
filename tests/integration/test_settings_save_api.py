@@ -49,7 +49,17 @@ def test_get_settings_has_edit_values_defaults_and_choices(client):
     assert edit["changed"] == [] and edit["store_ready"] is True
     assert edit["ranges"]["limits.daily_max_comments"] == [1, 50]
     assert [c["label"] for c in edit["typing_speeds"]] == ["느리게", "보통", "빠르게"]
-    assert set(edit["applies_later"]) == {"comment.disclose_default", "posting.confirm_before_post"}
+    assert edit["applies_later"] == []  # R3: 광고 표기 기본값·게시 직전 확인도 바로 쓴다
+
+
+def test_disclose_default_and_confirm_apply_right_away(client):
+    res = put(client, **{"comment.disclose_default": False, "posting.confirm_before_post": True})
+    assert res.status_code == 200, res.text
+    services = client.app.state.services.get()
+    assert services.drafts.disclose_default is False
+    assert services.jobs.confirm_before_post is True
+    browser = client.get("/api/status").json()["browser"]
+    assert browser["disclose_default"] is False and browser["confirm_before_post"] is True
 
 
 # ---------------------------------------------------------------- 저장·바로 적용

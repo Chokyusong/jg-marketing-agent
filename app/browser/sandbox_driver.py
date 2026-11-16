@@ -41,12 +41,16 @@ TEXT_PROFILE_IN_USE = "그 프로필의 크롬 창이 이미 열려 있습니다
 
 
 class DriverError(Exception):
-    """사용자에게 보일 실패 사유를 담는다. `screenshot`이 참이면 화면 캡처를 남긴다."""
+    """사용자에게 보일 실패 사유를 담는다. `screenshot`이 참이면 화면 캡처를 남긴다.
 
-    def __init__(self, reason: str, *, screenshot: bool = True) -> None:
+    `code`(R3)는 작업 서비스가 알아볼 실패 종류(예: `signed_out` — 로그인 안 됨을 기록에 남긴다).
+    """
+
+    def __init__(self, reason: str, *, screenshot: bool = True, code: str = "") -> None:
         super().__init__(reason)
         self.reason = reason
         self.screenshot = screenshot
+        self.code = code
 
 
 class Stopped(Exception):  # noqa: N818 - 실패가 아니라 취소
@@ -131,7 +135,7 @@ class PlaywrightSandboxDriver:
             self._page.goto(url, wait_until="domcontentloaded")
             self._page.wait_for_selector("#comment-input", state="visible")
         except PlaywrightError:
-            raise DriverError("테스트 페이지를 열지 못했습니다(댓글 상자가 보이지 않음).") from None
+            raise DriverError("연습 페이지를 열지 못했습니다(댓글 상자가 보이지 않음).") from None
 
     def _launch(self, user_data_dir: Path) -> None:
         """프로필 폴더로 크롬을 열고 주소 가로채기(`_guard`)와 방문 기록을 건다."""
@@ -192,9 +196,11 @@ class PlaywrightSandboxDriver:
                 page.wait_for_timeout(self.rng.randint(lo, hi))
             typed = page.input_value("#comment-input")
         except PlaywrightError:
-            raise DriverError("댓글 상자에 입력하지 못했습니다.") from None
+            raise DriverError("연습 페이지 댓글 상자에 입력하지 못했습니다.") from None
         if typed != text:
-            raise DriverError("댓글 상자에 들어간 글이 승인한 초안과 다릅니다.")
+            raise DriverError(
+                "연습 페이지 댓글 상자에 들어간 글이 [댓글 달기]를 누른 초안과 다릅니다."
+            )
 
     def click_post(self) -> None:
         from playwright.sync_api import Error as PlaywrightError
@@ -202,7 +208,9 @@ class PlaywrightSandboxDriver:
         try:
             self._page.locator("#comment-submit").click(timeout=CLICK_TIMEOUT_MS)
         except PlaywrightError:
-            raise DriverError("게시 단추(「댓글」)를 찾지 못했거나 누르지 못했습니다.") from None
+            raise DriverError(
+                "연습 페이지에서 찾지 못한 요소: 「댓글」 게시 단추(요소 이름 #comment-submit)."
+            ) from None
 
     def verify_posted(self, text: str) -> None:
         """페이지의 댓글 목록에서 내 댓글 글을 찾는다. 페이지가 저장을 거절하면 그 사유로 실패."""
@@ -218,10 +226,10 @@ class PlaywrightSandboxDriver:
             handle = self._page.wait_for_function(script, arg=text, timeout=VERIFY_TIMEOUT_MS)
             result = handle.json_value()
         except PlaywrightError:
-            raise DriverError("게시한 댓글을 페이지에서 찾지 못했습니다(시간 초과).") from None
+            raise DriverError("게시한 댓글을 연습 페이지에서 찾지 못했습니다(시간 초과).") from None
         if result == "error":
             message = self._page.text_content("#post-status") or ""
-            raise DriverError(f"테스트 페이지가 게시를 거절했습니다: {message.strip()}")
+            raise DriverError(f"연습 페이지가 게시를 거절했습니다: {message.strip()}")
 
     # ------------------------------------------------------------ 마무리
 
