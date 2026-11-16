@@ -104,3 +104,8 @@ def test_js_does_not_use_inner_html(make_client):
     # 영상 제목 등 바깥 글을 innerHTML로 넣지 않는다(textContent만).
     for name in JS_FILES:
         assert "innerHTML" not in make_client(key=None).get(f"/static/js/{name}").text
+
+
+def test_bundled_serif_font_is_linked(page, make_client):
+    assert '<link rel="stylesheet" href="/static/fonts/fonts.css" />' in page
+    assert make_client(key=None).get("/static/fonts/fonts.css").status_code == 200
