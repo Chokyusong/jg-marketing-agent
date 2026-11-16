@@ -26,3 +26,5 @@ class BrowserHooks:
     confirm_timeout: float | None = None
     # 9단계: 모니터 목록 읽기(창 위치 확인). 비우면 Windows API(app/browser/screens.read_monitors)
     screens: Callable[[], Any] | None = None
+    # R2: 프로필 로그인 확인(프로필 폴더 -> LoginResult). 비우면 창 없는 크롬으로 유튜브를 읽는다
+    login_checker: Callable[[Path], Any] | None = None

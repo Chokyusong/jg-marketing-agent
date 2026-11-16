@@ -173,7 +173,8 @@ def test_missing_key_message(make_client, clean_env):
     assert res.status_code == 503
     error = res.json()["error"]
     assert error["kind"] == "missing_key"
-    assert "YOUTUBE_API_KEY" in error["action"]
+    # R2: 키는 프로그램의 설정 화면에서 넣는다(개발 용어 없이)
+    assert "설정 화면" in error["action"] and "API 키" in error["action"]
 
 
 def test_status_reports_key_presence_only(make_client, fake_key, clean_env):
@@ -211,6 +212,10 @@ MIXED = [
 ]
 
 
+# R2에서 쇼츠 길이 기준이 설정값이 됐다(기본 181초). 아래 세 테스트는 예전 기준 61초로 경계를 본다
+SHORTS_61 = {"discover": {"shorts_under_seconds": 61}}
+
+
 def _mixed_videos(ids):
     items = []
     for vid, duration in MIXED:
@@ -240,7 +245,8 @@ def _add_mixed(mock):
 
 def test_shorts_are_excluded_keeping_order_and_count(mock_http, fake_key, make_client):
     mock = _add_mixed(mock_http())
-    data = make_client(mock, key=fake_key).get("/api/videos", params={"max_results": 4}).json()
+    client = make_client(mock, key=fake_key, overrides=SHORTS_61)
+    data = client.get("/api/videos", params={"max_results": 4}).json()
     # 61초 미만(12초·39초·60초)과 길이 정보가 없는 것을 빼고, 검색 순서대로 4개
     assert [v["video_id"] for v in data["items"]] == [
         "LongVideo01", "Edge61Sec14", "LongVideo06", "LongVideo08"]
@@ -264,7 +270,7 @@ def test_shorts_kept_when_turned_off(mock_http, fake_key, make_client):
 
 def test_shorts_setting_is_part_of_the_cache_key(mock_http, fake_key, make_client):
     mock = _add_mixed(mock_http())
-    client = make_client(mock, key=fake_key)
+    client = make_client(mock, key=fake_key, overrides=SHORTS_61)
     on = client.get("/api/videos", params={"max_results": 4}).json()
     assert on["cached"] is False
     again = client.get("/api/videos", params={"max_results": 4}).json()
@@ -285,6 +291,26 @@ def test_shorts_default_comes_from_config(mock_http, fake_key, make_client):
 
 def test_fewer_long_videos_than_requested(mock_http, fake_key, make_client):
     mock = _add_mixed(mock_http())
-    data = make_client(mock, key=fake_key).get("/api/videos", params={"max_results": 12}).json()
+    client = make_client(mock, key=fake_key, overrides=SHORTS_61)
+    data = client.get("/api/videos", params={"max_results": 12}).json()
     assert len(data["items"]) == 5  # 긴 영상이 5개뿐이면 5개만(채우려고 다시 검색하지 않는다)
     assert len([r for r in mock.requests if r.url.path.endswith("/search")]) == 1
+
+
+def test_shorts_default_is_three_minutes(mock_http, fake_key, make_client):
+    """R2: 기본 기준 181초. 3분(180초) 영상까지 쇼츠로 본다(유튜브 쇼츠는 3분까지)."""
+    mock = _add_mixed(mock_http())
+    data = make_client(mock, key=fake_key).get("/api/videos", params={"max_results": 12}).json()
+    assert [v["video_id"] for v in data["items"]] == ["LongVideo01", "LongVideo06", "LongVideo08"]
+    assert data["shorts_excluded"] == 6  # 12초·길이 없음·61초·60초·39초·3분
+
+
+def test_shorts_threshold_change_uses_a_new_cache_entry(mock_http, fake_key, make_client):
+    """같은 검색이어도 쇼츠 기준이 다르면 10분 저장을 따로 쓴다(결과가 다르다)."""
+    from app.youtube.quota import search_cache_key
+
+    a = search_cache_key("q", order="date", period="week", max_results=4, exclude_shorts=True,
+                         shorts_under=61)
+    b = search_cache_key("q", order="date", period="week", max_results=4, exclude_shorts=True,
+                         shorts_under=181)
+    assert a != b

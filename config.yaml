@@ -1,9 +1,12 @@
+# 기본값이다. 사용자는 프로그램의 설정 화면에서 바꾸고, 바꾼 값은 %LOCALAPPDATA%\JGMarketingAgent\settings.json에
+# 저장된다(이 파일은 그대로). 유튜브 API 키도 설정 화면에서 넣는다(암호화해 같은 폴더에).
 profiles: [유튜브1, 유튜브2, 유튜브3]
 comment:
   min_chars: 40
   max_chars: 120
   brand: 운명원
   disclosure: "[광고]"
+  disclose_default: true  # 광고 표기 기본값(켬). 모든 영상에 적용하는 것은 R3
 own_video_ids: []      # 내 채널 영상 ID(11자). 이 영상에서만 홍보 표기를 켜고 끌 수 있고 실제 유튜브에 자동 게시한다
 brand:
   facts:               # 운명원에 대해 쓸 수 있는 사실 문장만(D4 기본값 한 줄)
@@ -13,10 +16,13 @@ validator:
   extra_patterns: []
 limits:
   daily_max_comments: 10
+posting:
+  confirm_before_post: false  # 게시 직전에 한 번 더 확인(기본 끔). 게시 동작에 적용하는 것은 R3
 discover:
   query: 연애 고민
   max_results: 12
-  exclude_shorts: true    # 검색 결과에서 쇼츠(61초 미만·길이 없음)를 뺀다. 화면 01 「쇼츠 제외」의 기본값
+  exclude_shorts: true    # 검색 결과에서 쇼츠(아래 길이 미만·길이 없음)를 뺀다. ①칸 「쇼츠 빼기」의 기본값
+  shorts_under_seconds: 181  # 이보다 짧은 영상을 쇼츠로 본다(유튜브 쇼츠는 3분까지)
 rising:
   query: 연애
   min_views: 1000

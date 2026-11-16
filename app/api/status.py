@@ -1,4 +1,7 @@
-"""위 줄 시스템 상태. 2단계 YouTube 키 유무와 오늘 할당량, 4단계 AI(LLM) 상태, 8단계 브라우저."""
+"""아래 줄 시스템 상태. 2단계 YouTube 키 유무와 오늘 할당량, 4단계 AI(LLM) 상태, 8단계 브라우저.
+
+R2: 브라우저 프로필마다 로그인 확인 결과(로그인됨·채널 이름·확인한 때)를 더했다.
+"""
 
 from __future__ import annotations
 
@@ -41,12 +44,22 @@ def ai_status(services: Services) -> AIStatusOut:
 def browser_status(services: Services) -> BrowserStatusOut:
     """크롬이 있는지, Playwright가 있는지, 프로필 폴더가 있는지(경로는 싣지 않는다)."""
     root = services.settings.browser.profiles_root
+    logins = {s.name: s for s in services.accounts.states()} if services.accounts else {}
+
+    def login(name: str) -> dict:
+        s = logins.get(name)
+        if s is None:
+            return {}
+        return {"signed_in": s.signed_in, "channel_name": s.channel, "checked_at": s.checked_at,
+                "login_window_open": s.window_open}
+
     return BrowserStatusOut(
         chrome_found=services.find_chrome() is not None,
         playwright_ready=services.jobs.playwright_ready(),
         profiles=[
             BrowserProfileOut(
-                name=p.name, folder=p.folder, exists=profile_dir(root, p.folder).is_dir()
+                name=p.name, folder=p.folder, exists=profile_dir(root, p.folder).is_dir(),
+                **login(p.name),
             )
             for p in services.profiles.list_profiles()
         ],

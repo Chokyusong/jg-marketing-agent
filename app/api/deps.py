@@ -1,8 +1,15 @@
-"""라우터가 쓰는 서비스 묶음. 첫 요청 때 한 번 만든다(앱을 켤 때 DB·설정을 건드리지 않게)."""
+"""라우터가 쓰는 서비스 묶음. 첫 요청 때 한 번 만든다(앱을 켤 때 DB·설정을 건드리지 않게).
+
+R2: 설정을 저장하면 `ServiceHolder.update_settings`가 설정을 다시 읽고 서비스 묶음을 버린다.
+다음 요청이 새 설정으로 새 묶음을 만든다(프로그램을 다시 켜지 않아도 바로 적용). 게시 작업이나
+로그인 확인이 돌고 있으면 저장하지 않는다(`settings_busy`). 버린 묶음의 바깥 연결(YouTube·LLM)은
+그때 진행 중인 요청이 끝날 수 있게 프로그램을 닫을 때 함께 닫는다.
+"""
 
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import httpx
@@ -13,17 +20,19 @@ from app.analysis.checking import CheckService
 from app.analysis.context import ContextService
 from app.analysis.drafter import DraftService
 from app.analysis.validator import ValidatorRules
-from app.browser.chrome import find_chrome
+from app.browser.chrome import find_chrome, popen_launcher
 from app.browser.hooks import BrowserHooks
 from app.browser.jobs import JobService
+from app.browser.login import LoginWindows, ProfileAccounts, default_checker
 from app.browser.screens import Monitor, read_monitors
-from app.config import Settings, load_settings
-from app.errors import AppError
+from app.config import Settings, load_settings, reload_settings
+from app.errors import AppError, ErrorKind
 from app.llm.base import LLMClient, LLMHealth
 from app.llm.registry import build_llm
 from app.ops.ledger import Ledger
 from app.ops.profiles import ProfileService
 from app.ops.rules import PostRules
+from app.user_settings import UserStore, default_user_dir
 from app.youtube.client import YouTubeClient
 from app.youtube.quota import Clock, QuotaTracker, SearchCache, utc_now
 from app.youtube.service import VideoService
@@ -48,6 +57,8 @@ class Services:
     # 8단계: 게시 작업(테스트 페이지 자동 실행 · 실제 유튜브 열기)
     jobs: JobService = field(default=None)  # type: ignore[assignment]
     hooks: BrowserHooks = field(default_factory=BrowserHooks)
+    # R2: 프로필 로그인 창 열기와 로그인 확인
+    accounts: ProfileAccounts = field(default=None)  # type: ignore[assignment]
 
     def find_chrome(self):
         if self.hooks.chrome_finder is not None:
@@ -88,6 +99,7 @@ def build_services(
     llm_transport: httpx.BaseTransport | None = None,
     clock: Clock = utc_now,
     browser_hooks: BrowserHooks | None = None,
+    windows: LoginWindows | None = None,
 ) -> Services:
     db.init_db(settings.db_path)
     quota = QuotaTracker(settings.db_path, clock=clock)
@@ -98,6 +110,7 @@ def build_services(
         quota=quota,
         cache=SearchCache(settings.db_path, clock=clock),
         clock=clock,
+        shorts_under_seconds=settings.discover.shorts_under_seconds,
     )
     context = ContextService(
         videos,
@@ -149,6 +162,21 @@ def build_services(
     services.hooks = browser_hooks or BrowserHooks()
     services.jobs = build_jobs(services, clock=clock)
     services.jobs.recover_stale()  # 지난번에 작업 중 꺼져 예약으로 남은 게시를 푼다
+    hooks = services.hooks
+    services.accounts = ProfileAccounts(
+        db_path=settings.db_path,
+        profiles=services.profiles,
+        browser=settings.browser,
+        chrome_finder=services.find_chrome,
+        run_on_worker=services.jobs.run_task,
+        busy=services.jobs.busy,
+        windows=windows or LoginWindows(),
+        launcher=hooks.launcher or popen_launcher,
+        checker=hooks.login_checker or default_checker,
+        playwright_ready=services.jobs.playwright_ready,
+        screens=services.monitors,
+        clock=clock,
+    )
     return services
 
 
@@ -203,32 +231,91 @@ class ServiceHolder:
         llm_transport: httpx.BaseTransport | None = None,
         clock: Clock = utc_now,
         browser_hooks: BrowserHooks | None = None,
+        on_build: Callable[[Services], None] | None = None,
     ) -> None:
         self._settings = settings
         self._browser_hooks = browser_hooks
         self._transport = transport
         self._llm_transport = llm_transport
         self._clock = clock
+        self._on_build = on_build  # 테스트: 새로 만든 묶음에 가짜 LLM 등을 끼우는 자리
         self._services: Services | None = None
-        self._lock = threading.Lock()
+        self._retired: list[Services] = []
+        self._lock = threading.RLock()
+        # 로그인 창 목록은 서비스를 다시 만들어도 그대로 둔다. 창이 닫히면 지금 묶음으로 확인한다
+        self.windows = LoginWindows()
+        self.windows.on_closed = self._check_after_close
 
     @property
     def settings(self) -> Settings:
-        if self._settings is None:
-            self._settings = load_settings()
-        return self._settings
+        with self._lock:
+            if self._settings is None:
+                # 실제 프로그램: 프로그램 안에서 바꾼 설정(%LOCALAPPDATA%/JGMarketingAgent)을 먼저
+                self._settings = load_settings(user_dir=default_user_dir())
+            return self._settings
 
     def get(self) -> Services:
         with self._lock:
             if self._services is None:
-                self._services = build_services(
+                services = build_services(
                     self.settings,
                     transport=self._transport,
                     llm_transport=self._llm_transport,
                     clock=self._clock,
                     browser_hooks=self._browser_hooks,
+                    windows=self.windows,
                 )
+                if self._on_build is not None:
+                    self._on_build(services)
+                self._services = services
             return self._services
+
+    def store(self) -> UserStore:
+        source = self.settings.source
+        store = source.store() if source is not None else None
+        if store is None:
+            raise AppError(ErrorKind.SETTINGS_NO_STORE)
+        return store
+
+    def busy(self) -> bool:
+        with self._lock:
+            services = self._services
+        return services is not None and services.jobs is not None and services.jobs.busy()
+
+    def update_settings(self, change: Callable[[UserStore], None]) -> Settings:
+        """사용자 설정을 바꾸고(`change`) 바로 적용한다. 게시 중이면 `settings_busy`.
+
+        `change`가 실패하면 오류를 던진다(서비스는 그때의 설정으로 다음 요청이 새로 만든다).
+        """
+        with self._lock:
+            current = self.settings
+            store = self.store()
+            services = self._services
+            if services is not None and services.jobs is not None:
+                if not services.jobs.close_if_idle():
+                    raise AppError(ErrorKind.SETTINGS_BUSY)
+            try:
+                change(store)
+                self._settings = reload_settings(current)
+            finally:
+                if services is not None:
+                    self._retire(services)
+                    self._services = None
+            return self._settings
+
+    def _retire(self, services: Services) -> None:
+        """버리는 묶음: 작업 스레드는 바로 멈추고, 바깥 연결은 프로그램을 닫을 때 닫는다."""
+        if services.jobs is not None:
+            services.jobs.shutdown(timeout=5)
+        self._retired.append(services)
+
+    def _check_after_close(self, name: str) -> None:
+        try:
+            services = self.get()
+        except Exception:
+            return
+        if services.accounts is not None:
+            services.accounts.check_after_close(name)
 
     def shutdown_jobs(self) -> None:
         """프로그램 창을 닫을 때: 진행 중인 게시 작업을 취소하고 크롬을 닫는다.
@@ -245,6 +332,12 @@ class ServiceHolder:
             if self._services is not None:
                 self._services.close()
                 self._services = None
+            for old in self._retired:
+                try:
+                    old.close()
+                except Exception:  # 이미 닫힌 연결 등은 무시
+                    pass
+            self._retired.clear()
 
 
 def get_services(request: Request) -> Services:

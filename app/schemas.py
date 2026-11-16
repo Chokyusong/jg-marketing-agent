@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -114,7 +114,12 @@ class AIStatusOut(BaseModel):
 class BrowserProfileOut(BaseModel):
     name: str  # 화면 이름(유튜브1)
     folder: str  # 폴더 이름(profile-1). PC의 전체 경로는 싣지 않는다
-    exists: bool  # 프로필 폴더가 이미 있는지(구글 로그인은 scripts/setup_profile.ps1로 사람이)
+    exists: bool  # 프로필 폴더가 이미 있는지
+    # R2: 로그인 확인 결과(확인한 적 없으면 signed_in null). 아이디·비밀번호는 없다
+    signed_in: bool | None = None
+    channel_name: str = ""
+    checked_at: str | None = None
+    login_window_open: bool = False  # 프로그램이 연 로그인·유튜브 창이 아직 열려 있는지
 
 
 class BrowserStatusOut(BaseModel):
@@ -367,6 +372,14 @@ class ProfileOut(BaseModel):
     name: str  # 화면 이름(유튜브1)
     folder: str  # 폴더 이름(profile-1). PC의 전체 경로는 싣지 않는다
     last_used_at: str | None  # 그 대상에서 마지막으로 예약한 시각(없으면 null)
+    # R2: 로그인 확인 결과(필드 추가)
+    exists: bool = False
+    signed_in: bool | None = None
+    channel_name: str = ""
+    checked_at: str | None = None
+    login_state: Literal["signed_in", "signed_out", "unknown"] | None = None
+    login_note: str = ""
+    login_window_open: bool = False
 
     @classmethod
     def from_profile(cls, p: Profile, last_used: dict[str, str]) -> ProfileOut:
@@ -587,12 +600,16 @@ class SettingsBrowserOut(BaseModel):
 class SettingsYouTubeOut(BaseModel):
     key_configured: bool  # 키는 있는지 없는지만(값은 절대 싣지 않는다)
     quota: QuotaOut
+    # R2: 어디서 왔는지(program 프로그램에 저장 / dev_file 개발용 .env·환경 변수 / null 없음)
+    key_source: Literal["program", "dev_file"] | None = None
+    can_store_key: bool = True  # 이 PC에서 키를 암호화해 저장할 수 있는지(Windows)
 
 
 class SettingsDiscoverOut(BaseModel):
     query: str
     max_results: int
     exclude_shorts: bool
+    shorts_under_seconds: int = 181  # R2: 이보다 짧은 영상을 쇼츠로 본다
 
 
 class SettingsOut(BaseModel):
@@ -609,3 +626,94 @@ class SettingsOut(BaseModel):
     youtube: SettingsYouTubeOut
     discover: SettingsDiscoverOut
     transcript_provider: str
+    edit: SettingsEditOut | None = None  # R2: 편집에 필요한 지금 값·기본값·고를 수 있는 값
+
+
+# ---------------------------------------------------------------- R2: 설정 저장과 프로필 로그인
+
+
+class ChoiceOut(BaseModel):
+    value: str
+    label: str
+
+
+class SettingsEditOut(BaseModel):
+    """설정 화면이 편집에 쓰는 값. 칸 이름은 `app/user_settings.FIELDS`와 같다(키 값은 없다)."""
+
+    values: dict[str, Any]  # 지금 쓰는 값
+    defaults: dict[str, Any]  # config.yaml(·개발용 .env)의 값 = [기본값으로] 누르면 돌아갈 값
+    changed: list[str]  # 프로그램 안에서 바꿔 저장한 칸
+    ranges: dict[str, list[int]]  # 숫자 칸의 [최소, 최대]
+    typing_speeds: list[ChoiceOut]
+    store_ready: bool  # 저장할 곳이 있는지(실제 프로그램은 늘 참)
+    applies_later: list[str]  # 값은 저장하지만 동작에는 다음 단계(R3)에서 쓰는 칸
+
+
+class SettingsUpdateIn(BaseModel):
+    values: dict[str, Any] = Field(default_factory=dict)
+
+
+class YouTubeKeyIn(BaseModel):
+    key: str = Field(min_length=1, max_length=400)
+
+
+class YouTubeKeyOut(BaseModel):
+    """키 저장·지우기 결과. 키 값은 싣지 않는다."""
+
+    key_configured: bool
+    key_source: Literal["program", "dev_file"] | None
+    can_store_key: bool
+
+
+class KeyTestOut(BaseModel):
+    ok: bool
+    result: Literal["ok", "no_key", "rejected", "quota", "network", "error"]
+    message: str
+    action: str = ""
+    quota: QuotaOut
+
+
+class LLMModelOut(BaseModel):
+    name: str
+    kind: Literal["general", "code", "embed"]
+    size_gb: float | None = None
+    current: bool = False
+
+
+class LLMModelsOut(BaseModel):
+    reachable: bool  # Ollama에 닿았는지
+    current: str  # 지금 쓰는 모델
+    current_installed: bool
+    items: list[LLMModelOut]
+
+
+class ScreenOut(BaseModel):
+    id: str
+    label: str
+    left: int
+    top: int
+    width: int
+    height: int
+    primary: bool
+    position: str  # 이 모니터를 고르면 쓸 창 위치 "x,y"
+    current: bool  # 지금 창 위치가 이 모니터 안인지
+
+
+class ScreensOut(BaseModel):
+    checked: bool  # 모니터 정보를 읽었는지
+    window_position: str  # 지금 설정한 창 위치
+    items: list[ScreenOut]
+
+
+class ProfileLoginOut(BaseModel):
+    """로그인 창 열기·로그인 확인 결과."""
+
+    name: str
+    exists: bool
+    signed_in: bool | None
+    login_state: Literal["signed_in", "signed_out", "unknown"] | None
+    channel_name: str
+    checked_at: str | None
+    note: str
+    login_window_open: bool
+    message: str  # 화면에 보일 한 줄

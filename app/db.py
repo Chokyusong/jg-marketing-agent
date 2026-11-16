@@ -164,6 +164,16 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX sandbox_comments_video ON sandbox_comments(video_id, id);
     """,
+    # R2: 프로필 로그인 확인 결과(프로필 이름마다 마지막 한 번). 아이디·비밀번호는 없다
+    """
+    CREATE TABLE profile_logins (
+        profile TEXT PRIMARY KEY,
+        state TEXT NOT NULL,
+        channel TEXT NOT NULL DEFAULT '',
+        checked_at TEXT NOT NULL,
+        note TEXT NOT NULL DEFAULT ''
+    );
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

@@ -187,6 +187,24 @@ class OllamaClient(TextJSONLLM):
         installed = any(same_model(n, self.model) for n in names)
         return LLMHealth(self.provider, self.model, True, installed, self.local)
 
+    def list_models(self) -> list[dict[str, Any]] | None:
+        """이 PC의 Ollama에 설치된 모델(`/api/tags`): 이름과 크기(바이트). 닿지 않으면 None."""
+        try:
+            res = self._http.get("/api/tags", timeout=HEALTH_TIMEOUT_SECONDS)
+            res.raise_for_status()
+            models = res.json().get("models") or []
+        except (httpx.HTTPError, ValueError, AttributeError):
+            return None
+        out = []
+        for m in models:
+            if not isinstance(m, dict):
+                continue
+            name = str(m.get("name") or m.get("model") or "").strip()
+            if name:
+                size = m.get("size")
+                out.append({"name": name, "size": int(size) if isinstance(size, int) else None})
+        return out
+
     def warmup(self) -> float:
         """빈 `messages`로 모델을 불러 둔다(`keep_alive` 동안 머문다). 걸린 초를 돌려준다."""
         started = time.monotonic()

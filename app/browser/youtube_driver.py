@@ -53,6 +53,10 @@ class YouTubeSelectors:
     editor: str = "ytd-commentbox #contenteditable-root"
     submit: str = "ytd-commentbox #submit-button"
     comment_text: str = "ytd-comments#comments #content-text"
+    # R2 로그인 확인(읽기만): 계정 이름. 유튜브가 계정 메뉴에 쓰는 정보 주소(같은 사이트, GET)와,
+    # 그것을 못 읽을 때 볼 화면 요소(계정 메뉴가 그려져 있을 때만 있다)
+    account_endpoint: str = "/getAccountSwitcherEndpoint"
+    account_name: str = "#account-name"
 
 
 SELECTORS = YouTubeSelectors()

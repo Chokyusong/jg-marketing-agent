@@ -13,6 +13,7 @@ def test_config_yaml_matches_design(base_config):
         "max_chars": 120,
         "brand": "운명원",
         "disclosure": "[광고]",
+        "disclose_default": True,  # R2: 광고 표기 기본값(켬)
     }
     assert base_config["limits"]["daily_max_comments"] == 10
     assert base_config["browser"]["default_target"] == "sandbox"

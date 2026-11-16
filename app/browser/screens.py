@@ -120,6 +120,82 @@ def check_window_position(
     return PositionCheck(requested, safe, True, bool(good), note)
 
 
+# ---------------------------------------------------------------- R2: 설정 화면의 모니터 고르기
+
+
+@dataclass(frozen=True)
+class ScreenChoice:
+    """설정 화면에서 고르는 모니터 하나.
+
+    `position`은 그 모니터 왼쪽 위에서 60,60 떨어진 안전한 곳.
+    """
+
+    id: str
+    label: str
+    left: int
+    top: int
+    width: int
+    height: int
+    primary: bool
+    position: tuple[int, int]
+    current: bool  # 지금 설정한 창 위치가 이 모니터 안인지
+
+
+def monitor_id(m: Monitor) -> str:
+    return f"{m.left}_{m.top}_{m.right - m.left}_{m.bottom - m.top}"
+
+
+def safe_position(m: Monitor) -> tuple[int, int]:
+    return m.left + SAFE_OFFSET[0], m.top + SAFE_OFFSET[1]
+
+
+def _where(m: Monitor, main: Monitor | None) -> str:
+    """주 모니터에서 본 방향(위쪽·아래쪽·왼쪽·오른쪽)."""
+    if main is None or m == main:
+        return ""
+    cx, cy = (m.left + m.right) / 2, (m.top + m.bottom) / 2
+    mx, my = (main.left + main.right) / 2, (main.top + main.bottom) / 2
+    dx, dy = cx - mx, cy - my
+    if abs(dy) >= abs(dx):
+        return "위쪽" if dy < 0 else "아래쪽"
+    return "왼쪽" if dx < 0 else "오른쪽"
+
+
+def screen_choices(
+    monitors: Sequence[Monitor], window_position: Any = None
+) -> list[ScreenChoice]:
+    """고를 수 있는 모니터 목록(주 모니터가 먼저).
+
+    이름은 「모니터 1 · 주 모니터 · 1920×1080」처럼.
+    """
+    good = [m for m in monitors if m.valid]
+    main = primary_monitor(good)
+    ordered = sorted(good, key=lambda m: (m != main, m.top, m.left))
+    point = _as_point(window_position)
+    out: list[ScreenChoice] = []
+    for i, m in enumerate(ordered, start=1):
+        w, h = m.right - m.left, m.bottom - m.top
+        where = "주 모니터" if m == main else f"{_where(m, main) or '다른'} 모니터"
+        out.append(
+            ScreenChoice(
+                id=monitor_id(m),
+                label=f"모니터 {i} · {where} · {w}×{h}",
+                left=m.left,
+                top=m.top,
+                width=w,
+                height=h,
+                primary=m == main,
+                position=safe_position(m),
+                current=bool(point and m.contains(*point)),
+            )
+        )
+    return out
+
+
+def find_choice(choices: Sequence[ScreenChoice], screen_id: str) -> ScreenChoice | None:
+    return next((c for c in choices if c.id == screen_id), None)
+
+
 # ---------------------------------------------------------------- Windows API
 
 

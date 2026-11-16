@@ -13,12 +13,15 @@
 실제 유튜브 화면을 자동으로 조작하는 코드는 없다(DESIGN 6.1). assist는 크롬을 여는 것까지만.
 9단계: 대시보드 완성. 읽기 전용 `GET /api/settings`(SETTINGS 패널), 크롬 창 위치가 화면 밖이면
 주 모니터로 바꿔 띄운다(`app/browser/screens.py`). 화면은 다음 행동 하나만 강조한다.
+R2: 설정과 프로필 로그인을 프로그램 안에서. `PUT /api/settings`·키 저장(DPAPI)·
+`GET /api/llm/models`·
+`GET /api/screens`·`POST /api/profiles/{이름}/login|check|open`. 저장하면 서비스 묶음을 다시 만든다.
 """
 
 from __future__ import annotations
 
 import mimetypes
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -36,7 +39,7 @@ from app.api import settings as settings_api
 from app.api import status as status_api
 from app.api import validate as validate_api
 from app.api import videos as videos_api
-from app.api.deps import ServiceHolder
+from app.api.deps import ServiceHolder, Services
 from app.browser import sandbox as sandbox_page
 from app.browser.hooks import BrowserHooks
 from app.config import Settings
@@ -63,11 +66,14 @@ def create_app(
     llm_transport: httpx.BaseTransport | None = None,
     clock: Clock = utc_now,
     browser_hooks: BrowserHooks | None = None,
+    on_build: Callable[[Services], None] | None = None,
 ) -> FastAPI:
     """앱을 만든다. 테스트는 임시 설정과 가짜 전송(httpx.MockTransport)을 넣는다.
 
     `transport`는 YouTube, `llm_transport`는 LLM 공급자(Ollama) 호출에 쓴다.
     `browser_hooks`(8단계)는 크롬 찾기·실행, 테스트 페이지 실행기를 가짜로 바꿀 때 쓴다.
+    `on_build`(R2)는 서비스 묶음을 만들 때마다 부른다
+    (설정 저장으로 다시 만들어도 가짜 LLM을 끼우게).
     """
     holder = ServiceHolder(
         settings,
@@ -75,6 +81,7 @@ def create_app(
         llm_transport=llm_transport,
         clock=clock,
         browser_hooks=browser_hooks,
+        on_build=on_build,
     )
 
     @asynccontextmanager

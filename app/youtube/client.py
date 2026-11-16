@@ -21,7 +21,7 @@ import httpx
 from app.errors import AppError, ErrorKind, redact
 
 BASE_URL = "https://www.googleapis.com/youtube/v3"
-UNIT_COSTS = {"search": 100, "videos": 1, "commentThreads": 1}
+UNIT_COSTS = {"search": 100, "videos": 1, "commentThreads": 1, "i18nLanguages": 1}
 
 log = logging.getLogger("app.youtube")
 
@@ -245,6 +245,16 @@ class YouTubeClient:
         return body
 
     # -- 기능
+
+    def ping(self) -> None:
+        """키가 통하는지 1단위짜리 호출(언어 목록)로 본다(R2 [연결 확인]).
+
+        검색(100단위)을 쓰지 않는다.
+
+        통하면 아무것도 돌려주지 않고, 안 통하면 `_get`과 같은 AppError(missing_key·key_rejected·
+        quota_exceeded·network 등)를 던진다.
+        """
+        self._get("i18nLanguages", {"part": "snippet", "hl": "ko"})
 
     def search_video_ids(
         self,

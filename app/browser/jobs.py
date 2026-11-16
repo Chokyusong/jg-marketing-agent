@@ -30,6 +30,10 @@ assist는 대기 → 프로필 실행 → 사람 게시 대기(awaiting_confirm)
   `youtube_driver.PlaywrightYouTubeDriver`로 그 영상 페이지를 열어 sandbox와 같은 순서
   (입력 → 승인 대기 → 「댓글」 → 확인)로 돈다. 「댓글」을 누른 뒤에는 페이지·Data API로 못 찾아도
   실패로 되돌리지 않고 「게시됨(확인 못 함)」으로 남긴다(다시 시도해 같은 댓글이 두 번 달리지 않게).
+- **작업 스레드에서 도는 짧은 일(R2).** 프로필 로그인 확인처럼 Playwright를 쓰는 다른 일도
+  `run_task(fn)`로 같은 작업 스레드에서 돌린다. 게시 작업이 진행 중이면 받지 않고, 도는 동안에는
+  새 게시를 받지 않는다. `busy()`는 둘 중 하나라도 돌고 있는지, `close_if_idle()`은 쉬고 있을 때만
+  더 받지 않게 닫는다(설정을 저장해 서비스를 다시 만들 때).
 - **창 위치(9단계).** 창이 보이는 실행(assist, 또는 headless가 아닌 sandbox)은 띄우기 전에
   `browser.window_position`이 실제 모니터 안인지 본다(`screens.check_window_position`). 밖이면
   주 모니터의 안전한 위치로 바꿔 띄우고 작업 기록(job_events)에 그렇게 했다고 남긴다.
@@ -272,6 +276,24 @@ def _no_own_videos(_video_id: str) -> bool:
     return False
 
 
+class _Task:
+    """작업 스레드에서 돌릴 짧은 일 하나(결과나 오류를 기다리는 쪽에 넘긴다)."""
+
+    def __init__(self, fn: Callable[[], Any]) -> None:
+        self.fn = fn
+        self.done = threading.Event()
+        self.result: Any = None
+        self.error: BaseException | None = None
+
+    def run(self) -> None:
+        try:
+            self.result = self.fn()
+        except BaseException as exc:  # noqa: BLE001 - 기다리는 쪽에서 다시 던진다
+            self.error = exc
+        finally:
+            self.done.set()
+
+
 def playwright_installed() -> bool:
     return importlib.util.find_spec("playwright") is not None
 
@@ -321,6 +343,7 @@ class JobService:
         self._queue: queue.Queue[Job | None] = queue.Queue()
         self._worker: threading.Thread | None = None
         self._closed = False
+        self._task: _Task | None = None  # 작업 스레드에서 도는 짧은 일(로그인 확인)
 
     # ------------------------------------------------------------ 시작
 
@@ -348,6 +371,8 @@ class JobService:
                     detail=f"진행 중: {self._active.id}",
                     extra={"job_id": self._active.id},
                 )
+            if self._task is not None:
+                raise AppError(ErrorKind.JOB_BUSY, detail="프로필 로그인을 확인하는 중")
             self.recover_stale()
             if mode == "auto" and not self.own_video(video_id):
                 raise AppError(ErrorKind.AUTO_POST_OWN_ONLY, detail=video_id)
@@ -443,6 +468,48 @@ class JobService:
     def get(self, job_id: str) -> JobView:
         with self._lock:
             return self._view(self._require(job_id))
+
+    def busy(self) -> bool:
+        """게시 작업이나 작업 스레드의 짧은 일이 돌고 있는지."""
+        with self._lock:
+            job_running = self._active is not None and not self._active.finished
+            return job_running or self._task is not None
+
+    def close_if_idle(self) -> bool:
+        """쉬고 있으면 더 받지 않게 닫고 True. 무엇이 돌고 있으면 아무것도 안 하고 False."""
+        with self._lock:
+            if self._closed:
+                return True
+            job_running = self._active is not None and not self._active.finished
+            if job_running or self._task is not None:
+                return False
+            self._closed = True
+            return True
+
+    def run_task(self, fn: Callable[[], Any], *, timeout: float = 90.0) -> Any:
+        """`fn`을 작업 스레드에서 돌리고 결과를 돌려준다(Playwright는 그 스레드에서만 쓴다).
+
+        게시 작업이 진행 중이거나 다른 짧은 일이 돌고 있으면 `profile_check_busy`.
+        """
+        with self._lock:
+            if self._closed:
+                raise AppError(ErrorKind.PROFILE_CHECK_BUSY, detail="프로그램을 닫는 중")
+            job_running = self._active is not None and not self._active.finished
+            if job_running or self._task is not None:
+                raise AppError(ErrorKind.PROFILE_CHECK_BUSY)
+            task = self._task = _Task(fn)
+            self._ensure_worker()
+            self._queue.put(task)  # type: ignore[arg-type]
+        try:
+            if not task.done.wait(timeout):
+                raise AppError(ErrorKind.PROFILE_CHECK_FAILED, detail="시간 초과")
+        finally:
+            with self._lock:
+                if self._task is task and task.done.is_set():
+                    self._task = None
+        if task.error is not None:
+            raise task.error
+        return task.result
 
     def active_id(self) -> str | None:
         with self._lock:
@@ -584,6 +651,12 @@ class JobService:
             job = self._queue.get()
             if job is None:
                 return
+            if isinstance(job, _Task):
+                job.run()
+                with self._lock:
+                    if self._task is job:
+                        self._task = None
+                continue
             self._run(job)
 
     def _run(self, job: Job) -> None:

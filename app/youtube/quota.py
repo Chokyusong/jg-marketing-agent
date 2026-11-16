@@ -54,12 +54,21 @@ class QuotaTracker:
 
 
 def search_cache_key(
-    query: str, *, order: str, period: str, max_results: int, exclude_shorts: bool = False
+    query: str,
+    *,
+    order: str,
+    period: str,
+    max_results: int,
+    exclude_shorts: bool = False,
+    shorts_under: int | None = None,
 ) -> str:
-    """같은 검색 10분 저장의 키. 쇼츠 제외 여부도 키에 든다(결과가 다르다)."""
+    """같은 검색 10분 저장의 키. 쇼츠 제외 여부와 쇼츠 길이 기준(R2)도 키에 든다(결과가 다르다)."""
+    body = {"q": " ".join(query.split()), "order": order, "period": period, "n": max_results,
+            "no_shorts": bool(exclude_shorts)}
+    if shorts_under is not None:
+        body["short_s"] = int(shorts_under)
     return json.dumps(
-        {"q": " ".join(query.split()), "order": order, "period": period, "n": max_results,
-         "no_shorts": bool(exclude_shorts)},
+        body,
         ensure_ascii=False,
         sort_keys=True,
     )

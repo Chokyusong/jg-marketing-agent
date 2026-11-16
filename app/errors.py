@@ -56,6 +56,15 @@ class ErrorKind(StrEnum):
     AUTO_POST_OWN_ONLY = "auto_post_own_only"  # 실제 유튜브 자동 게시는 내 채널 영상만
     PROFILE_IN_USE = "profile_in_use"  # 같은 프로필 폴더를 다른 크롬이 쓰고 있다
     SCREENSHOT_NOT_FOUND = "screenshot_not_found"
+    # R2: 프로그램 안의 설정과 프로필 로그인
+    SETTINGS_INVALID = "settings_invalid"  # 칸별 이유는 응답의 fields
+    SETTINGS_BUSY = "settings_busy"  # 게시 중에는 저장(서비스 다시 만들기)을 하지 않는다
+    SETTINGS_WRITE_FAILED = "settings_write_failed"
+    SETTINGS_NO_STORE = "settings_no_store"  # 저장할 폴더가 정해지지 않음(테스트에서만)
+    SECRET_STORE_UNAVAILABLE = "secret_store_unavailable"  # Windows가 아니라 키를 암호화할 수 없음
+    KEY_BAD_SHAPE = "key_bad_shape"
+    PROFILE_CHECK_BUSY = "profile_check_busy"  # 게시 중에는 로그인 확인을 하지 않는다
+    PROFILE_CHECK_FAILED = "profile_check_failed"
 
 
 @dataclass(frozen=True)
@@ -67,8 +76,8 @@ class ErrorText:
 
 ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
     ErrorKind.MISSING_KEY: ErrorText(
-        "YouTube API 키가 설정되지 않았습니다.",
-        ".env 파일에 YOUTUBE_API_KEY를 넣고 서버를 다시 켜 주세요.",
+        "유튜브 API 키가 아직 없습니다.",
+        "설정 화면의 「유튜브 연결」에 API 키를 넣고 저장해 주세요. 저장하면 바로 쓸 수 있습니다.",
         503,
     ),
     ErrorKind.KEY_REJECTED: ErrorText(
@@ -246,6 +255,47 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
         "이 작업의 화면 캡처가 없습니다.",
         "화면 캡처는 테스트 페이지에서 실패한 작업에만 남습니다.",
         404,
+    ),
+    ErrorKind.SETTINGS_INVALID: ErrorText(
+        "잘못된 값이 있어 저장하지 않았습니다.",
+        "이유가 적힌 칸을 고친 뒤 다시 [저장]을 눌러 주세요.",
+        422,
+    ),
+    ErrorKind.SETTINGS_BUSY: ErrorText(
+        "지금 게시 중입니다. 끝난 뒤 다시 저장해 주세요.",
+        "③의 게시가 끝나거나 [그만두기]를 누른 뒤 다시 [저장]을 눌러 주세요.",
+        409,
+    ),
+    ErrorKind.SETTINGS_WRITE_FAILED: ErrorText(
+        "설정을 저장하지 못했습니다.",
+        "디스크 공간과 폴더 권한을 확인한 뒤 다시 [저장]을 눌러 주세요.",
+        500,
+    ),
+    ErrorKind.SETTINGS_NO_STORE: ErrorText(
+        "설정을 저장할 곳이 정해지지 않았습니다.",
+        "프로그램을 껐다가 다시 켠 뒤 저장해 주세요.",
+        503,
+    ),
+    ErrorKind.SECRET_STORE_UNAVAILABLE: ErrorText(
+        "이 PC에서는 API 키를 프로그램에 저장할 수 없습니다"
+        "(키를 암호화하는 기능은 Windows에만 있습니다).",
+        "개발용 .env 파일의 YOUTUBE_API_KEY에 키를 넣고 프로그램을 다시 켜 주세요.",
+        503,
+    ),
+    ErrorKind.KEY_BAD_SHAPE: ErrorText(
+        "API 키 모양이 아닙니다.",
+        "Google Cloud 콘솔에서 복사한 키를 앞뒤 빈칸 없이 그대로 붙여 넣어 주세요.",
+        422,
+    ),
+    ErrorKind.PROFILE_CHECK_BUSY: ErrorText(
+        "게시 중이라 지금은 로그인을 확인할 수 없습니다.",
+        "게시가 끝난 뒤 [로그인 확인]을 다시 눌러 주세요.",
+        409,
+    ),
+    ErrorKind.PROFILE_CHECK_FAILED: ErrorText(
+        "로그인 여부를 확인하지 못했습니다.",
+        "인터넷 연결을 확인하고 잠시 뒤 [로그인 확인]을 다시 눌러 주세요.",
+        502,
     ),
 }
 

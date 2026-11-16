@@ -1,4 +1,10 @@
-"""설정 읽기: 비밀값은 `.env`(또는 환경 변수), 규칙은 `config.yaml`.
+"""설정 읽기: 사용자 설정(프로그램 안에서 바꾼 값) → 환경 변수·`.env`(개발용)
+→ `config.yaml`(기본값).
+
+- R2: 프로그램 안에서 바꾼 값과 암호화한 유튜브 API 키는 `%LOCALAPPDATA%/JGMarketingAgent`
+  (`app/user_settings.py`). `load_settings(user_dir=...)`를 줄 때만 읽는다(자동 테스트가 이 PC의
+  설정을 읽지 않게). 실제 프로그램은 `ServiceHolder`가 `default_user_dir()`를 준다.
+  키는 저장한 키 > 환경 변수·`.env`, AI 모델은 고른 모델 > `OLLAMA_MODEL` > 코드 기본 모델.
 
 - 키가 없어도 앱은 뜬다. YouTube를 부를 때 `missing_key` 오류로 알려 준다.
 - 키 값은 `repr`·로그에 나오지 않는다. 쓰는 곳은 `app/youtube/client.py` 하나다.
@@ -12,7 +18,7 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +26,7 @@ import yaml
 from dotenv import dotenv_values
 
 from app.analysis.validator import parse_extra_patterns
+from app.user_settings import Protector, UserStore, apply_overlay, typing_speed_of
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = ROOT / "config.yaml"
@@ -69,7 +76,9 @@ class BrowserSettings:
 class DiscoverSettings:
     query: str = "연애 고민"
     max_results: int = 12
-    exclude_shorts: bool = True  # 검색 결과에서 쇼츠(61초 미만·길이 없음)를 뺀다
+    exclude_shorts: bool = True  # 검색 결과에서 쇼츠(아래 길이 미만·길이 없음)를 뺀다
+    # R2: 쇼츠로 볼 길이(초). 이보다 짧은 영상을 쇼츠로 본다. 유튜브 쇼츠는 3분까지라 181(3분 이하)
+    shorts_under_seconds: int = 181
 
 
 @dataclass(frozen=True)
@@ -127,6 +136,15 @@ class Settings:
     # 내 채널 영상(`own_video_ids`). 이 영상에서만 홍보 표기를 켜고 끌 수 있고, 실제 유튜브에
     # 자동으로 입력·게시한다. 그 밖의 영상은 표기가 늘 붙는다
     own_video_ids: tuple[str, ...] = ()
+    # R2: 프로그램 안에서 바꾸는 값. 광고 표기 기본값과 게시 직전 확인은 R3이 게시에 쓴다
+    # (지금은 저장·읽기만)
+    disclose_default: bool = True
+    confirm_before_post: bool = False
+    typing_speed: str = "normal"  # slow | normal | fast (browser.typing_delay_ms와 같은 뜻)
+    window_screen: str | None = None  # 크롬 창을 띄울 모니터 ID(고른 적이 없으면 None)
+    youtube_key_source: str | None = None  # program(프로그램에 저장) | dev_file(.env·환경 변수)
+    user_values: dict[str, Any] = field(default_factory=dict, repr=False)  # 사용자가 바꾼 칸
+    source: LoadSource | None = field(default=None, repr=False, compare=False)
 
     def is_own_video(self, video_id: str | None) -> bool:
         return bool(video_id) and video_id in self.own_video_ids
@@ -145,6 +163,21 @@ class Settings:
     def secret_values(self) -> list[str]:
         """로그·오류 문구에서 가려야 할 값들."""
         return [v for v in (self.youtube_api_key, *self.llm_secret_values) if v]
+
+
+@dataclass(frozen=True)
+class LoadSource:
+    """설정을 다시 읽을 때 쓰는 인자(저장 직후 바로 적용 — `reload_settings`)."""
+
+    config_path: Path | None
+    env_path: Path | None
+    db_path: Path | None
+    environ: dict[str, str] | None
+    user_dir: Path | None
+    protector: Protector | None
+
+    def store(self) -> UserStore | None:
+        return UserStore(self.user_dir, self.protector) if self.user_dir is not None else None
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -315,16 +348,36 @@ def load_settings(
     *,
     db_path: Path | None = None,
     environ: dict[str, str] | None = None,
+    user_dir: Path | None = None,
+    protector: Protector | None = None,
+    use_user: bool = True,
+    user_values: dict[str, Any] | None = None,
 ) -> Settings:
-    """설정을 읽는다. `env_path=None`이면 `.env` 파일을 읽지 않는다."""
-    rules = _read_yaml(config_path or DEFAULT_CONFIG_PATH)
+    """설정을 읽는다. `env_path=None`이면 `.env` 파일을 읽지 않는다.
+
+    `user_dir`를 주면 그 폴더의 사용자 설정과 저장한 키를 먼저 쓴다. `use_user=False`면
+    폴더는 기억하되 값은 읽지 않는다(기본값 보기). `user_values`를 주면 파일 대신 그 값으로 읽는다
+    (저장하기 전에 새 값으로 설정이 제대로 읽히는지 미리 볼 때).
+    """
+    source = LoadSource(
+        config_path, env_path, db_path, dict(environ) if environ is not None else None,
+        Path(user_dir) if user_dir is not None else None, protector,
+    )
+    base_rules = _read_yaml(config_path or DEFAULT_CONFIG_PATH)
     env = _read_env(env_path, environ)
+    store = source.store() if use_user else None
+    if user_values is None:
+        user_values = store.read_values() if store is not None else {}
+    rules = apply_overlay(base_rules, user_values)
 
     discover_raw = rules.get("discover") or {}
     discover = DiscoverSettings(
         query=str(discover_raw.get("query") or DiscoverSettings.query),
         max_results=int(discover_raw.get("max_results") or DiscoverSettings.max_results),
         exclude_shorts=bool(discover_raw.get("exclude_shorts", DiscoverSettings.exclude_shorts)),
+        shorts_under_seconds=int(
+            discover_raw.get("shorts_under_seconds") or DiscoverSettings.shorts_under_seconds
+        ),
     )
     limits = rules.get("limits") or {}
     transcript = rules.get("transcript") or {}
@@ -332,6 +385,9 @@ def load_settings(
     validator = rules.get("validator") or {}
 
     llm_settings = _llm_settings(llm, env)
+    chosen_model = _clean(str(user_values.get("llm.model") or ""))
+    if chosen_model:  # 프로그램에서 고른 모델이 .env의 OLLAMA_MODEL보다 먼저
+        llm_settings = replace(llm_settings, ollama_model=chosen_model)
     llm_secrets = tuple(
         v for v in (_clean(env.get(n)) for n in llm_settings.secret_env_names) if v
     )
@@ -339,6 +395,15 @@ def load_settings(
     if db_path is None:
         env_db = _clean(env.get("APP_DB_PATH"))
         db_path = Path(env_db) if env_db else DEFAULT_DB_PATH
+
+    stored_key = store.read_key() if store is not None else None
+    env_key = _clean(env.get("YOUTUBE_API_KEY"))
+    youtube_key = stored_key or env_key
+    key_source = "program" if stored_key else ("dev_file" if env_key else None)
+    comment = rules.get("comment") or {}
+    posting = rules.get("posting") or {}
+    browser = _browser_settings(rules.get("browser"), env)
+    window_screen = _clean(str((rules.get("browser") or {}).get("window_screen") or ""))
 
     return Settings(
         discover=discover,
@@ -349,11 +414,37 @@ def load_settings(
         context_chars=int(llm.get("context_chars") or DEFAULT_CONTEXT_CHARS),
         brand_facts=_brand_facts(rules.get("brand")),
         validator_extra_patterns=parse_extra_patterns(validator.get("extra_patterns")),
-        youtube_api_key=_clean(env.get("YOUTUBE_API_KEY")),
+        youtube_api_key=youtube_key,
         llm=llm_settings,
         llm_secret_values=llm_secrets,
         profiles=_profiles(rules.get("profiles")),
         default_target=_default_target(rules.get("browser")),
-        browser=_browser_settings(rules.get("browser"), env),
+        browser=browser,
         own_video_ids=_own_video_ids(rules.get("own_video_ids")),
+        disclose_default=_flag(comment.get("disclose_default", True), "comment.disclose_default"),
+        confirm_before_post=_flag(
+            posting.get("confirm_before_post", False), "posting.confirm_before_post"
+        ),
+        typing_speed=typing_speed_of(browser.typing_delay_ms),
+        window_screen=window_screen,
+        youtube_key_source=key_source,
+        user_values=user_values,
+        source=source,
+    )
+
+
+def _flag(value: Any, name: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{name}는 true 또는 false여야 합니다.")
+    return value
+
+
+def reload_settings(settings: Settings, *, use_user: bool = True) -> Settings:
+    """같은 인자로 설정을 다시 읽는다(저장 직후 바로 적용). 인자를 모르면 기본으로 읽는다."""
+    src = settings.source
+    if src is None:
+        return load_settings()
+    return load_settings(
+        src.config_path, src.env_path, db_path=src.db_path, environ=src.environ,
+        user_dir=src.user_dir, protector=src.protector, use_user=use_user,
     )

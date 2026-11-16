@@ -23,15 +23,18 @@ PERIODS: dict[str, timedelta | None] = {
     "any": None,
 }
 ORDERS = ("date", "relevance", "viewCount")
-# 쇼츠 제외(실제 데이터 보정): 길이 61초 미만이거나 길이 정보가 없는 영상은 뺀다.
+# 쇼츠 제외(실제 데이터 보정): 길이가 이 초 미만이거나 길이 정보가 없는 영상은 뺀다.
 # 최신순 상위가 거의 쇼츠(댓글 0~3개)라 댓글 달 만한 영상이 보이지 않았다.
-SHORTS_MIN_SECONDS = 61
+# R2: 기준은 설정값(`discover.shorts_under_seconds`, 화면의 「쇼츠 길이」).
+# 유튜브 쇼츠는 3분까지라
+# 기본 181초(3분 이하를 쇼츠로 본다). 예전 기준은 61초였다.
+SHORTS_MIN_SECONDS = 181
 # 쇼츠를 빼고도 max_results개를 채우려고 검색으로 받는 영상 수(검색 1회 = 100단위는 같다)
 SHORTS_SEARCH_POOL = 50
 
 
-def is_short(video: Video) -> bool:
-    return video.duration_seconds is None or video.duration_seconds < SHORTS_MIN_SECONDS
+def is_short(video: Video, under: int = SHORTS_MIN_SECONDS) -> bool:
+    return video.duration_seconds is None or video.duration_seconds < under
 
 
 @dataclass(frozen=True)
@@ -74,8 +77,10 @@ class VideoService:
         quota: QuotaTracker,
         cache: SearchCache,
         clock: Clock,
+        shorts_under_seconds: int = SHORTS_MIN_SECONDS,
     ) -> None:
         self.client = client
+        self.shorts_under_seconds = int(shorts_under_seconds)
         self.db_path = db_path
         self.quota = quota
         self.cache = cache
@@ -129,13 +134,15 @@ class VideoService:
     ) -> SearchResult:
         """검색(100단위) + 상세(50개당 1단위). 같은 검색은 10분 동안 저장한 결과를 쓴다.
 
-        `exclude_shorts`면 영상 ID를 넉넉히(최대 50개) 받아 상세를 본 뒤 쇼츠(61초 미만·길이 없음)를
+        `exclude_shorts`면 영상 ID를 넉넉히(최대 50개) 받아 상세를 본 뒤
+        쇼츠(설정한 길이 미만·길이 없음)를
         빼고, 원래 순서대로 `max_results`개만 돌려준다. 검색 횟수와 단위는 그대로다.
         """
         query = " ".join(query.split())
         key = search_cache_key(
             query, order=order, period=period, max_results=max_results,
             exclude_shorts=exclude_shorts,
+            shorts_under=self.shorts_under_seconds if exclude_shorts else None,
         )
 
         entry = self.cache.get_entry(key)
@@ -157,7 +164,7 @@ class VideoService:
         found = self.client.get_videos(ids) if ids else []
         excluded = 0
         if exclude_shorts:
-            kept = [v for v in found if not is_short(v)]
+            kept = [v for v in found if not is_short(v, self.shorts_under_seconds)]
             excluded = len(found) - len(kept)
             found = kept[:max_results]
         videos = self._save(found, source="search") if found else []

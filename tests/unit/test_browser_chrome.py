@@ -189,8 +189,22 @@ def test_only_the_sandbox_driver_uses_playwright():
         for p in APP.rglob("*.py")
         if any(n.startswith("playwright") for n in _imports(p))
     )
-    # 테스트 페이지 실행기와, 그것을 이어 쓰는 내 채널 영상 자동 게시 실행기뿐
-    assert users == ["browser/sandbox_driver.py", "browser/youtube_driver.py"]
+    # 테스트 페이지 실행기와, 그것을 이어 쓰는 내 채널 영상 자동 게시 실행기, 그리고 R2의
+    # 로그인 확인(창 없이 읽기만 — 아래 test_login_check_only_reads)
+    assert users == [
+        "browser/login.py", "browser/sandbox_driver.py", "browser/youtube_driver.py"
+    ]
+
+
+def test_login_check_only_reads():
+    """R2 로그인 확인은 유튜브 화면을 읽기만 한다: 누르기·입력·채우기가 코드에 없다."""
+    src = (APP / "browser" / "login.py").read_text(encoding="utf-8")
+    for word in (".click(", ".type(", ".fill(", ".press(", "keyboard", "mouse",
+                 "set_input_files", "dispatch_event", "select_option", ".tap("):
+        code = [line for line in src.splitlines()
+                if word in line and not line.strip().startswith(("#", '"', "'", "-"))]
+        assert code == [], (word, code)
+    assert "headless=True" in src
 
 
 def test_no_code_touches_real_youtube_pages():
@@ -208,8 +222,9 @@ def test_no_code_touches_real_youtube_pages():
     ]
     assert code_lines == []
     own_video_driver = APP / "browser" / "youtube_driver.py"
+    login_check = APP / "browser" / "login.py"  # R2: 읽기만(test_login_check_only_reads)
     for path in APP.rglob("*.py"):
-        if path == own_video_driver:
+        if path in (own_video_driver, login_check):
             continue
         src = path.read_text(encoding="utf-8")
         if "youtube.com" in src:
