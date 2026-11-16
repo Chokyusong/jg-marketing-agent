@@ -13,6 +13,9 @@ from app.analysis.checking import CheckService
 from app.analysis.context import ContextService
 from app.analysis.drafter import DraftService
 from app.analysis.validator import ValidatorRules
+from app.browser.chrome import find_chrome
+from app.browser.hooks import BrowserHooks
+from app.browser.jobs import JobService
 from app.config import Settings, load_settings
 from app.errors import AppError
 from app.llm.base import LLMClient, LLMHealth
@@ -41,6 +44,14 @@ class Services:
     rules: PostRules = field(default=None)  # type: ignore[assignment]
     profiles: ProfileService = field(default=None)  # type: ignore[assignment]
     ledger: Ledger = field(default=None)  # type: ignore[assignment]
+    # 8단계: 게시 작업(테스트 페이지 자동 실행 · 실제 유튜브 열기)
+    jobs: JobService = field(default=None)  # type: ignore[assignment]
+    hooks: BrowserHooks = field(default_factory=BrowserHooks)
+
+    def find_chrome(self):
+        if self.hooks.chrome_finder is not None:
+            return self.hooks.chrome_finder()
+        return find_chrome(self.settings.browser.chrome_path)
 
     def require_llm(self) -> LLMClient:
         if self.llm is None:
@@ -54,6 +65,8 @@ class Services:
         return self.llm.health()
 
     def close(self) -> None:
+        if self.jobs is not None:
+            self.jobs.shutdown()  # 진행 중인 작업을 취소하고 크롬을 닫는다
         self.videos.client.close()
         if self.llm is not None:
             self.llm.close()
@@ -65,6 +78,7 @@ def build_services(
     transport: httpx.BaseTransport | None = None,
     llm_transport: httpx.BaseTransport | None = None,
     clock: Clock = utc_now,
+    browser_hooks: BrowserHooks | None = None,
 ) -> Services:
     db.init_db(settings.db_path)
     quota = QuotaTracker(settings.db_path, clock=clock)
@@ -122,7 +136,48 @@ def build_services(
         brand_facts=settings.brand_facts,
         ledger=services.ledger,
     )
+    services.hooks = browser_hooks or BrowserHooks()
+    services.jobs = build_jobs(services, clock=clock)
+    services.jobs.recover_stale()  # 지난번에 작업 중 꺼져 예약으로 남은 게시를 푼다
     return services
+
+
+def build_jobs(services: Services, *, clock: Clock = utc_now) -> JobService:
+    hooks = services.hooks
+    settings = services.settings
+    client = services.videos.client
+
+    def verify_comment(video_id: str, text: str) -> bool | None:
+        """assist: 사람이 게시했다고 한 댓글을 Data API로 찾는다. 키가 없으면 None(확인 못 함)."""
+        if not settings.youtube_key_configured:
+            return None
+        wanted = " ".join(text.split())
+        for comment in client.search_comments(video_id, wanted):
+            if " ".join(comment.text.split()) == wanted:
+                return True
+        return False
+
+    extra = {}
+    if hooks.driver_factory is not None:
+        extra["driver_factory"] = hooks.driver_factory
+    if hooks.launcher is not None:
+        extra["launcher"] = hooks.launcher
+    if hooks.playwright_ready is not None:
+        extra["playwright_ready"] = hooks.playwright_ready
+    if hooks.approval_timeout is not None:
+        extra["approval_timeout"] = hooks.approval_timeout
+    if hooks.confirm_timeout is not None:
+        extra["confirm_timeout"] = hooks.confirm_timeout
+    return JobService(
+        db_path=settings.db_path,
+        rules=services.rules,
+        profiles=services.profiles,
+        browser=settings.browser,
+        chrome_finder=services.find_chrome,
+        verify_comment=hooks.verify_comment or verify_comment,
+        clock=clock,
+        **extra,
+    )
 
 
 class ServiceHolder:
@@ -133,8 +188,10 @@ class ServiceHolder:
         transport: httpx.BaseTransport | None = None,
         llm_transport: httpx.BaseTransport | None = None,
         clock: Clock = utc_now,
+        browser_hooks: BrowserHooks | None = None,
     ) -> None:
         self._settings = settings
+        self._browser_hooks = browser_hooks
         self._transport = transport
         self._llm_transport = llm_transport
         self._clock = clock
@@ -155,8 +212,19 @@ class ServiceHolder:
                     transport=self._transport,
                     llm_transport=self._llm_transport,
                     clock=self._clock,
+                    browser_hooks=self._browser_hooks,
                 )
             return self._services
+
+    def shutdown_jobs(self) -> None:
+        """프로그램 창을 닫을 때: 진행 중인 게시 작업을 취소하고 크롬을 닫는다.
+
+        서비스를 아직 만들지 않았으면 할 일이 없다.
+        """
+        with self._lock:
+            services = self._services
+        if services is not None and services.jobs is not None:
+            services.jobs.shutdown()
 
     def close(self) -> None:
         with self._lock:

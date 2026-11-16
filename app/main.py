@@ -8,7 +8,9 @@
 5단계: 분석과 초안(`/api/analysis/{video_id}`, `/api/drafts`). 승인은 규칙 검사를 통과한 것만.
 7단계: 운영 규칙과 기록(`app/ops/`). `/api/profiles`, `/api/records`, `/api/stats/today`,
 영상 응답에 `commented` 추가. 게시 예약·완료는 8단계 작업 서비스가 `rules`로 한다.
-실제 유튜브 화면을 자동으로 조작하는 코드는 없다(DESIGN 6.1).
+8단계: 브라우저 연결(`app/browser/`). 통제된 테스트 페이지 `/sandbox/watch`와 게시 작업 `/api/jobs`.
+`GET /api/status`에 브라우저 상태. 자동 입력·게시·확인은 테스트 페이지에서만 한다.
+실제 유튜브 화면을 자동으로 조작하는 코드는 없다(DESIGN 6.1). assist는 크롬을 여는 것까지만.
 """
 
 from __future__ import annotations
@@ -25,12 +27,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.api import drafts as drafts_api
+from app.api import jobs as jobs_api
 from app.api import llm as llm_api
 from app.api import ops as ops_api
 from app.api import status as status_api
 from app.api import validate as validate_api
 from app.api import videos as videos_api
 from app.api.deps import ServiceHolder
+from app.browser import sandbox as sandbox_page
+from app.browser.hooks import BrowserHooks
 from app.config import Settings
 from app.errors import AppError
 from app.transcript.manual import MAX_TRANSCRIPT_CHARS
@@ -38,8 +43,8 @@ from app.youtube.quota import Clock, utc_now
 
 BASE_DIR = Path(__file__).resolve().parent
 mimetypes.add_type("font/woff2", ".woff2")  # 글꼴 파일을 올바른 형식으로 내려보낸다
-APP_VERSION = "0.7.0"  # 단계가 끝날 때마다 하나씩 올린다(실행 순서: 3 → P → 6 → 4 → 5 → 7 …)
-STAGE = 7
+APP_VERSION = "0.8.0"  # 단계가 끝날 때마다 하나씩 올린다(실행 순서: 3 → P → 6 → 4 → 5 → 7 …)
+STAGE = 8
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
@@ -54,13 +59,19 @@ def create_app(
     transport: httpx.BaseTransport | None = None,
     llm_transport: httpx.BaseTransport | None = None,
     clock: Clock = utc_now,
+    browser_hooks: BrowserHooks | None = None,
 ) -> FastAPI:
     """앱을 만든다. 테스트는 임시 설정과 가짜 전송(httpx.MockTransport)을 넣는다.
 
     `transport`는 YouTube, `llm_transport`는 LLM 공급자(Ollama) 호출에 쓴다.
+    `browser_hooks`(8단계)는 크롬 찾기·실행, 테스트 페이지 실행기를 가짜로 바꿀 때 쓴다.
     """
     holder = ServiceHolder(
-        settings, transport=transport, llm_transport=llm_transport, clock=clock
+        settings,
+        transport=transport,
+        llm_transport=llm_transport,
+        clock=clock,
+        browser_hooks=browser_hooks,
     )
 
     @asynccontextmanager
@@ -113,6 +124,8 @@ def create_app(
     app.include_router(llm_api.router)
     app.include_router(drafts_api.router)
     app.include_router(ops_api.router)
+    app.include_router(jobs_api.router)
+    app.include_router(sandbox_page.router)
     return app
 
 

@@ -27,6 +27,11 @@ const state = {
   approving: false,
   // 7단계: 오늘 통계·작업 기록·03칸 설정(ops.js). target은 작업 방식(sandbox | youtube)
   ops: null,             // { target, profile, dailyLimit, stats, records, total, error }
+  // 8단계: 위 줄 BROWSER 상태(GET /api/status의 browser)와 03칸 게시 작업(job.js)
+  browser: null,         // { chrome_found, playwright_ready, profiles: [{name, folder, exists}], active_job_id }
+  job: null,             // GET /api/jobs/{id} 응답 { id, mode, target, state, step, finished, reason, ... }
+  jobError: null,        // { kind, message, action } 시작·승인·확인이 거절됐을 때
+  jobBusy: false,        // 시작·승인·확인 요청을 보내는 중
 };
 
 const listeners = new Set();

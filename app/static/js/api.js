@@ -77,4 +77,15 @@ export const api = {
     if (dailyLimit) params.set('daily_limit', String(dailyLimit));
     return request(`/api/stats/today?${params}`);
   },
+  // 8단계: 게시 작업(테스트 페이지 자동 실행 · 실제 유튜브 열기)
+  startJob: ({ videoId, draftId, profile, target, dailyLimit }) =>
+    request('/api/jobs', {
+      method: 'POST',
+      body: JSON.stringify({ video_id: videoId, draft_id: draftId, profile: profile || '', target, daily_limit: dailyLimit || null }),
+    }),
+  getJob: (id) => request(`/api/jobs/${encodeURIComponent(id)}`),
+  approveJob: (id) => request(`/api/jobs/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
+  confirmJob: (id, posted) =>
+    request(`/api/jobs/${encodeURIComponent(id)}/confirm`, { method: 'POST', body: JSON.stringify({ posted }) }),
+  cancelJob: (id) => request(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
 };

@@ -38,6 +38,30 @@ DEFAULT_BRAND_FACTS = ("운명원은 연애 사주 상담을 하는 곳이다",)
 # 7단계: 과제 설정 예시의 프로필 이름(화면 이름. 폴더 이름은 profile-1… — app/ops/profiles.py)
 DEFAULT_PROFILES = ("유튜브1", "유튜브2", "유튜브3")
 POST_TARGETS = ("sandbox", "youtube")  # 게시 대상: 통제된 테스트 페이지 / 실제 유튜브(사람이 게시)
+# 8단계: 브라우저 연결(DESIGN 6.3). 창 위치 기본은 2번 모니터(AGENTS.md 창 규칙)
+DEFAULT_WINDOW_POSITION = (60, -1060)
+DEFAULT_TYPING_DELAY_MS = (60, 160)
+PROFILES_DIR_ENV = "JG_PROFILES_DIR"  # 프로필 폴더 위치를 바꿀 때(테스트·다른 PC). 비우면 아래 기본
+
+
+def default_profiles_root(environ: dict[str, str] | None = None) -> Path:
+    """`%LOCALAPPDATA%/JGMarketingAgent/profiles`. 저장소 안에 두지 않는다(DESIGN 6.3)."""
+    env = os.environ if environ is None else environ
+    base = _clean(env.get("LOCALAPPDATA")) or str(Path.home() / "AppData" / "Local")
+    return Path(base) / "JGMarketingAgent" / "profiles"
+
+
+@dataclass(frozen=True)
+class BrowserSettings:
+    """`browser` 절(8단계). 창은 기본으로 보이게(headless 거짓) 띄우고 위치는 2번 모니터."""
+
+    headless: bool = False
+    window_position: tuple[int, int] = DEFAULT_WINDOW_POSITION
+    typing_delay_ms: tuple[int, int] = DEFAULT_TYPING_DELAY_MS
+    chrome_path: str | None = None  # 비우면 설치된 크롬을 찾는다(app/browser/chrome.py)
+    profiles_root: Path = field(default_factory=default_profiles_root)
+    # 실패한 작업의 화면 캡처(`<작업ID>.png`). 저장소 안이지만 .gitignore가 막는다
+    screenshot_dir: Path = ROOT / "error_screenshots"
 
 
 @dataclass(frozen=True)
@@ -97,6 +121,7 @@ class Settings:
     # 7단계: 프로필 이름(순서가 곧 폴더 번호)과 기본 게시 대상(default_target: assist → youtube)
     profiles: tuple[str, ...] = DEFAULT_PROFILES
     default_target: str = "sandbox"
+    browser: BrowserSettings = field(default_factory=BrowserSettings)
 
     @property
     def youtube_key_configured(self) -> bool:
@@ -172,6 +197,54 @@ def _default_target(browser: Any) -> str:
     if target not in POST_TARGETS:
         raise ValueError("browser.default_target은 sandbox 또는 assist여야 합니다.")
     return target
+
+
+def _window_position(raw: Any) -> tuple[int, int]:
+    """`"60,-1060"` 또는 `[60, -1060]` → (60, -1060)."""
+    if raw is None or raw == "":
+        return DEFAULT_WINDOW_POSITION
+    parts = raw.split(",") if isinstance(raw, str) else raw
+    try:
+        x, y = (int(str(v).strip()) for v in parts)
+    except (TypeError, ValueError):
+        raise ValueError(
+            'browser.window_position은 "x,y" 모양이어야 합니다(예: "60,-1060").'
+        ) from None
+    return x, y
+
+
+def _typing_delay(raw: Any) -> tuple[int, int]:
+    """`[60, 160]`(글자마다 기다리는 밀리초의 최소·최대). 숫자 하나면 고정."""
+    if raw is None:
+        return DEFAULT_TYPING_DELAY_MS
+    values = raw if isinstance(raw, list) else [raw]
+    try:
+        nums = [int(v) for v in values]
+    except (TypeError, ValueError):
+        raise ValueError("browser.typing_delay_ms는 [최소, 최대] 밀리초여야 합니다.") from None
+    if len(nums) == 1:
+        nums = nums * 2
+    if len(nums) != 2 or nums[0] < 0 or nums[1] < nums[0] or nums[1] > 5000:
+        raise ValueError("browser.typing_delay_ms는 [최소, 최대] 밀리초여야 합니다(0~5000).")
+    return nums[0], nums[1]
+
+
+def _browser_settings(raw: Any, env: dict[str, str]) -> BrowserSettings:
+    raw = raw if isinstance(raw, dict) else {}
+    headless = raw.get("headless", False)
+    if not isinstance(headless, bool):
+        raise ValueError("browser.headless는 true 또는 false여야 합니다.")
+    root = _clean(env.get(PROFILES_DIR_ENV))
+    return BrowserSettings(
+        headless=headless,
+        window_position=_window_position(raw.get("window_position")),
+        typing_delay_ms=_typing_delay(raw.get("typing_delay_ms")),
+        chrome_path=_clean(str(raw.get("chrome_path") or "")),
+        profiles_root=Path(root) if root else default_profiles_root(env),
+        screenshot_dir=Path(str(raw["screenshot_dir"]))
+        if raw.get("screenshot_dir")
+        else BrowserSettings.screenshot_dir,
+    )
 
 
 def _llm_settings(raw: Any, env: dict[str, str]) -> LLMSettings:
@@ -259,4 +332,5 @@ def load_settings(
         llm_secret_values=llm_secrets,
         profiles=_profiles(rules.get("profiles")),
         default_target=_default_target(rules.get("browser")),
+        browser=_browser_settings(rules.get("browser"), env),
     )

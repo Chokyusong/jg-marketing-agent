@@ -26,11 +26,18 @@ def clock() -> Clock:
 
 
 @pytest.fixture
-def make_settings(tmp_db_path: Path, make_config) -> Callable[..., Any]:
+def make_settings(tmp_db_path: Path, tmp_path: Path, make_config) -> Callable[..., Any]:
+    """8단계: 프로필 폴더와 화면 캡처는 임시 폴더로(이 PC의 %LOCALAPPDATA%를 건드리지 않게)."""
+
     def _make(key: str | None, overrides: dict[str, Any] | None = None):
         environ = {"YOUTUBE_API_KEY": key} if key else {}
+        environ["JG_PROFILES_DIR"] = str(tmp_path / "profiles")
+        merged = dict(overrides or {})
+        browser = dict(merged.get("browser") or {})
+        browser.setdefault("screenshot_dir", str(tmp_path / "error_screenshots"))
+        merged["browser"] = browser
         return load_settings(
-            make_config(overrides), env_path=None, db_path=tmp_db_path, environ=environ
+            make_config(merged), env_path=None, db_path=tmp_db_path, environ=environ
         )
 
     return _make
@@ -51,13 +58,16 @@ def make_client(make_settings, clock) -> Callable[..., TestClient]:
     자동 테스트가 이 PC의 진짜 Ollama를 부르지 않게.
     """
 
-    def _make(mock=None, *, key: str | None = None, overrides=None, llm=None) -> TestClient:
+    def _make(
+        mock=None, *, key: str | None = None, overrides=None, llm=None, browser_hooks=None
+    ) -> TestClient:
         settings = make_settings(key, overrides)
         app = create_app(
             settings,
             transport=mock.transport if mock else None,
             llm_transport=llm.transport if llm else OLLAMA_OFF,
             clock=clock,
+            browser_hooks=browser_hooks,
         )
         return TestClient(app)
 

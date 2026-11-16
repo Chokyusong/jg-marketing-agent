@@ -3,7 +3,8 @@
 실행: `.venv\\Scripts\\pythonw.exe -m app.desktop` (더블클릭용 `JG-Marketing-Agent.cmd`)
 
 흐름: 중복 실행 확인 → 빈 포트 고르기 → uvicorn을 스레드로 시작 → `/api/health` 응답 대기
-→ 창 열기(주 스레드) → 창이 닫히면 서버를 멈추고 프로세스가 끝난다.
+→ 창 열기(주 스레드) → 창이 닫히면 진행 중인 게시 작업을 취소하고 크롬을 닫은 뒤(8단계)
+서버를 멈추고 프로세스가 끝난다(남는 크롬·파이썬 프로세스가 없게).
 화면과 서버 코드는 그대로 쓴다(`app.main:app`). 기존 API는 바꾸지 않는다.
 
 창 라이브러리: pywebview (확인한 날짜 2026-11-16)
@@ -335,6 +336,22 @@ def focus_existing_window(title: str = WINDOW_TITLE) -> bool:
 # ---------------------------------------------------------------- 실행
 
 
+def shutdown_jobs(asgi_app: Any) -> None:
+    """창을 닫을 때(8단계): 진행 중인 게시 작업을 취소하고 그 작업의 크롬을 닫는다.
+
+    앱 서비스를 아직 만들지 않았으면 할 일이 없다. 서버를 멈출 때(lifespan)도 한 번 더 하지만,
+    서버가 멈추는 시간 제한 안에 끝나도록 먼저 따로 부른다.
+    """
+    holder = getattr(getattr(asgi_app, "state", None), "services", None)
+    stop = getattr(holder, "shutdown_jobs", None)
+    if stop is None:
+        return
+    try:
+        stop()
+    except Exception:
+        log.exception("failed to stop browser jobs")
+
+
 def run(
     *,
     open_window: OpenWindow,
@@ -389,6 +406,7 @@ def run(
             log.info("window closed")
             return EXIT_OK
         finally:
+            shutdown_jobs(asgi_app)
             stopped = server.stop()
             log.info("server stopped" if stopped else "server did not stop in time")
     finally:

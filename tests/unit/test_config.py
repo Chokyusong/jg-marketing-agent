@@ -114,3 +114,45 @@ def test_profiles_and_default_target(make_config):
 def test_bad_profiles_or_target_are_clear_errors(make_config, overrides, match):
     with pytest.raises(ValueError, match=match):
         load_settings(make_config(overrides), env_path=None, environ={})
+
+
+# ---------------------------------------------------------------- 8단계: browser 절
+
+
+def test_browser_settings_defaults(make_config):
+    from app.config import load_settings
+
+    s = load_settings(make_config(), env_path=None, environ={})
+    assert s.browser.headless is False
+    assert s.browser.window_position == (60, -1060)
+    assert s.browser.typing_delay_ms == (60, 160)
+    assert s.browser.chrome_path is None
+    assert s.browser.profiles_root.parts[-2:] == ("JGMarketingAgent", "profiles")
+
+
+def test_browser_settings_values(make_config, tmp_path):
+    from app.config import load_settings
+
+    path = make_config({"browser": {"headless": True, "window_position": [-1860, 60],
+                                    "typing_delay_ms": 30, "screenshot_dir": str(tmp_path)}})
+    s = load_settings(path, env_path=None, environ={})
+    assert s.browser.headless is True and s.browser.window_position == (-1860, 60)
+    assert s.browser.typing_delay_ms == (30, 30) and s.browser.screenshot_dir == tmp_path
+
+
+@pytest.mark.parametrize(
+    "browser",
+    [
+        {"headless": "yes"},
+        {"window_position": "60"},
+        {"window_position": "a,b"},
+        {"typing_delay_ms": [200, 100]},
+        {"typing_delay_ms": [-1, 10]},
+        {"typing_delay_ms": "fast"},
+    ],
+)
+def test_browser_settings_reject_bad_values(make_config, browser):
+    from app.config import load_settings
+
+    with pytest.raises(ValueError):
+        load_settings(make_config({"browser": browser}), env_path=None, environ={})

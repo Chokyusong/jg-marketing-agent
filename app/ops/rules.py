@@ -155,10 +155,18 @@ class PostRules:
     # ------------------------------------------------------------ 결과
 
     def mark_posted(
-        self, post_id: int, *, comment_text: str | None = None, job_id: str = ""
+        self,
+        post_id: int,
+        *,
+        comment_text: str | None = None,
+        job_id: str = "",
+        note: str = "",
     ) -> Post:
-        """예약을 게시 완료로 바꾸고 기록에 success 한 줄. 댓글을 안 주면 그 초안 글을 쓴다."""
-        return self._finish(post_id, "posted", comment_text=comment_text, job_id=job_id)
+        """예약을 게시 완료로 바꾸고 기록에 success 한 줄. 댓글을 안 주면 그 초안 글을 쓴다.
+
+        `note`(8단계)는 기록 줄의 사유 칸에 남기는 덧붙임(예: 「확인 못 함」). 실패 사유가 아니다.
+        """
+        return self._finish(post_id, "posted", comment_text=comment_text, job_id=job_id, note=note)
 
     def mark_failed(
         self,
@@ -188,6 +196,7 @@ class PostRules:
         comment_text: str | None,
         screenshot_path: str = "",
         job_id: str = "",
+        note: str = "",
     ) -> Post:
         now = self.clock()
         stamp = now.isoformat()
@@ -218,7 +227,7 @@ class PostRules:
                 profile=row["profile"],
                 comment_text=comment_text,
                 target=row["target"],
-                reason=reason,
+                reason=reason or note,
                 screenshot_path=screenshot_path,
                 job_id=job_id,
                 draft_id=row["draft_id"],

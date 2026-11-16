@@ -359,3 +359,18 @@ select { background: var(--panel); color: #cfcac3; border: 1px solid var(--line)
   .table-wrap { overflow-x: auto; }
   .history table { min-width: 640px; }
 }
+
+/* ------------------------------------------------ 8단계: 작업 상자(진행 단계·작은 단추·실패 사유) */
+.job-steps li.is-done { color: var(--sub); }
+.job-steps li.is-done::before { background: #8d8576; border-color: #8d8576; }
+.job-steps li.is-current { color: var(--gold); }
+.job-steps li.is-current::before { background: var(--gold); border-color: var(--gold); box-shadow: 0 0 0 3px rgba(209, 185, 144, 0.18); }
+.job-steps li.is-failed { color: var(--bad); }
+.job-steps li.is-failed::before { background: var(--bad-dot); border-color: var(--bad); }
+#job-box[data-state="posted"] .job-steps li::before { background: var(--ok); border-color: var(--ok); }
+.job-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.job-actions[hidden], .job-error[hidden] { display: none; }
+.job-actions .line-btn { padding: 5px 11px; text-decoration: none; display: inline-block; }
+.job-actions .line-btn[hidden] { display: none; } /* 위 display보다 뒤에 둬야 숨김이 이긴다 */
+.job-error { margin: 10px 0 0; color: var(--bad); font-size: 12px; line-height: 1.55; }
+.primary:not(:disabled):hover { background: #fff; }

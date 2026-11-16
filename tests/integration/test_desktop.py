@@ -384,3 +384,55 @@ def test_launcher_is_ascii_and_starts_pythonw_without_console():
 def test_window_library_is_a_runtime_requirement():
     lines = (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
     assert any(line.startswith("pywebview") for line in lines)
+
+
+# ------------------------------------------------ 8단계: 창을 닫으면 게시 작업도 끝낸다
+
+
+class JobStopper:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def shutdown_jobs(self) -> None:
+        self.calls.append(threading.current_thread().name)
+
+
+def test_closing_window_cancels_browser_jobs_before_server_stops():
+    app = tiny_app()
+    stopper = JobStopper()
+    app.state.services = stopper
+    order: list[str] = []
+    original = desktop.ServerThread.stop
+
+    def stop(self, timeout=desktop.STOP_TIMEOUT_SECONDS):
+        order.append("server-stop")
+        return original(self, timeout)
+
+    desktop.ServerThread.stop = stop
+    try:
+        code = desktop.run(
+            open_window=FakeWindow(lambda spec: order.append("window-closed")),
+            notify=lambda _: None,
+            asgi_app=app,
+            lock=unique_lock(),
+        )
+    finally:
+        desktop.ServerThread.stop = original
+    assert code == EXIT_OK
+    assert len(stopper.calls) == 1
+    assert order == ["window-closed", "server-stop"]
+
+
+def test_closing_window_with_real_app_stops_job_worker(real_app):
+    def look(spec: WindowSpec) -> None:
+        with httpx.Client(trust_env=False, timeout=5) as client:
+            client.get(spec.url + "api/status")  # 서비스(작업 서비스 포함)를 만든다
+
+    code = desktop.run(open_window=FakeWindow(look), notify=lambda _: None,
+                       asgi_app=real_app, lock=unique_lock())
+    assert code == EXIT_OK
+    assert [t for t in threading.enumerate() if t.name == "jg-browser-worker"] == []
+
+
+def test_shutdown_jobs_ignores_apps_without_services():
+    desktop.shutdown_jobs(tiny_app())  # 서비스가 없으면 할 일 없음(오류 없음)

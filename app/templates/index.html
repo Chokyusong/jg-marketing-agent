@@ -30,7 +30,7 @@
     <ul class="system" aria-label="시스템 상태">
       <li id="status-ai-item"><i class="dot is-wait" id="status-ai-dot" aria-hidden="true"></i><span class="sys-name">AI</span><span class="sys-text" id="status-ai">확인 중</span></li>
       <li><i class="dot is-wait" id="status-youtube-dot" aria-hidden="true"></i><span class="sys-name">YOUTUBE</span><span class="sys-text" id="status-youtube">확인 중</span></li>
-      <li><i class="dot is-off" aria-hidden="true"></i><span class="sys-name">BROWSER</span><span class="sys-text">8단계에서 연결</span></li>
+      <li id="status-browser-item"><i class="dot is-wait" id="status-browser-dot" aria-hidden="true"></i><span class="sys-name">BROWSER</span><span class="sys-text" id="status-browser">확인 중</span></li>
     </ul>
   </header>
 
@@ -212,7 +212,7 @@
       <p class="note">영상의 구체적 장면은 실제 자막 등 검증 가능한 근거가 있을 때만 반영합니다.</p>
     </div>
 
-    <!-- 03 실행 및 관리 (7단계: 설정 4줄, 8단계: 큰 버튼과 진행 단계) -->
+    <!-- 03 실행 및 관리 (7단계: 설정 4줄, 8단계: 큰 버튼·진행 단계·승인·복사·확인) -->
     <div class="column" id="col-execute">
       <div class="colhead"><h2>실행 및 관리</h2><span class="number">03 / 03</span></div>
 
@@ -234,14 +234,24 @@
         </fieldset>
       </div>
 
-      <div class="asidebox">
+      <!-- 작업 상자(8단계): 큰 버튼 → POST /api/jobs, 진행 단계는 GET /api/jobs/{id}를 0.5초마다.
+           테스트 페이지는 자동 입력 → [게시 승인] → 자동 게시·확인. 실제 유튜브는 크롬을 열기만 하고 사람이 게시 -->
+      <div class="asidebox" id="job-box" data-state="idle" aria-live="polite">
         <div class="aside-title" id="exec-title">영상 선택 대기</div>
         <p id="exec-desc">01에서 영상을 고르세요. 게시 여부는 로그인된 사용자 본인이 결정합니다.</p>
-        <button type="button" class="primary" disabled>브라우저에서 영상 열기 ↗</button>
-        <ol class="job-steps" aria-label="진행 단계 (8단계에서 연결)">
-          <li>대기</li><li>프로필 실행</li><li>댓글 입력</li><li>승인 대기</li><li>게시 완료</li><li>확인</li>
+        <button type="button" class="primary" id="job-primary" disabled>브라우저에서 영상 열기 ↗</button>
+        <ol class="job-steps" id="job-steps" aria-label="진행 단계">
+          <li data-step="0">대기</li><li data-step="1">프로필 실행</li><li data-step="2">댓글 입력</li><li data-step="3">승인 대기</li><li data-step="4">게시 완료</li><li data-step="5">확인</li>
         </ol>
-        <div class="taskstatus"><i class="dot is-off" aria-hidden="true"></i><span>작업 실행은 8단계에서 연결</span></div>
+        <div class="job-actions" id="job-actions" hidden>
+          <button type="button" class="line-btn" id="job-copy" hidden>초안 복사</button>
+          <button type="button" class="line-btn" id="job-not-posted" hidden>게시 안 함</button>
+          <button type="button" class="line-btn" id="job-cancel" hidden>작업 취소</button>
+          <a class="line-btn" id="job-view" href="#" target="_blank" rel="noopener noreferrer" hidden>댓글 보기 ↗</a>
+          <a class="line-btn" id="job-shot" href="#" target="_blank" rel="noopener" hidden>화면 캡처 ↗</a>
+        </div>
+        <p class="job-error" id="job-error" role="alert" hidden></p>
+        <div class="taskstatus"><i class="dot is-wait" id="job-dot" aria-hidden="true"></i><span id="job-status">브라우저 확인 중</span></div>
       </div>
 
       <div class="hint"><b>OPERATION NOTE</b><br />중복 작업 방지 · 활동 이력 기록 · 공개적 홍보 관계 표시<br />정책을 준수하는 사용자 승인 방식으로 설계</div>

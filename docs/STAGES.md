@@ -180,10 +180,29 @@ FastAPI 앱, 읽기 전용 3열 화면, `/api/health`, 테스트 2개.
 - [ ] 사람 확인: 실제 영상에서 [분석하고 초안 만들기] → [이 초안 승인]을 누르면 아래 작업 기록에 줄 3개(AI 분석·초안 생성·초안 승인)가 생기고 DRAFTS 숫자가 바뀌는지. 03칸 작업 방식을 바꾸면 통계 옆 「… 기준」과 오늘 작업이 따라 바뀌는지
 - PLAYBOOK과 다르게 둔 것·정한 것(답할 사람이 없어 기본값으로 정함): ① 작업 방식 두 가지를 게시 대상으로 연결했다 — 「수동 승인 후 게시 (권장)」 = `youtube`(실제 유튜브, 사람이 직접 게시), 「테스트 페이지 자동 실행」 = `sandbox`. 처음 고른 값은 `config.yaml`의 `browser.default_target`(sandbox → 테스트 페이지, assist → 실제 유튜브). 오늘 통계와 오늘 작업은 고른 작업 방식의 대상 기준. ② 화면에서 고른 프로필·작업 방식·일일 제한은 화면 상태에만 둔다(새로 고치면 처음 값). 8단계 게시 실행이 이 값을 넘기고, 서버는 `reserve(daily_limit=…)`에서 설정값을 넘지 않게 다시 강제한다. ③ `is_commented`와 `commented`는 게시 완료만 「댓글 단 영상」으로 본다. 예약 중인 영상도 `reserve`는 `already_commented`로 거절한다(사유에 「게시 작업 중」). ④ 오류 종류 `profile_unknown`을 하나 더했다. ⑤ 표에 PLAYBOOK에 없는 열을 더했다: `posts.attempts·reason·updated_at`, `runs.day·draft_id·post_id`. ⑥ 예약 거절(이미 단 영상·상한)은 게시 시도가 아니라서 `runs`에 남기지 않는다(성공률에 섞지 않는다). ⑦ 분석·초안·승인이 오류로 멈춘 것도 failure로 남긴다. 기존 테스트를 고친 곳: `test_dashboard_page.py`의 `test_unconnected_parts_are_off_and_labelled`(「7단계에서 연결」·꺼진 통계·꺼진 설정이 있어야 한다 → 없어야 한다)와 버전 표시. 버전 0.7.0, 화면 표시 7단계
 
-### [ ] 8단계 — 브라우저 연결
+### [-] 8단계 — 브라우저 연결
 
 - sandbox 페이지(`/sandbox/watch`), `app/browser/`(작업 스레드, 크롬 실행, 한 글자씩 입력, 화면 캡처), assist 대상(열기만), `scripts/setup_profile.ps1`.
 - 완료 기준: 창 없는 크롬으로 sandbox 전 과정(`e2e`) 통과. 일부러 낸 실패에서 사유와 캡처 파일이 남는다. 승인 전에는 게시 버튼이 눌리지 않는다는 테스트. 창이 보이는 실행은 2번 모니터에서 사람이 확인.
+
+**진행 상황 (2026-11-16)** — 코드·자동 테스트·e2e·2번 모니터 창 실행 1회는 끝났고, 대표가 화면에서 눌러 보는 확인과 실제 유튜브 열기(assist) 확인이 남아 `[-]`로 둔다.
+- [x] 준비: `requirements.txt`에 `playwright>=1.48,<2`(설치 1.65.2, Apache-2.0). 설치된 Google Chrome을 `channel="chrome"`으로 쓰고 브라우저는 내려받지 않았다. 사용법 출처는 `app/browser/sandbox_driver.py` 맨 위, 라이선스는 README "오픈소스 출처"
+- [x] 테스트 페이지: `GET /sandbox/watch?v=&profile=&fail=`(맨 위 「통제된 테스트 페이지 — 실제 유튜브가 아닙니다」, 제목·영상 상자·「댓글 추가...」·「취소」「댓글」·댓글 목록, 검색 제외 표시), `GET`·`POST /sandbox/api/comments`(`sandbox_comments` 표 — `MIGRATIONS` 5번째, 입력 이벤트 수도 저장), 실패 스위치 `hide_button`(게시 단추 없음)·`slow`(저장 2.5초 늦게)·`reject`(저장 거절 503)
+- [x] 작업 서비스 `app/browser/jobs.py` `JobService`(start·approve·confirm·cancel·get): 상태 대기 → 프로필 실행 → 댓글 입력 → 승인 대기 → 게시 중 → 확인 → 게시 완료 / 실패. 한 번에 하나. 상태가 바뀔 때마다 `job_events`. 시작할 때 `rules.reserve`, 끝날 때 `mark_posted`·`mark_failed`(작업 기록 `runs` 한 줄은 이 함수들이 같은 거래 안에서 쓴다). 실패하면 sandbox는 `error_screenshots/<작업 ID>.png`. **끝(게시 완료·실패)을 알리기 전에 크롬을 닫는다**(바로 다시 시작해도 프로필 폴더가 풀려 있다 — e2e에서 찾아 고침)
+- [x] sandbox: Playwright 동기 API를 전용 스레드 하나(`jg-browser-worker`)에서만. `launch_persistent_context(프로필 폴더, channel="chrome", headless, args=[창 위치])`. 글자마다 `typing_delay_ms`(기본 60~160) 무작위로 기다리며 한 글자씩 입력하고 입력한 글이 초안과 같은지 확인 → [게시 승인]을 기다림(5분 넘으면 「승인 시간 초과」) → 「댓글」 클릭 → 페이지에 내 댓글이 보이는지 확인. 여는 주소는 이 앱의 `/sandbox/`만(열기 전에 검사, 페이지가 바깥 주소를 부르면 `context.route`로 막음)
+- [x] assist: `chrome.exe --user-data-dir=… --window-position=x,y --no-first-run --no-default-browser-check --new-window <영상 주소>`를 인자 목록으로(셸 없음) 실행만. 대시보드 [초안 복사]·[게시했어요]·[게시 안 함]. Data API 확인은 키가 있을 때만(`commentThreads` `searchTerms`, 읽기만), 못 찾거나 키가 없으면 「게시됨(확인 못 함)」. 10분 넘으면 「확인 시간 초과」. 실제 유튜브 화면의 요소를 찾거나 누르거나 입력하는 코드는 없다(테스트가 import와 문자열로 확인)
+- [x] 프로필 폴더 `%LOCALAPPDATA%\JGMarketingAgent\profiles\profile-N`(환경 변수 `JG_PROFILES_DIR`로 바꿈, 저장소 밖). 크롬 `lockfile`이 잡혀 있으면 `profile_in_use` 「그 프로필의 크롬 창을 닫아 주세요」. 설정 `browser.headless`(기본 false, 테스트 true)·`window_position`(기본 60,-1060)·`typing_delay_ms`·`chrome_path`·`default_target`
+- [x] API: `POST /api/jobs`, `GET /api/jobs/{id}`, `POST /api/jobs/{id}/approve`·`confirm`·`cancel`, `GET /api/jobs/{id}/screenshot`. `GET /api/status`에 `browser{chrome_found, playwright_ready, profiles[{name, folder, exists}], active_job_id}`(기존 필드 그대로, 폴더 전체 경로는 싣지 않음). 오류 종류 7개 더함
+- [x] 화면 03칸: 큰 버튼은 승인한 초안 + 그 대상에서 댓글 안 단 영상 + 오늘 남은 횟수가 있을 때만 켜짐. 한 버튼이 [브라우저에서 영상 열기] → [게시 승인 — 「댓글」 누르기](sandbox) / [게시했어요](assist)로 바뀜. 진행 단계 6개 0.5초마다, 작은 단추는 그 상태에 필요한 것만(승인 대기: 작업 취소 / assist 확인 대기: 초안 복사·게시 안 함·작업 취소 / 실패: 화면 캡처 / 완료: 댓글 보기), 실패 사유 한 줄, 작업 방식 안내 「통제된 테스트 페이지에서 실행 · 실제 유튜브가 아닙니다」. 위 줄 BROWSER 실제 상태. 「8단계에서 연결」 문구 지움. 끝나면 통계·작업 기록·01칸 「댓글 단 영상」을 바로 고침. 새로 고쳐도 진행 중인 작업을 이어 봄
+- [x] 프로그램 창을 닫으면 작업을 취소하고 크롬을 닫은 뒤 서버를 멈춘다(`app/desktop.py`). README·`run.ps1`에 8단계부터 `--reload`를 쓰지 않는다고 적었다
+- [x] `scripts/setup_profile.ps1`(ASCII): 그 프로필 폴더로 크롬을 Google 로그인 화면에 연다. **만들기만 하고 실행하지 않았다**
+- [x] 화면 높이(1920×1080, 가짜 YouTube·가짜 LLM, 창 없는 크롬): 3열 끝 첫 화면 981px, 초안 승인 뒤 1014px, **승인 대기 1014px**, 게시 완료 1014px, 실패 1007px — 모두 스크롤 없이 3열이 보인다. 가로 스크롤 없음. 이 측정에서 작은 단추가 `hidden`인데도 보이던 CSS 문제를 찾아 고쳤다(테스트 추가)
+- [x] e2e(이 PC에서 실제로 돌림, 창 없는 크롬 + 임시 포트 앱 서버 + 임시 프로필): 전 과정 성공(입력된 글 = 초안, 입력 이벤트 수 = 글자 수), 승인 전에는 댓글이 달리지 않음, `fail=hide_button` 사유와 캡처 파일, `fail=reject` 사유, 같은 영상 두 번째 시작 거절, 하루 상한, 프로필 사용 중, 간 주소가 `/sandbox/`뿐
+- [x] 창이 보이는 실행 1회(개발 PC, 2번 모니터): 모니터 배치를 먼저 확인(2번 모니터가 왼쪽 X=-1920) → `window_position: -1860,60`으로 임시 포트 서버를 띄워 API로 시작·승인 → 크롬 창 위치를 실제로 재서 (-1860,60)-(-580,960), 2번 모니터 안 → 게시 완료, 글 = 초안, 입력 이벤트 42 = 42자 → 서버·크롬을 닫은 뒤 그 임시 프로필을 쓰는 크롬과 이 앱의 python 프로세스가 남지 않음
+- [x] 테스트 98개 추가(769개 통과, 3개는 `live`라 건너뜀, e2e 5개 포함): 작업 서비스 36개(가짜 실행기), 크롬·주소 23개, 작업 API·테스트 페이지 16개, e2e 4개, 화면 문구·설정·창 닫기
+- [ ] 사람 확인: 실제 화면에서 [브라우저에서 영상 열기] → 테스트 페이지 입력 → [게시 승인] → 게시 완료와 기록 줄. 실제 유튜브(수동 승인 후 게시)로 크롬이 그 프로필과 영상 주소로 열리는지(`setup_profile.ps1`로 로그인해 둔 뒤, 게시는 사람이)
+- [ ] 사람 확인: `config.yaml`의 기본 창 위치 `60,-1060`은 위쪽 2번 모니터 전제다. 지금 이 PC 배치(왼쪽)에 맞게 바꿀지 대표가 정한다
+- 정한 것(답할 사람이 없어 기본값으로): D2 실제 유튜브 게시는 사람이 직접(assist는 열기만), D6 시연은 테스트 페이지(sandbox)만. ① 작업 기록 `runs`는 `mark_posted`·`mark_failed`가 쓰고 `Ledger.record`를 따로 부르지 않는다(같은 줄이 두 번 생기지 않게). `mark_posted(note=)`를 더해 「게시됨(확인 못 함)」을 남긴다 ② 화면의 「수동 승인 후 게시」(target `youtube`)는 작업 API에서 `assist`로 보낸다 ③ 작업 ID는 한국 시각 `YYYYMMDD-HHMMSS-6자리` ④ 앱이 꺼져 남은 예약은 15분 뒤 앱을 켤 때·작업을 시작할 때 실패로 푼다 ⑤ `/api/status`의 `browser`에 `folder`·`active_job_id`를 더했다 ⑥ 승인 받음도 `job_events`에 한 줄 남긴다. 기존 테스트를 고친 곳: `tests/unit/test_db.py`(스키마 판 `== 4` → `>= 4`), `test_dashboard_page.py`(「8단계에서 연결」·꺼진 실행 버튼이 있어야 한다 → 없어야 한다, 버전 0.8.0·8단계, 「초안 승인 완료」 문구 위치가 job.js로). 버전 0.8.0, 화면 표시 8단계
 
 ### [ ] 9단계 — 대시보드 완성
 

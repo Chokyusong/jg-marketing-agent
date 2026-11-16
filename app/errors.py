@@ -44,6 +44,14 @@ class ErrorKind(StrEnum):
     DAILY_LIMIT_REACHED = "daily_limit_reached"
     DRAFT_NOT_APPROVED = "draft_not_approved"
     PROFILE_UNKNOWN = "profile_unknown"  # config.yaml의 profiles에 없는 이름
+    # 8단계: 브라우저 연결(게시 작업)
+    JOB_BUSY = "job_busy"  # 한 번에 작업 하나
+    JOB_NOT_FOUND = "job_not_found"
+    JOB_WRONG_STATE = "job_wrong_state"  # 지금 단계에서 할 수 없는 일(예: 입력 중에 게시 승인)
+    CHROME_NOT_FOUND = "chrome_not_found"
+    PLAYWRIGHT_MISSING = "playwright_missing"
+    PROFILE_IN_USE = "profile_in_use"  # 같은 프로필 폴더를 다른 크롬이 쓰고 있다
+    SCREENSHOT_NOT_FOUND = "screenshot_not_found"
 
 
 @dataclass(frozen=True)
@@ -180,6 +188,43 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
         "03의 사용 프로필에서 고르거나 「자동 배정」을 써 주세요. 프로필 이름은 config.yaml의 "
         "profiles에 있습니다.",
         422,
+    ),
+    ErrorKind.JOB_BUSY: ErrorText(
+        "다른 게시 작업이 진행 중입니다. 작업은 한 번에 하나만 합니다.",
+        "03의 진행 중인 작업을 끝내거나 [작업 취소]를 누른 뒤 다시 시도해 주세요.",
+        409,
+    ),
+    ErrorKind.JOB_NOT_FOUND: ErrorText(
+        "게시 작업을 찾지 못했습니다. 프로그램을 다시 켰다면 이전 작업은 남지 않습니다.",
+        "작업 기록에서 결과를 확인하고, 필요하면 03에서 다시 시작해 주세요.",
+        404,
+    ),
+    ErrorKind.JOB_WRONG_STATE: ErrorText(
+        "지금 단계에서는 그 일을 할 수 없습니다.",
+        "03의 진행 단계 표시를 보고, 그 단계의 단추를 눌러 주세요.",
+        409,
+    ),
+    ErrorKind.CHROME_NOT_FOUND: ErrorText(
+        "이 PC에서 크롬(Google Chrome)을 찾지 못했습니다.",
+        "크롬을 설치하거나, config.yaml의 browser.chrome_path에 chrome.exe 위치를 적고 "
+        "프로그램을 다시 켜 주세요.",
+        503,
+    ),
+    ErrorKind.PLAYWRIGHT_MISSING: ErrorText(
+        "테스트 페이지 자동 실행에 필요한 Playwright가 설치돼 있지 않습니다.",
+        "저장소 폴더에서 .venv\\Scripts\\python.exe -m pip install -r requirements.txt를 "
+        "실행한 뒤 프로그램을 다시 켜 주세요.",
+        503,
+    ),
+    ErrorKind.PROFILE_IN_USE: ErrorText(
+        "그 프로필의 크롬 창이 이미 열려 있어 새로 열 수 없습니다.",
+        "그 프로필의 크롬 창을 닫아 주세요. 닫은 뒤 다시 시도하면 됩니다.",
+        409,
+    ),
+    ErrorKind.SCREENSHOT_NOT_FOUND: ErrorText(
+        "이 작업의 화면 캡처가 없습니다.",
+        "화면 캡처는 테스트 페이지에서 실패한 작업에만 남습니다.",
+        404,
     ),
 }
 

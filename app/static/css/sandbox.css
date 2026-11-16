@@ -1,0 +1,42 @@
+/* 통제된 테스트 페이지(8단계). 대시보드와 같은 검정·금색 분위기의 단순한 자체 화면. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --panel: #111111;
+  --line: rgba(255, 255, 255, 0.18);
+  --line-soft: rgba(255, 255, 255, 0.10);
+  --text: #f2f0ec;
+  --sub: #b2b0ab;
+  --dim: #918e88;
+  --gold: #d1b990;
+  --ok: #b7c4a7;
+  --bad: #d98a7e;
+  --sans: "Pretendard", "Noto Sans KR", "Malgun Gothic", "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.6; }
+button, textarea { font: inherit; color: inherit; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.banner { margin: 0; padding: 10px 24px; border-bottom: 1px solid var(--gold); color: var(--gold); font-size: 13px; letter-spacing: 0.04em; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.banner span { color: var(--dim); font-size: 11px; letter-spacing: 0.15em; }
+.wrap { max-width: 860px; margin: 0 auto; padding: 24px; }
+h1 { font-size: 20px; font-weight: 400; margin: 0 0 4px; }
+.meta { color: var(--dim); font-size: 12px; margin: 0 0 16px; }
+.screen { aspect-ratio: 16 / 9; max-height: 300px; width: 100%; border: 1px dashed var(--line); display: grid; place-items: center; color: var(--dim); font-size: 12px; letter-spacing: 0.08em; background: var(--panel); }
+.comments { margin-top: 22px; }
+h2 { font-size: 15px; font-weight: 400; margin: 0 0 12px; }
+h2 span { color: var(--gold); }
+textarea { width: 100%; resize: vertical; background: #151515; border: 0; border-bottom: 1px solid var(--line); padding: 8px 2px; outline: none; }
+textarea:focus { border-bottom-color: var(--gold); }
+.actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.status { margin-right: auto; font-size: 12px; color: var(--sub); }
+.status[data-tone="bad"] { color: var(--bad); }
+.status[data-tone="ok"] { color: var(--ok); }
+.status[data-tone="busy"] { color: var(--gold); }
+button { border: 1px solid var(--line); background: none; padding: 6px 14px; cursor: pointer; }
+button[type="submit"] { background: #e9e4dc; color: #111; border-color: #e9e4dc; }
+button:disabled { opacity: 0.45; cursor: default; }
+.list { list-style: none; margin: 18px 0 0; padding: 0; }
+.c-item { border-top: 1px solid var(--line-soft); padding: 10px 0; }
+.c-meta { margin: 0; color: var(--dim); font-size: 11.5px; }
+.c-body { margin: 2px 0 0; white-space: pre-wrap; word-break: break-word; }

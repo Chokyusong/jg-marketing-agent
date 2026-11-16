@@ -24,8 +24,10 @@ transcript:
   provider: manual        # manual | unofficial
 browser:
   default_target: sandbox # sandbox | assist
-  window_position: "60,-1060"
-  typing_delay_ms: [60, 160]
+  headless: false         # 창 없이 돌릴지(자동 테스트는 true). 창이 보이면 아래 위치에 뜬다
+  window_position: "60,-1060"   # 크롬 창 위치 x,y(2번 모니터). 모니터 배치에 맞게 바꾼다
+  typing_delay_ms: [60, 160]    # 테스트 페이지에서 글자마다 기다리는 밀리초(최소, 최대)
+  # chrome_path: ""       # 비우면 설치된 크롬을 찾는다. 프로필 폴더는 %LOCALAPPDATA%\JGMarketingAgent\profiles
 llm:
   active: ollama          # 아래 providers에서 고른 이름(DESIGN 5.2.1). 옛 키 provider: ollama도 읽는다
   timeout_seconds: 180    # 답 하나를 기다리는 시간. 큰 모델은 첫 응답에 몇 분 걸릴 수 있다

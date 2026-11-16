@@ -106,11 +106,27 @@ class AIStatusOut(BaseModel):
     error: ProblemOut | None = None  # 문제가 있을 때만: 무엇이 문제이고 무엇을 하면 되는지
 
 
+class BrowserProfileOut(BaseModel):
+    name: str  # 화면 이름(유튜브1)
+    folder: str  # 폴더 이름(profile-1). PC의 전체 경로는 싣지 않는다
+    exists: bool  # 프로필 폴더가 이미 있는지(구글 로그인은 scripts/setup_profile.ps1로 사람이)
+
+
+class BrowserStatusOut(BaseModel):
+    """위 줄 BROWSER 상태(8단계)."""
+
+    chrome_found: bool
+    playwright_ready: bool  # 테스트 페이지 자동 실행에 필요한 Playwright가 설치돼 있는지
+    profiles: list[BrowserProfileOut]
+    active_job_id: str | None = None  # 진행 중인 게시 작업(화면을 새로 고쳐도 이어 보게)
+
+
 class StatusOut(BaseModel):
     """사이드바 시스템 상태. 키는 있는지 없는지만 알려 준다(값은 절대 싣지 않는다)."""
 
     youtube: YouTubeStatusOut
     ai: AIStatusOut
+    browser: BrowserStatusOut | None = None  # 8단계
 
 
 class WarmupOut(BaseModel):
@@ -415,4 +431,87 @@ class TodayStatsOut(BaseModel):
             posted=t.posted,
             failed=t.failed,
             success_rate=t.success_rate,
+        )
+
+
+# ---------------------------------------------------------------- 8단계: 게시 작업
+
+
+class JobIn(BaseModel):
+    video_id: str
+    draft_id: int
+    profile: str = ""  # 비우면 자동 배정
+    target: Literal["sandbox", "assist", "youtube"] = "sandbox"  # assist와 youtube는 같은 것
+    daily_limit: int | None = Field(default=None, ge=0, le=1000)  # 화면에서 낮춘 상한
+    fail: Literal["", "hide_button", "slow", "reject"] = ""  # 테스트 페이지 실패 스위치(시험용)
+
+
+class JobConfirmIn(BaseModel):
+    posted: bool
+
+
+class JobEventOut(BaseModel):
+    at: str
+    state: str
+    message: str
+
+
+class JobOut(BaseModel):
+    """게시 작업 한 건(0.5초마다 화면이 물어 온다).
+
+    프로필 폴더의 전체 경로·캡처 경로는 싣지 않는다.
+    """
+
+    id: str
+    mode: Literal["sandbox", "assist"]
+    target: Literal["sandbox", "youtube"]
+    target_label: str
+    state: str
+    state_label: str
+    step: int  # 진행 단계 표시(대기·프로필 실행·댓글 입력·승인 대기·게시·확인)의 지금 칸, 끝나면 6
+    finished: bool
+    video_id: str
+    draft_id: int
+    profile: str
+    folder: str
+    comment_text: str
+    message: str
+    reason: str  # 실패 사유(실패했을 때만)
+    verified: bool | None  # 게시를 확인했는지(assist에서 Data API로 못 찾으면 false)
+    has_screenshot: bool
+    screenshot_url: str | None
+    view_url: str  # [댓글 보기]
+    waiting_for: Literal["approve", "confirm"] | None
+    seconds_left: int | None
+    created_at: str
+    finished_at: str | None
+    events: list[JobEventOut]
+
+    @classmethod
+    def from_view(cls, v) -> JobOut:  # v: app.browser.jobs.JobView
+        return cls(
+            id=v.id,
+            mode=v.mode,
+            target=v.target,
+            target_label=TARGET_LABELS.get(v.target, v.target),
+            state=v.state,
+            state_label=v.state_label,
+            step=v.step,
+            finished=v.finished,
+            video_id=v.video_id,
+            draft_id=v.draft_id,
+            profile=v.profile,
+            folder=v.folder,
+            comment_text=v.comment_text,
+            message=v.message,
+            reason=v.reason,
+            verified=v.verified,
+            has_screenshot=v.has_screenshot,
+            screenshot_url=f"/api/jobs/{v.id}/screenshot" if v.has_screenshot else None,
+            view_url=v.view_url,
+            waiting_for=v.waiting_for,
+            seconds_left=v.seconds_left,
+            created_at=v.created_at,
+            finished_at=v.finished_at,
+            events=[JobEventOut(at=e.at, state=e.state, message=e.message) for e in v.events],
         )

@@ -7,3 +7,6 @@ python-dotenv>=1,<2
 pyyaml>=6,<7
 # 자체 창(내장 웹뷰). Windows는 Edge WebView2 Runtime을 쓴다. BSD 3-Clause. app/desktop.py 참고
 pywebview>=6.2,<7
+# 테스트 페이지 자동 실행(8단계). 설치된 Google Chrome을 쓴다(channel="chrome", 브라우저를 내려받지 않음).
+# Apache-2.0. app/browser/sandbox_driver.py 참고
+playwright>=1.48,<2

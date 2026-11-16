@@ -127,7 +127,7 @@ def test_stage7_tables_and_upgrade_from_stage5_keeps_data(tmp_db_path):
     conn.execute("INSERT INTO quota_usage(day, units) VALUES ('2026-11-16', 7)")
     conn.commit()
     conn.close()
-    assert db.init_db(tmp_db_path) == db.SCHEMA_VERSION == 4
+    assert db.init_db(tmp_db_path) == db.SCHEMA_VERSION >= 4  # 8단계에서 5번째 덩어리를 더했다
     assert {"posts", "runs", "job_events"} <= _tables(tmp_db_path)
     with db.session(tmp_db_path) as conn:
         assert conn.execute("SELECT units FROM quota_usage").fetchone()["units"] == 7

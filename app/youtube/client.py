@@ -316,3 +316,24 @@ class YouTubeClient:
             },
         )
         return [comment_from_item(item) for item in body.get("items") or []]
+
+    def search_comments(
+        self, video_id: str, search_terms: str, *, max_results: int = 20
+    ) -> list[Comment]:
+        """그 영상의 최근 댓글 중 글이 들어간 것(order=time, searchTerms, 1단위).
+
+        8단계 assist에서 사람이 [게시했어요]를 눌렀을 때 정말 달렸는지 찾아보는 데만 쓴다
+        (읽기 전용).
+        """
+        body = self._get(
+            "commentThreads",
+            {
+                "part": "snippet",
+                "videoId": video_id,
+                "order": "time",
+                "searchTerms": search_terms[:100],
+                "maxResults": max(1, min(int(max_results), 100)),
+                "textFormat": "plainText",
+            },
+        )
+        return [comment_from_item(item) for item in body.get("items") or []]

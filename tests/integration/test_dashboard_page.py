@@ -5,7 +5,7 @@ import re
 import pytest
 
 JS_FILES = ["app.js", "api.js", "state.js", "format.js", "discover.js", "analysis.js", "flow.js",
-            "topbar.js", "context.js", "draft.js", "report.js", "ops.js"]
+            "topbar.js", "context.js", "draft.js", "report.js", "ops.js", "job.js", "sandbox.js"]
 
 
 @pytest.fixture
@@ -52,7 +52,7 @@ def test_discover_column_is_wired(page):
 
 
 def test_unconnected_parts_are_off_and_labelled(page):
-    assert "8단계에서 연결" in page
+    assert "8단계에서 연결" not in page  # 8단계에서 켠 큰 버튼·진행 단계·BROWSER 상태도
     assert "3단계에서 연결" not in page  # 3단계에서 켠 요소는 문구도 지운다
     assert "5단계에서 연결" not in page  # 5단계에서 켠 분석·AI 초안·다른 초안·승인도
     assert "6단계에서 연결" not in page  # 6단계에서 켠 요소(초안 글 상자·규칙 검사)도
@@ -60,7 +60,7 @@ def test_unconnected_parts_are_off_and_labelled(page):
     assert "7단계에서 연결" not in page  # 7단계에서 켠 오늘 통계·03칸 설정·작업 기록도
     assert '<dl class="today is-off"' not in page and '<dl class="today"' in page
     assert '<fieldset class="settings" disabled>' not in page
-    assert '<button type="button" class="primary" disabled>' in page  # 큰 버튼은 8단계
+    assert '<button type="button" class="primary" disabled>' not in page  # 큰 버튼은 8단계에 켰다
     assert '<button type="button" disabled title="9단계에서 연결">SETTINGS</button>' in page
 
 
@@ -182,9 +182,9 @@ def test_context_js_wires_the_three_apis(make_client):
 
 
 def test_version_shows_current_stage(page):
-    # 버전은 단계가 끝날 때마다 하나씩 올린다(실행 순서 3 → P → 6 → 4 → 5 → 7: 0.3.0 … 0.7.0)
-    assert "V 0.7.0 — LOCAL · 7단계" in page
-    assert "STAGE 7" in page
+    # 버전은 단계가 끝날 때마다 하나씩 올린다(실행 순서 3 → P → 6 → 4 → 5 → 7 → 8: 0.3.0 … 0.8.0)
+    assert "V 0.8.0 — LOCAL · 8단계" in page
+    assert "STAGE 8" in page
 
 
 # ---------------------------------------------------------------- 6단계: 02칸 댓글 초안·규칙 검사
@@ -254,11 +254,13 @@ def test_report_box_is_on_with_run_button_and_five_lines(page):
     assert 'id="draft-tone"' in page  # 말투 분류(본문에는 넣지 않는다)
 
 
-def test_execute_button_stays_off_until_stage_8(page):
+def test_execute_button_is_on_from_stage_8(page):
     execute = _section(page, 'id="col-execute"', 'id="activity"')
-    button = '<button type="button" class="primary" disabled>브라우저에서 영상 열기 ↗</button>'
+    # 8단계: 큰 버튼은 켜는 조건(승인한 초안 + 댓글 안 단 영상 + 오늘 남은 횟수)을 job.js가 본다
+    button = ('<button type="button" class="primary" id="job-primary" disabled>'
+              "브라우저에서 영상 열기 ↗</button>")
     assert button in execute
-    assert "작업 실행은 8단계에서 연결" in execute
+    assert "작업 실행은 8단계에서 연결" not in execute
 
 
 def test_report_js_runs_steps_in_order_on_button_only(make_client):
@@ -285,7 +287,8 @@ def test_report_js_runs_steps_in_order_on_button_only(make_client):
     assert "initReport" in client.get("/static/js/app.js").text
     flow = client.get("/static/js/flow.js").text
     assert "const current = approved ? 3 : video ? 2 : 1;" in flow  # 승인하면 03
-    assert "초안 승인 완료" in flow
+    # 승인 뒤 03 문구는 8단계 job.js가 쓴다
+    assert "초안 승인 완료" in client.get("/static/js/job.js").text
 
 
 def test_report_lines_are_clipped_to_one_line(make_client):
@@ -325,8 +328,8 @@ def test_execute_settings_are_on(page):
     assert re.findall(r'<option value="(\d+)"[^>]*>최대 \d+건', settings) == ["10", "5", "3", "1"]
     assert '<option value="10" selected>최대 10건</option>' in settings
     assert 'id="today-count"' in settings
-    # 큰 실행 버튼과 진행 단계 표시는 8단계까지 꺼 둔다
-    assert '<ol class="job-steps" aria-label="진행 단계 (8단계에서 연결)">' in execute
+    # 큰 실행 버튼과 진행 단계 표시는 8단계에 켰다
+    assert '<ol class="job-steps" id="job-steps" aria-label="진행 단계">' in execute
 
 
 def test_daily_limit_options_follow_config(make_client):
@@ -372,3 +375,65 @@ def test_records_and_commented_styles(make_client):
     assert "table-layout: fixed" in css
     for tone in (".history td.st.is-ok b", ".history td.st.is-bad b"):
         assert tone in css
+
+
+# ---------------------------------------------------------------- 8단계: 03칸 작업 상자 · BROWSER
+
+
+def test_job_box_has_six_steps_and_only_needed_buttons(page):
+    box = _section(page, 'id="job-box"', '<div class="hint">')
+    steps = re.findall(r'<li data-step="(\d)">([^<]+)</li>', box)
+    assert steps == [("0", "대기"), ("1", "프로필 실행"), ("2", "댓글 입력"), ("3", "승인 대기"),
+                     ("4", "게시 완료"), ("5", "확인")]
+    # 상태에 따라 필요한 것만 보인다: 작은 단추 줄과 실패 사유는 처음에 숨김
+    assert 'class="job-actions" id="job-actions" hidden' in box
+    for bid, text in (("job-copy", "초안 복사"), ("job-not-posted", "게시 안 함"),
+                      ("job-cancel", "작업 취소")):
+        assert f'id="{bid}" hidden>{text}</button>' in box
+    view = 'id="job-view" href="#" target="_blank" rel="noopener noreferrer" hidden>댓글 보기 ↗'
+    assert view in box
+    assert 'id="job-shot"' in box and 'id="job-error" role="alert" hidden' in box
+    assert 'id="job-status"' in box
+
+
+def test_browser_status_is_on(page):
+    top = _section(page, '<ul class="system"', "</ul>")
+    assert 'id="status-browser-dot"' in top and 'id="status-browser">확인 중<' in top
+    assert "8단계에서 연결" not in top
+
+
+def test_job_js_wires_the_job_apis(make_client):
+    client = make_client(key=None)
+    api = client.get("/static/js/api.js").text
+    for snippet in ("request('/api/jobs', {", "`/api/jobs/${encodeURIComponent(id)}`",
+                    "/approve`", "/confirm`", "/cancel`", "JSON.stringify({ posted })"):
+        assert snippet in api, snippet
+    js = client.get("/static/js/job.js").text
+    for text in ("const POLL_MS = 500;", "api.startJob(", "api.approveJob(job.id)",
+                 "api.confirmJob(job.id, true)", "api.confirmJob(job.id, false)",
+                 "api.cancelJob(job.id)", "navigator.clipboard.writeText(job.comment_text)",
+                 "refreshOps();", "commented: { ...(v.commented || {}), [job.target]: true }",
+                 "통제된 테스트 페이지에서 실행", "video.commented[target]",
+                 "ops.stats.remaining <= 0", "active_job_id", "게시했어요", "게시 승인"):
+        assert text in js, text
+    assert "innerHTML" not in js
+    assert "initJob" in client.get("/static/js/app.js").text
+    topbar = client.get("/static/js/topbar.js").text
+    assert "export function browserStatusText" in topbar and "renderBrowser(state)" in topbar
+    flow = client.get("/static/js/flow.js").text
+    assert "job.js" in flow
+
+
+def test_job_box_styles(make_client):
+    css = make_client(key=None).get("/static/css/style.css").text
+    for rule in (".job-steps li.is-current", ".job-steps li.is-done", ".job-steps li.is-failed",
+                 ".job-actions {", ".job-error {"):
+        assert rule in css, rule
+
+
+def test_hidden_job_buttons_stay_hidden(make_client):
+    """작은 단추의 display 규칙이 hidden을 이기면 안 된다(상태마다 필요한 단추만 보인다)."""
+    css = make_client(key=None).get("/static/css/style.css").text
+    shown = css.index(".job-actions .line-btn {")
+    hidden = css.index(".job-actions .line-btn[hidden] { display: none; }")
+    assert hidden > shown

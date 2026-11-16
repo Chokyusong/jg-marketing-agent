@@ -151,6 +151,19 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX job_events_job ON job_events(job_id, id);
     """,
+    # 8단계: 통제된 테스트 페이지(/sandbox/watch)의 댓글. 실제 유튜브와 상관없는 이 앱만의 표.
+    # input_events: 댓글 상자에서 일어난 입력 이벤트 수(한 글자씩 입력됐는지 확인하는 데 쓴다)
+    """
+    CREATE TABLE sandbox_comments (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        video_id      TEXT NOT NULL,
+        profile       TEXT NOT NULL DEFAULT '',
+        body          TEXT NOT NULL,
+        input_events  INTEGER NOT NULL DEFAULT 0,
+        created_at    TEXT NOT NULL
+    );
+    CREATE INDEX sandbox_comments_video ON sandbox_comments(video_id, id);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

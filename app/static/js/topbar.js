@@ -1,4 +1,4 @@
-// 위 줄: 메뉴 이동(해당 칸 잠깐 강조), 좁은 화면 메뉴 단추, 시스템 상태(AI·YOUTUBE), 할당량 표시.
+// 위 줄: 메뉴 이동(해당 칸 잠깐 강조), 좁은 화면 메뉴 단추, 시스템 상태(AI·YOUTUBE·BROWSER), 할당량 표시.
 import { api } from './api.js';
 import { setState, subscribe } from './state.js';
 
@@ -48,10 +48,40 @@ function setIfChanged(patch) {
 async function loadStatus() {
   try {
     const data = await api.status();
-    setIfChanged({ youtubeKey: data.youtube.key_configured, quota: data.youtube.quota, ai: data.ai || null });
+    setIfChanged({
+      youtubeKey: data.youtube.key_configured, quota: data.youtube.quota, ai: data.ai || null, browser: data.browser || null,
+    });
   } catch {
-    setIfChanged({ youtubeKey: null, ai: null });
+    setIfChanged({ youtubeKey: null, ai: null, browser: null });
   }
+}
+
+export const refreshStatus = loadStatus;
+
+// BROWSER 상태 한 줄(8단계): 크롬·Playwright·프로필 폴더. 게시 작업 중이면 「작업 중」.
+export function browserStatusText(browser, job) {
+  if (!browser) return { tone: 'is-wait', text: '확인 못 함', title: '' };
+  if (!browser.chrome_found) {
+    return { tone: 'is-bad', text: '크롬 없음', title: '크롬을 설치하거나 config.yaml의 browser.chrome_path에 chrome.exe 위치를 적어 주세요.' };
+  }
+  const ready = browser.profiles.filter((p) => p.exists).length;
+  const title = browser.playwright_ready
+    ? `프로필 폴더 ${ready}/${browser.profiles.length}개 있음. 구글 로그인은 scripts\\setup_profile.ps1로 직접 합니다.`
+    : 'Playwright가 없어 테스트 페이지 자동 실행을 못 합니다. pip install -r requirements.txt';
+  if (job && !job.finished) return { tone: 'is-wait', text: `크롬 · 작업 중`, title };
+  if (!browser.playwright_ready) return { tone: 'is-bad', text: '크롬 · 자동 실행 불가', title };
+  return { tone: 'is-ok', text: `크롬 · 프로필 ${ready}/${browser.profiles.length}`, title };
+}
+
+function renderBrowser(state) {
+  const view = browserStatusText(state.browser, state.job);
+  const dot = $('status-browser-dot');
+  dot.classList.remove('is-ok', 'is-bad', 'is-wait');
+  dot.classList.add(view.tone);
+  $('status-browser').textContent = view.text;
+  const item = $('status-browser-item');
+  if (view.title) item.title = view.title;
+  else item.removeAttribute('title');
 }
 
 // AI 상태 한 줄: 정상이면 「공급자 · 모델 · 로컬/외부」, 문제면 짧은 이유. 자세한 안내는 마우스를 올리면.
@@ -81,6 +111,7 @@ function renderAI(state) {
 
 function renderStatus(state) {
   renderAI(state);
+  renderBrowser(state);
   const dot = $('status-youtube-dot');
   const text = $('status-youtube');
   dot.classList.remove('is-ok', 'is-bad', 'is-wait');

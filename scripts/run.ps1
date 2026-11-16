@@ -1,5 +1,7 @@
 # Start the local dashboard at http://127.0.0.1:8765
-# Usage: .\scripts\run.ps1 [extra uvicorn args, e.g. --reload]
+# Usage: .\scripts\run.ps1 [extra uvicorn args]
+# Do not use --reload from stage 8 on: a reload restarts the server and cuts the
+# browser job thread (Chrome is left open, the post stays reserved).
 $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
 $py = Join-Path $root '.venv\Scripts\python.exe'
