@@ -234,6 +234,25 @@ class ContextService:
             context, truncated=fitted.truncated, transcript_truncated=fitted.transcript_truncated
         )
 
+    def current(self, video_id: str) -> VideoContext:
+        """저장된 맥락을 그대로 묶어 돌려준다(DB에 다시 쓰지 않고 YouTube도 부르지 않는다).
+
+        아직 만든 적이 없으면 `build()`로 만든다. 규칙 검사(6단계)가 입력마다 부른다.
+        """
+        if not is_video_id(video_id):
+            raise AppError(ErrorKind.INVALID_URL, detail="영상 ID 형식이 아님")
+        row = self._load_row(video_id)
+        stored = self.videos.stored(video_id)
+        if row is None or not row["built_at"] or stored is None:
+            return self.build(video_id)
+        return self._assemble(
+            stored,
+            self._transcript(video_id),
+            _comments_from_json(row["comments_json"]),
+            bool(row["comments_disabled"]),
+            row["built_at"],
+        )
+
     def set_manual_transcript(self, video_id: str, text: str) -> VideoContext:
         """붙여 넣은 자막을 저장하고 맥락을 다시 묶는다(댓글은 저장된 것을 쓴다)."""
         prepare_transcript(text)  # 영상을 부르기 전에 빈 글·너무 긴 글을 먼저 거른다

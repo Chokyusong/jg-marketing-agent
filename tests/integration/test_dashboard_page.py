@@ -5,7 +5,7 @@ import re
 import pytest
 
 JS_FILES = ["app.js", "api.js", "state.js", "format.js", "discover.js", "analysis.js", "flow.js",
-            "topbar.js", "context.js"]
+            "topbar.js", "context.js", "draft.js"]
 
 
 @pytest.fixture
@@ -55,6 +55,7 @@ def test_unconnected_parts_are_off_and_labelled(page):
     for label in ("4단계에서 연결", "5단계에서 연결", "7단계에서 연결", "8단계에서 연결"):
         assert label in page
     assert "3단계에서 연결" not in page  # 3단계에서 켠 요소는 문구도 지운다
+    assert "6단계에서 연결" not in page  # 6단계에서 켠 요소(초안 글 상자·규칙 검사)도
     assert '<dl class="today is-off"' in page
     assert '<fieldset class="settings" disabled>' in page
     assert '<button type="button" class="primary" disabled>' in page
@@ -73,7 +74,7 @@ def test_no_example_numbers(page):
 
 
 def test_disclosure_and_profiles_from_config(page):
-    assert '<span class="disclosure">[광고]</span>' in page
+    assert 'data-disclosure="[광고]"' in page  # 초안 글 상자의 금색 표기(draft.js가 칠한다)
     for name in ("유튜브1", "유튜브2", "유튜브3"):
         assert name in page
     assert "@gmail" not in page
@@ -141,17 +142,16 @@ def test_broken_thumbnail_falls_back_to_empty_box(make_client):
 
 def test_context_rows_are_on(page):
     analyze = _section(page, 'id="col-analyze"', 'id="col-execute"')
-    box = _section(analyze, 'id="context-box"', '<div class="is-off">')
+    box = _section(analyze, 'id="context-box"', 'id="draft-box"')
     assert 'class="is-off"' not in box  # 켠 요소: 꺼짐 표시 없음
     assert "<dt>자막 출처</dt>" in box and 'id="ctx-transcript"' in box
     assert "<dt>인기 댓글</dt>" in box and 'id="ctx-comments"' in box
     assert 'id="context-error"' in box and 'role="alert"' in box
-    # 분석(5단계)과 초안(5·6단계)은 그대로 꺼져 있다
+    # 분석(5단계)은 그대로 꺼져 있다. 초안 글 상자는 6단계에서 켰다(아래 테스트)
     off_blocks = analyze.split('<div class="is-off">')[1:]
-    assert len(off_blocks) == 2
+    assert len(off_blocks) == 1
     assert "CONTEXT REPORT · 5단계에서 연결" in off_blocks[0]
     assert "자막 출처" not in off_blocks[0].split("</dl>", 1)[0]
-    assert "DRAFT · 5단계에서 연결" in off_blocks[1]
 
 
 def test_transcript_paste_box(page):
@@ -181,6 +181,53 @@ def test_context_js_wires_the_three_apis(make_client):
     assert "initContext" in client.get("/static/js/app.js").text
 
 
-def test_version_shows_stage3(page):
-    assert "V 0.3.0 — LOCAL · 3단계" in page
-    assert "STAGE 3" in page
+def test_version_shows_current_stage(page):
+    # 버전은 단계가 끝날 때마다 하나씩 올린다(실행 순서 3 → P → 6: 0.3.0 → 0.4.0)
+    assert "V 0.4.0 — LOCAL · 6단계" in page
+    assert "STAGE 6" in page
+
+
+# ---------------------------------------------------------------- 6단계: 02칸 댓글 초안·규칙 검사
+
+
+def test_draft_box_is_on(page):
+    analyze = _section(page, 'id="col-analyze"', 'id="col-execute"')
+    draft = _section(analyze, 'id="draft-box"', '<p class="note">')
+    assert 'class="is-off"' not in draft.split('class="draftfooter"', 1)[0]  # 글 상자는 켜져 있다
+    assert 'data-min="40"' in page and 'data-max="120"' in page  # config.yaml comment
+    assert '<label for="draft-text">댓글 초안</label>' in draft
+    assert 'id="draft-count">0 / 120자</span>' in draft
+    assert '<textarea class="draft-input" id="draft-text"' in draft
+    assert 'id="draft-mirror" aria-hidden="true"' in draft  # 표기 금색으로 칠하는 거울
+    assert 'id="draft-tag">DRAFT · REVIEW REQUIRED</span>' in draft
+    assert 'id="draft-checks" aria-live="polite"' in draft
+    # 5단계 것은 꺼 둔 채로 "5단계에서 연결"
+    button = '<button type="button" class="line-btn is-off" disabled>'
+    assert button + "다른 초안 생성 ↗ · 5단계에서 연결</button>" in draft
+    assert "영상의 구체적 장면은 실제 자막 등 검증 가능한 근거가 있을 때만 반영합니다." in analyze
+
+
+def test_draft_js_checks_after_pause_and_folds_passed_items(make_client):
+    client = make_client(key=None)
+    api = client.get("/static/js/api.js").text
+    assert "request('/api/validate', { method: 'POST'" in api
+    assert "video_id: videoId, text" in api
+    js = client.get("/static/js/draft.js").text
+    assert "const DEBOUNCE_MS = 400;" in js  # 입력이 0.4초 멈추면 검사
+    assert "api.validate(videoId, text)" in js
+    for text in ("'CHECKED'", "'DRAFT · REVIEW REQUIRED'", "개 중 ", "개 통과", "개 모두 통과",
+                 "checks-fail", "class: 'disclosure'", "normalize('NFC').trim()"):
+        assert text in js
+    # 통과 항목은 접어 두고(details) 실패만 펼친다
+    assert "el('details'" in js and "failed.map(" in js
+    assert "initDraft" in client.get("/static/js/app.js").text
+    flow = client.get("/static/js/flow.js").text
+    assert "v.result.passed" in flow and "규칙 검사 통과" in flow
+
+
+def test_draft_styles(make_client):
+    css = make_client(key=None).get("/static/css/style.css").text
+    mirror = css.split(".draft-mirror .disclosure {", 1)[1].split("}", 1)[0]
+    assert "var(--gold)" in mirror
+    assert ".draft-input {" in css and "color: transparent" in css.split(".draft-input {", 1)[1]
+    assert ".checks-fail li {" in css and ".tag.is-ok" in css

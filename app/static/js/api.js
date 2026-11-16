@@ -57,4 +57,7 @@ export const api = {
     request(`/api/videos/${encodeURIComponent(videoId)}/transcript`, { method: 'PUT', body: JSON.stringify({ text }) }),
   clearTranscript: (videoId) =>
     request(`/api/videos/${encodeURIComponent(videoId)}/transcript`, { method: 'DELETE' }),
+  // 6단계: 규칙 검사 V1~V11
+  validate: (videoId, text) =>
+    request('/api/validate', { method: 'POST', body: JSON.stringify({ video_id: videoId, text }) }),
 };

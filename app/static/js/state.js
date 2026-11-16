@@ -13,6 +13,10 @@ const state = {
   context: null,         // { video_id, transcript_source, transcript_chars, comment_count, comments_disabled, ... }
   contextLoading: false, // 맥락을 만들거나 자막을 저장하는 중
   contextError: null,    // { kind, message, action }
+  // 6단계: 댓글 초안 규칙 검사(POST /api/validate 응답). 검사한 글과 함께 둔다
+  validation: null,      // { videoId, text, result: { passed, char_count, checks: [...], ... } }
+  validationLoading: false,
+  validationError: null, // { kind, message, action }
 };
 
 const listeners = new Set();

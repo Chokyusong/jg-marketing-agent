@@ -9,7 +9,9 @@ import httpx
 from fastapi import Request
 
 from app import db
+from app.analysis.checking import CheckService
 from app.analysis.context import ContextService
+from app.analysis.validator import ValidatorRules
 from app.config import Settings, load_settings
 from app.youtube.client import YouTubeClient
 from app.youtube.quota import Clock, QuotaTracker, SearchCache, utc_now
@@ -22,6 +24,7 @@ class Services:
     quota: QuotaTracker
     videos: VideoService
     context: ContextService
+    checks: CheckService
 
     def close(self) -> None:
         self.videos.client.close()
@@ -50,7 +53,14 @@ def build_services(
         transcript_provider=settings.transcript_provider,
         context_chars=settings.context_chars,
     )
-    return Services(settings=settings, quota=quota, videos=videos, context=context)
+    checks = CheckService(
+        context,
+        rules=ValidatorRules.from_config(settings.rules, settings.validator_extra_patterns),
+        brand_facts=settings.brand_facts,
+    )
+    return Services(
+        settings=settings, quota=quota, videos=videos, context=context, checks=checks
+    )
 
 
 class ServiceHolder:

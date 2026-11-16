@@ -139,5 +139,11 @@ class VideoService:
         keep_source = stored.source if stored is not None else source
         return self._save([video], source=keep_source)[0]
 
+    def stored(self, video_id: str) -> StoredVideo | None:
+        """저장해 둔 영상 정보(오래됐어도 그대로). 없으면 None. YouTube를 부르지 않는다."""
+        if not is_video_id(video_id):
+            return None
+        return self._load([video_id]).get(video_id)
+
     def resolve(self, url: str) -> StoredVideo:
         return self.get(parse_video_id(url), source="link")

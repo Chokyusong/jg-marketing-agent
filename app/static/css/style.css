@@ -97,7 +97,7 @@ p { margin: 0; }
 
 /* ------------------------------------------------ 3열 */
 .workspace { display: grid; grid-template-columns: 1.04fr 1.04fr 0.92fr; border-bottom: 1px solid var(--line); }
-.column { padding: 22px 26px 24px 0; min-width: 0; scroll-margin-top: 12px; transition: background 0.3s; }
+.column { padding: 22px 26px 18px 0; min-width: 0; scroll-margin-top: 12px; transition: background 0.3s; }
 .column + .column { border-left: 1px solid var(--line); padding-left: 26px; }
 .column:last-child { padding-right: 0; }
 .column.is-focus { background: rgba(209, 185, 144, 0.05); }
@@ -166,6 +166,9 @@ select { background: var(--panel); color: #cfcac3; border: 1px solid var(--line)
 .analysis { display: grid; grid-template-columns: 70px 1fr; gap: 8px 13px; margin: 0 0 14px; }
 .analysis dt { font-size: 11.5px; color: var(--dim); }
 .analysis dd { margin: 0; color: #c5c2bc; font-size: 12px; line-height: 1.6; }
+/* 6단계: 1080px 화면에서 3열이 스크롤 없이 보이게 꺼 둔 분석 줄(5단계) 간격을 줄인다 */
+.analysis.is-compact { gap: 3px 13px; margin-bottom: 10px; }
+.analysis.is-compact dt, .analysis.is-compact dd { line-height: 1.5; }
 .comment { width: 100%; min-height: 96px; background: var(--field); border: 1px solid #575148; color: #c9c4ba; padding: 13px; line-height: 1.8; font-size: 13px; }
 .disclosure { color: var(--gold); }
 .draftfooter { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; }
@@ -191,6 +194,40 @@ select { background: var(--panel); color: #cfcac3; border: 1px solid var(--line)
 .paste-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 9px 12px 12px; flex-wrap: wrap; }
 .paste-count { margin-right: auto; color: var(--dim); font-size: 11.5px; }
 .paste-count.is-over { color: var(--bad); }
+
+/* 02 댓글 초안(6단계): 글 상자 뒤 거울에 같은 글을 그려 표기 [광고]만 금색으로 칠한다 */
+.draft { margin-top: 4px; }
+.draft .section-mini { margin: 8px 0 9px; padding-bottom: 8px; }
+.draft .section-mini label { cursor: text; }
+.draft-count { font-variant-numeric: tabular-nums; }
+.section-mini .draft-count.is-over { color: var(--bad); }
+.draft-edit { position: relative; background: var(--field); }
+.draft-mirror, .draft-input { margin: 0; padding: 11px 13px; border: 1px solid transparent; font: 13px/1.65 var(--sans); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; tab-size: 4; }
+.draft-mirror { position: absolute; inset: 0; color: #d6d1c7; pointer-events: none; overflow: hidden; }
+.draft-mirror .disclosure { color: var(--gold); }
+.draft-input { position: relative; display: block; width: 100%; min-height: 66px; resize: none; overflow: hidden; background: transparent; color: transparent; caret-color: var(--text); border-color: #575148; border-radius: 0; outline: none; }
+.draft-input:focus { border-color: var(--gold); }
+.draft-input::placeholder { color: var(--dim); }
+.draft-input::selection { color: transparent; background: rgba(139, 116, 80, 0.55); }
+.draft-input:disabled { cursor: not-allowed; }
+.draft-edit:has(.draft-input:disabled) { opacity: 0.6; }
+.draft .draftfooter { margin-top: 7px; }
+.draft .draftfooter .line-btn { padding: 5px 11px; }
+.tag.is-ok { color: var(--ok); }
+.line-btn.is-off { opacity: 0.45; }
+.checks { margin-top: 8px; font-size: 12px; line-height: 1.55; }
+.checks.is-stale { opacity: 0.55; }
+.checks-idle { color: var(--dim); font-size: 12px; }
+.checks-error { color: var(--bad); font-size: 12px; }
+.checks-pass > summary { cursor: pointer; list-style: none; color: var(--sub); font-size: 12px; }
+.checks-pass > summary::-webkit-details-marker { display: none; }
+.checks-pass > summary::before { content: "+"; display: inline-block; width: 14px; color: var(--gold); }
+.checks-pass[open] > summary::before { content: "−"; }
+.checks-pass.is-all > summary { color: var(--ok); }
+.checks-pass > p { color: var(--dim); font-size: 11.5px; margin: 2px 0 0 14px; }
+.checks-fail { list-style: none; margin: 5px 0 0; padding: 0; display: grid; gap: 3px; }
+.checks-fail li { border-left: 2px solid var(--bad); padding: 1px 0 1px 9px; color: var(--sub); }
+.checks-fail b { color: var(--bad); font-weight: 400; margin-right: 6px; white-space: nowrap; }
 
 /* 03 */
 .settings { border: 0; border-top: 1px solid var(--line-soft); margin: 0; padding: 12px 0 0; display: grid; gap: 11px; min-width: 0; }

@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.analysis.context import VideoContext
+from app.analysis.validator import Validation, ValidatorRules
 from app.transcript.manual import MAX_TRANSCRIPT_CHARS
 from app.youtube.service import SearchResult, StoredVideo
 from app.youtube.url_parser import watch_url
@@ -122,4 +123,49 @@ class ContextOut(BaseModel):
             context_chars=context_chars,
             built_at=context.built_at,
             quota=QuotaOut(**quota),
+        )
+
+
+# ---------------------------------------------------------------- 6단계: 규칙 검사
+
+
+class ValidateIn(BaseModel):
+    video_id: str = Field(min_length=1, max_length=64)
+    # 120자 한도를 넘는 글도 검사해서 "몇 자 줄이세요"를 알려 준다. 너무 긴 글만 막는다.
+    text: str = Field(max_length=2000)
+
+
+class CheckOut(BaseModel):
+    code: str
+    name: str
+    passed: bool
+    message: str
+
+
+class ValidationOut(BaseModel):
+    """규칙 검사 결과. 02칸이 글자 수·통과 요약·실패 목록을 그린다."""
+
+    passed: bool
+    char_count: int
+    min_chars: int
+    max_chars: int
+    disclosure: str
+    evidence_quote: str | None
+    passed_count: int
+    total: int
+    checks: list[CheckOut]
+
+    @classmethod
+    def from_validation(cls, result: Validation, rules: ValidatorRules) -> ValidationOut:
+        checks = [CheckOut(**c.to_dict()) for c in result.checks]
+        return cls(
+            passed=result.passed,
+            char_count=result.char_count,
+            min_chars=rules.min_chars,
+            max_chars=rules.max_chars,
+            disclosure=rules.disclosure,
+            evidence_quote=result.evidence_quote,
+            passed_count=sum(c.passed for c in checks),
+            total=len(checks),
+            checks=checks,
         )

@@ -3,6 +3,7 @@
 1단계의 `/`(대시보드)와 `/api/health`는 그대로 둔다.
 2단계: YouTube 영상 불러오기(①칸)와 시스템 상태 API를 붙였다.
 3단계: 영상 맥락(자막 붙여넣기·인기 댓글) API를 붙였다(②칸 자막 출처).
+6단계: 규칙 검사 API(`POST /api/validate`)를 붙였다(②칸 댓글 초안 글 상자).
 실제 유튜브 화면을 자동으로 조작하는 코드는 없다(DESIGN 6.1).
 """
 
@@ -20,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.api import status as status_api
+from app.api import validate as validate_api
 from app.api import videos as videos_api
 from app.api.deps import ServiceHolder
 from app.config import Settings
@@ -29,8 +31,8 @@ from app.youtube.quota import Clock, utc_now
 
 BASE_DIR = Path(__file__).resolve().parent
 mimetypes.add_type("font/woff2", ".woff2")  # 글꼴 파일을 올바른 형식으로 내려보낸다
-APP_VERSION = "0.3.0"
-STAGE = 3
+APP_VERSION = "0.4.0"  # 단계가 끝날 때마다 하나씩 올린다(실행 순서: 3 → P → 6 → 4 …)
+STAGE = 6
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
@@ -61,6 +63,7 @@ def create_app(
         """대시보드 한 화면(UI_SPEC). 키 값은 화면에 넣지 않는다."""
         current = holder.settings
         options = sorted({10, 20, current.discover.max_results})
+        comment = current.rules.get("comment") or {}
         return templates.TemplateResponse(
             request=request,
             name="index.html",
@@ -72,7 +75,9 @@ def create_app(
                 "max_results_options": options,
                 "daily_max_comments": current.daily_max_comments,
                 "profiles": list(current.rules.get("profiles") or []),
-                "disclosure": (current.rules.get("comment") or {}).get("disclosure", "[광고]"),
+                "disclosure": comment.get("disclosure", "[광고]"),
+                "min_chars": int(comment.get("min_chars", 40)),
+                "max_chars": int(comment.get("max_chars", 120)),
                 "max_transcript_chars": MAX_TRANSCRIPT_CHARS,
             },
         )
@@ -84,6 +89,7 @@ def create_app(
 
     app.include_router(status_api.router)
     app.include_router(videos_api.router)
+    app.include_router(validate_api.router)
     return app
 
 

@@ -59,3 +59,35 @@ def test_custom_config_and_db_path(make_config, tmp_path):
 def test_missing_config_file_is_clear_error(tmp_path):
     with pytest.raises(FileNotFoundError, match="설정 파일이 없습니다"):
         load_settings(tmp_path / "nope.yaml", env_path=None, environ={})
+
+
+# ---------------------------------------------------------------- 6단계: brand.facts, validator
+
+
+def test_brand_facts_and_extra_patterns_from_repo_config(clean_env, tmp_path):
+    settings = load_settings(env_path=tmp_path / "없음.env")
+    assert settings.brand_facts == ("운명원은 연애 사주 상담을 하는 곳이다",)  # D4 기본값
+    assert settings.validator_extra_patterns == ()
+
+
+def test_brand_facts_missing_uses_default_and_empty_list_means_none(make_config):
+    path = make_config({"brand": {"other": 1}})
+    assert load_settings(path, env_path=None, environ={}).brand_facts == (
+        "운명원은 연애 사주 상담을 하는 곳이다",
+    )
+    path = make_config({"brand": {"facts": []}})
+    assert load_settings(path, env_path=None, environ={}).brand_facts == ()
+    path = make_config({"brand": {"facts": ["  운명원은 서울에 있다 ", ""]}})
+    assert load_settings(path, env_path=None, environ={}).brand_facts == ("운명원은 서울에 있다",)
+
+
+def test_extra_patterns_read_and_checked(make_config):
+    path = make_config({"validator": {"extra_patterns": [{"code": "V10", "pattern": "기가 막히"}]}})
+    settings = load_settings(path, env_path=None, environ={})
+    assert settings.validator_extra_patterns == (("V10", "기가 막히"),)
+    bad = make_config({"validator": {"extra_patterns": [{"code": "V10", "pattern": "(깨진"}]}})
+    with pytest.raises(ValueError, match="정규식"):
+        load_settings(bad, env_path=None, environ={})
+    bad_facts = make_config({"brand": {"facts": "한 줄"}})
+    with pytest.raises(ValueError, match="brand.facts"):
+        load_settings(bad_facts, env_path=None, environ={})

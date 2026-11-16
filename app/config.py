@@ -15,6 +15,8 @@ from typing import Any
 import yaml
 from dotenv import dotenv_values
 
+from app.analysis.validator import parse_extra_patterns
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = ROOT / "config.yaml"
 DEFAULT_ENV_PATH = ROOT / ".env"
@@ -22,6 +24,8 @@ DEFAULT_DB_PATH = ROOT / "data" / "app.sqlite3"
 
 SECRET_ENV_NAMES = ("YOUTUBE_API_KEY",)
 DEFAULT_CONTEXT_CHARS = 6000
+# D4 기본값(PLAYBOOK 2절): 대표가 정하지 않으면 이 한 줄만 운명원에 대한 사실로 쓴다
+DEFAULT_BRAND_FACTS = ("운명원은 연애 사주 상담을 하는 곳이다",)
 
 
 @dataclass(frozen=True)
@@ -40,6 +44,9 @@ class Settings:
     db_path: Path = DEFAULT_DB_PATH
     transcript_provider: str = "manual"  # manual | unofficial (D1 기본: manual만)
     context_chars: int = DEFAULT_CONTEXT_CHARS  # 모델에 넣을 영상 자료 길이 한도
+    # 6단계: 규칙 검사. brand.facts에 적힌 문장만 운명원에 대한 사실로 쓴다(DESIGN 5.5)
+    brand_facts: tuple[str, ...] = DEFAULT_BRAND_FACTS
+    validator_extra_patterns: tuple[tuple[str, str], ...] = ()  # (V8|V9|V10, 정규식)
     youtube_api_key: str | None = field(default=None, repr=False)
 
     @property
@@ -76,6 +83,18 @@ def _clean(value: str | None) -> str | None:
     return value or None
 
 
+def _brand_facts(brand: Any) -> tuple[str, ...]:
+    """`brand.facts`(문장 목록). 항목이 없으면 D4 기본값 한 줄, 빈 목록이면 사실 없음."""
+    if not isinstance(brand, dict) or "facts" not in brand:
+        return DEFAULT_BRAND_FACTS
+    raw = brand.get("facts")
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ValueError("brand.facts는 문장 목록이어야 합니다.")
+    return tuple(str(f).strip() for f in raw if str(f).strip())
+
+
 def load_settings(
     config_path: Path | None = None,
     env_path: Path | None = DEFAULT_ENV_PATH,
@@ -95,6 +114,7 @@ def load_settings(
     limits = rules.get("limits") or {}
     transcript = rules.get("transcript") or {}
     llm = rules.get("llm") or {}
+    validator = rules.get("validator") or {}
 
     if db_path is None:
         env_db = _clean(env.get("APP_DB_PATH"))
@@ -107,5 +127,7 @@ def load_settings(
         db_path=db_path,
         transcript_provider=str(transcript.get("provider") or "manual").strip().lower(),
         context_chars=int(llm.get("context_chars") or DEFAULT_CONTEXT_CHARS),
+        brand_facts=_brand_facts(rules.get("brand")),
+        validator_extra_patterns=parse_extra_patterns(validator.get("extra_patterns")),
         youtube_api_key=_clean(env.get("YOUTUBE_API_KEY")),
     )
