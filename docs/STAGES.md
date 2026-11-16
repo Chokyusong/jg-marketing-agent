@@ -90,13 +90,28 @@ FastAPI 앱, 읽기 전용 3열 화면, `/api/health`, 테스트 2개.
 - [ ] 대표 확인: `JG-Marketing-Agent.cmd` 더블클릭 → 창이 화면 가운데에 뜨고 [영상 찾기] 동작 → "YouTube에서 보기"가 기본 브라우저로 열림 → 창 닫기 → 작업 관리자에 남는 python 없음. 이미 떠 있을 때 한 번 더 더블클릭하면 "이미 실행 중" 알림
 - 알아 둘 것: `.cmd`는 cmd.exe가 열기 때문에 더블클릭하면 콘솔 창이 잠깐 나타났다가 바로 닫힐 수 있다(`.cmd`는 pythonw를 띄우고 곧바로 끝난다. 개발 중에는 숨긴 채로 실행해 직접 보지는 못했다). 이것까지 없애려면 11단계 실행 파일(.exe)로 묶는다
 
-### [ ] 4단계 — Ollama 연동
+### [-] 4단계 — Ollama 연동
 
 - `app/llm/base.py`, `app/llm/registry.py`, `app/llm/ollama.py`: JSON 스키마 출력, 시간 제한, 재시도, 모델 없음·서버 꺼짐 오류.
 - LLM을 바꿔 끼우는 틀을 이 단계에서 잡는다(DESIGN 5.2.1): 규격 하나, 설정의 `llm.active`로 공급자 선택. 구현하는 공급자는 Ollama 하나.
 - `scripts/ollama_smoke.py`: 설치된 모델마다 한국어 JSON 한 번을 시켜 성공 여부와 시간을 본다. `GET /api/status`에 AI 항목 추가.
 - 완료 기준: 가짜 응답으로 정상·깨진 JSON·시간 초과·서버 꺼짐·모델 없음 테스트. 확인 결과를 `docs/MODEL_EVAL.md`에 적는다. (초안 품질로 모델을 고르는 비교는 5단계 끝으로 옮겼다.)
 - 주의: `ollama list`와 `ollama show <모델>`로 실제 설치 모델과 기능을 먼저 확인한다. `.env.example`의 모델 이름은 이 PC에 없는 이름이었다.
+
+**진행 상황 (2026-11-16)** — 코드·자동 테스트·실제 모델 시험은 끝났고, Ollama를 끄고 켜며 위 줄을 보는 사람 확인이 남아 `[-]`로 둔다.
+- [x] 요청 모양은 공식 문서(docs.ollama.com의 chat·thinking·structured outputs·show·errors, GitHub `docs/api.md`)와 이 PC의 실제 응답(Ollama 0.34.0)으로 확인했다. 확인 날짜·출처·실제로 본 것은 `app/llm/ollama.py` 맨 위
+- [x] `app/llm/base.py`: `LLMClient` 규격(`generate_json`·`health`·`warmup`·`close`), `LLMHealth(provider, model, reachable, installed, local)`, `extract_json`(앞뒤 글·코드 블록·글 속 중괄호), `check_schema`(type·required·properties·items·enum만), 안 맞으면 사유를 붙여 한 번 다시 시키는 `TextJSONLLM`. 스키마 강제를 쓰는 Ollama도 같은 확인을 거친다
+- [x] `app/llm/ollama.py`: `POST /api/chat`(`stream: false`, `format`에 JSON 스키마, 프롬프트에도 스키마 글, `options{temperature, num_ctx, num_predict}`, `keep_alive`). `/api/show`의 `capabilities`에 `thinking`이 있으면 `think: false`(문서의 `thinking.values`가 오면 그것을 따른다). 기능 목록은 한 번만 읽는다. 상태는 `/api/tags`(3초 제한, `qwen3.6` = `qwen3.6:latest`), 불러 두기는 빈 `messages`, 내리기는 `keep_alive: 0`
+- [x] `app/llm/registry.py`: `build_llm(settings, *, transport=None)` — `llm.active`로 `llm.providers`에서 고른다. 없는 이름·모르는 종류는 `llm_provider_unknown`(한국어 문구, 지금 쓸 수 있는 종류 안내). 그래도 앱은 뜨고 AI 상태와 AI 기능에서 이유를 알린다
+- [x] 설정(DESIGN 5.2.1 모양): `llm.active`, `timeout_seconds` 180, `num_ctx` 8192, `keep_alive` 30m, `providers.ollama.type`. 옛 키 `llm.provider`도 읽는다. `providers.*.api_key_env`의 이름은 비밀값 목록(`Settings.secret_env_names`)과 가리기 값(`secret_values()`)에 자동으로 들어간다(값은 아직 쓰지 않는다). 이름 자리에 키 모양 값을 쓰면 앱을 켤 때 막는다. `.env.example`의 `OLLAMA_MODEL`은 `qwen2.5:7b`(확정은 5단계 끝)
+- [x] 오류: `llm_down`(→ `ollama serve`, OLLAMA_BASE_URL), `llm_model_missing`(→ `ollama pull`), `llm_timeout`, `llm_bad_output`(한 번 다시 시켜도 실패), 그리고 `llm_error`(그 밖 서버 오류), `llm_provider_unknown`
+- [x] `GET /api/status`에 `ai{provider, model, reachable, installed, local, error}` (기존 `youtube` 그대로). `POST /api/llm/warmup`
+- [x] 화면 위 줄 AI 상태: 「ollama · 모델 · 로컬」(연두) / 「ollama · 꺼짐」 / 「모델 · 모델 없음」(붉은 점, 마우스를 올리면 할 일). 30초마다 다시 보고 바뀐 것이 있을 때만 다시 그린다. "4단계에서 연결" 문구 지움
+- [x] 화면 높이(1920×1080, 창 없는 크롬): 위 줄 높이 72px 그대로, 상태 문구는 한 줄(가장 긴 「ollama · qwen3.6:latest · 로컬」에서도). 영상 선택·검사 실패 2건일 때 3열 끝 **1039px**(6단계와 같음). 1401~1500px 너비에서도 가로 스크롤 없음
+- [x] 테스트 74개 추가(481개 통과): 공통 코드 단위(앞뒤 글·코드 블록·필수 키 빠짐·자료형·재시도), Ollama `mock_http`(정상·깨진 JSON 후 재시도 성공·두 번 다 깨짐·시간 초과·서버 꺼짐·모델 없음·서버 오류·`format`·`think: false`·생각 기능 없는 모델엔 안 실음·불러 두기·비밀값 가림), 등록부(고르기·모르는 종류·없는 이름·옛 키·다른 종류가 있어도 뜸·api_key_env), 상태·불러 두기 API, 모듈 경계(`app/llm/` 밖에서 `app.llm.ollama`를 import하는 곳 없음, 안에서도 `registry`만), 진짜 Ollama 1회(`live`)
+- [x] `scripts/ollama_smoke.py`를 이 PC에서 실제로 돌렸다. 결과는 [MODEL_EVAL.md](MODEL_EVAL.md)
+- [ ] 사람 확인: 프로그램을 켠 채 Ollama를 끄면 30초 안에 위 줄 AI가 「ollama · 꺼짐」(붉은 점)으로, 다시 켜면 「ollama · qwen2.5:7b · 로컬」로 바뀐다
+- PLAYBOOK과 다르게 둔 것: 규격에 `warmup()`·`close()`를 더했다(불러 두기 API가 공급자를 모르게). 오류 종류를 둘 더했다(`llm_error`, `llm_provider_unknown`). 상태 응답 `ai`에 `error`(문제일 때만)를 더했다. `create_app`·`build_services`에 `llm_transport`를 더해 YouTube 가짜 전송과 따로 받는다(테스트 도우미 `make_client`는 주지 않으면 「Ollama 꺼짐」으로 본다). 설정의 공급자 항목에 `model`·`base_url`을 적으면 `.env`보다 먼저 쓴다. 비교 스크립트는 Ollama 전용이라 `app.llm.ollama`를 직접 쓴다(경계 테스트는 `app/`만 본다). 버전 0.5.0, 화면 표시 4단계
 
 ### [ ] 5단계 — 분석과 초안
 

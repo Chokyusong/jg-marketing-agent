@@ -52,10 +52,11 @@ def test_discover_column_is_wired(page):
 
 
 def test_unconnected_parts_are_off_and_labelled(page):
-    for label in ("4단계에서 연결", "5단계에서 연결", "7단계에서 연결", "8단계에서 연결"):
+    for label in ("5단계에서 연결", "7단계에서 연결", "8단계에서 연결"):
         assert label in page
     assert "3단계에서 연결" not in page  # 3단계에서 켠 요소는 문구도 지운다
     assert "6단계에서 연결" not in page  # 6단계에서 켠 요소(초안 글 상자·규칙 검사)도
+    assert "4단계에서 연결" not in page  # 4단계에서 켠 위 줄 AI 상태도
     assert '<dl class="today is-off"' in page
     assert '<fieldset class="settings" disabled>' in page
     assert '<button type="button" class="primary" disabled>' in page
@@ -182,9 +183,9 @@ def test_context_js_wires_the_three_apis(make_client):
 
 
 def test_version_shows_current_stage(page):
-    # 버전은 단계가 끝날 때마다 하나씩 올린다(실행 순서 3 → P → 6: 0.3.0 → 0.4.0)
-    assert "V 0.4.0 — LOCAL · 6단계" in page
-    assert "STAGE 6" in page
+    # 버전은 단계가 끝날 때마다 하나씩 올린다(실행 순서 3 → P → 6 → 4: 0.3.0 → 0.4.0 → 0.5.0)
+    assert "V 0.5.0 — LOCAL · 4단계" in page
+    assert "STAGE 4" in page
 
 
 # ---------------------------------------------------------------- 6단계: 02칸 댓글 초안·규칙 검사

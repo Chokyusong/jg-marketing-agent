@@ -174,8 +174,9 @@ def test_missing_key_message(make_client, clean_env):
 def test_status_reports_key_presence_only(make_client, fake_key, clean_env):
     on = make_client(key=fake_key).get("/api/status")
     assert on.status_code == 200
-    assert on.json() == {
-        "youtube": {"key_configured": True, "quota": {"used_today": 0, "daily_limit": 10000}}
+    # 4단계에 ai 항목이 더해졌다(tests/integration/test_llm_api.py). youtube 항목은 그대로다
+    assert on.json()["youtube"] == {
+        "key_configured": True, "quota": {"used_today": 0, "daily_limit": 10000}
     }
     off = make_client(key=None).get("/api/status").json()
     assert off["youtube"]["key_configured"] is False

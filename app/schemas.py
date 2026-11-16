@@ -76,10 +76,34 @@ class YouTubeStatusOut(BaseModel):
     quota: QuotaOut
 
 
+class ProblemOut(BaseModel):
+    kind: str
+    message: str
+    action: str
+
+
+class AIStatusOut(BaseModel):
+    """위 줄 AI 상태(4단계). `local`이 거짓이면 「외부」(영상 자료가 그 회사로 간다)."""
+
+    provider: str
+    model: str
+    reachable: bool
+    installed: bool
+    local: bool
+    error: ProblemOut | None = None  # 문제가 있을 때만: 무엇이 문제이고 무엇을 하면 되는지
+
+
 class StatusOut(BaseModel):
     """사이드바 시스템 상태. 키는 있는지 없는지만 알려 준다(값은 절대 싣지 않는다)."""
 
     youtube: YouTubeStatusOut
+    ai: AIStatusOut
+
+
+class WarmupOut(BaseModel):
+    provider: str
+    model: str
+    seconds: float  # 모델을 불러 두는 데 걸린 시간(이미 올라가 있으면 거의 0)
 
 
 # ---------------------------------------------------------------- 3단계: 영상 맥락

@@ -1,0 +1,1 @@
+{"model":"qwen2.5:7b","created_at":"2026-11-16T11:40:53.3232009Z","message":{"role":"assistant","content":"{\"concern\": \"상대방과의 소통이 부족해 관계가 식어가는 것 같아요.\"}"},"done":true,"done_reason":"stop","total_duration":37018491900,"load_duration":23653672500,"prompt_eval_count":36,"prompt_eval_cached_count":0,"prompt_eval_duration":11863772000,"eval_count":30,"eval_duration":1483796000}

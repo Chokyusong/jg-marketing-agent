@@ -1,0 +1,23 @@
+{
+  "details": {
+    "parent_model": "qwen3.8:27b-q4_K_M",
+    "format": "gguf",
+    "family": "qwen35",
+    "families": [
+      "qwen35"
+    ],
+    "parameter_size": "27.3B",
+    "quantization_level": "Q4_K_M"
+  },
+  "capabilities": [
+    "completion",
+    "vision",
+    "tools",
+    "thinking"
+  ],
+  "modified_at": "2026-09-12T19:43:19.8231937+09:00",
+  "model_info": {
+    "general.architecture": "qwen35",
+    "qwen35.context_length": 262144
+  }
+}

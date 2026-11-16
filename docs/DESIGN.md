@@ -328,10 +328,16 @@ browser:
   window_position: "60,-1060"
   typing_delay_ms: [60, 160]
 llm:
-  provider: ollama
+  active: ollama          # 4단계에 provider → active로 바꿨다(옛 키도 읽는다). 모양은 5.2.1
+  timeout_seconds: 180
+  num_ctx: 8192
+  keep_alive: "30m"
+  context_chars: 6000
+  providers:
+    ollama: {type: ollama}
 ```
 
-`.env` (커밋 금지): `YOUTUBE_API_KEY`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`.
+`.env` (커밋 금지): `YOUTUBE_API_KEY`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`. 외부 LLM 키는 `llm.providers.*.api_key_env`에 적은 이름으로(12단계).
 
 기존 `.env.example`의 `DAILY_MAX_ACTIONS`는 과제 용어와 맞춰 `config.yaml`의 `limits.daily_max_comments`로 옮긴다.
 

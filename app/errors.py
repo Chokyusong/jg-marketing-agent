@@ -27,6 +27,13 @@ class ErrorKind(StrEnum):
     TRANSCRIPT_EMPTY = "transcript_empty"
     TRANSCRIPT_TOO_LONG = "transcript_too_long"
     TRANSCRIPT_PROVIDER_OFF = "transcript_provider_off"
+    # 4단계: LLM(Ollama 등). 공급자 이름은 문구에 넣지 않고 detail에 담는다
+    LLM_DOWN = "llm_down"
+    LLM_MODEL_MISSING = "llm_model_missing"
+    LLM_TIMEOUT = "llm_timeout"
+    LLM_BAD_OUTPUT = "llm_bad_output"
+    LLM_ERROR = "llm_error"  # 위 넷에 들지 않는 LLM 서버 오류
+    LLM_PROVIDER_UNKNOWN = "llm_provider_unknown"  # llm.active가 providers에 없거나 종류를 모름
 
 
 @dataclass(frozen=True)
@@ -91,6 +98,40 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
         "설정한 자막 출처를 쓸 수 없습니다. 비공식 자막 조회는 켜져 있지 않습니다.",
         "config.yaml의 transcript.provider를 manual로 바꾸고 서버를 다시 켜 주세요. "
         "자막은 02칸 「자막 붙여넣기」로 넣을 수 있습니다.",
+        503,
+    ),
+    ErrorKind.LLM_DOWN: ErrorText(
+        "AI 모델 서버(Ollama)에 연결하지 못했습니다.",
+        "Ollama 앱을 켜거나 터미널에서 `ollama serve`를 실행한 뒤 다시 시도해 주세요. "
+        "주소가 다르면 .env의 OLLAMA_BASE_URL을 확인해 주세요.",
+        503,
+    ),
+    ErrorKind.LLM_MODEL_MISSING: ErrorText(
+        "설정한 AI 모델이 이 PC에 설치돼 있지 않습니다.",
+        "터미널에서 `ollama pull <모델 이름>`으로 받거나, `ollama list`에 있는 이름을 "
+        ".env의 OLLAMA_MODEL에 넣고 프로그램을 다시 켜 주세요.",
+        503,
+    ),
+    ErrorKind.LLM_TIMEOUT: ErrorText(
+        "AI 모델의 답이 시간 안에 오지 않았습니다.",
+        "큰 모델은 처음 불러올 때 몇 분 걸릴 수 있습니다. 잠시 뒤 다시 시도하거나, "
+        "config.yaml의 llm.timeout_seconds를 늘리거나, 더 작은 모델을 써 주세요.",
+        504,
+    ),
+    ErrorKind.LLM_BAD_OUTPUT: ErrorText(
+        "AI 모델이 정해진 모양(JSON)으로 답하지 않았습니다. 한 번 다시 시켜도 같았습니다.",
+        "다시 시도해 주세요. 계속되면 다른 모델을 .env의 OLLAMA_MODEL에 넣어 보세요.",
+        502,
+    ),
+    ErrorKind.LLM_ERROR: ErrorText(
+        "AI 모델 서버가 오류를 돌려줬습니다.",
+        "잠시 뒤 다시 시도해 주세요. 계속되면 Ollama 로그와 그래픽 메모리 여유를 확인해 주세요.",
+        502,
+    ),
+    ErrorKind.LLM_PROVIDER_UNKNOWN: ErrorText(
+        "설정한 AI 공급자를 쓸 수 없습니다.",
+        "config.yaml의 llm.active를 llm.providers에 있는 이름으로 바꿔 주세요. "
+        "지금 쓸 수 있는 종류(type)는 ollama입니다.",
         503,
     ),
 }

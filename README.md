@@ -2,7 +2,7 @@
 
 유튜브 영상을 분석해 홍보 표기(`[광고]`)가 붙은 댓글 초안을 만들고, 사람이 승인하는 로컬 대시보드(FastAPI). 제이지그룹 AI PM 채용 과제 TRACK 2 「마케팅 AI 에이전트 개발」.
 
-## 지금 되는 것 / 아직 안 되는 것 (2026-11-16, 3단계 + P단계 + 6단계)
+## 지금 되는 것 / 아직 안 되는 것 (2026-11-16, 3단계 + P단계 + 6단계 + 4단계)
 
 **되는 것**
 - 프로그램으로 실행 (P단계): `JG-Marketing-Agent.cmd`를 더블클릭하면 브라우저 탭·주소창 없는 자체 창(「JG Marketing Agent」)이 뜬다. 창을 닫으면 프로그램이 끝난다. 이미 떠 있으면 새로 띄우지 않고 알린다. 창 안의 바깥 링크("YouTube에서 보기")는 기본 브라우저로 열린다
@@ -12,11 +12,12 @@
 - 위 줄 시스템 상태: YouTube 키가 있는지 없는지(값은 보이지 않음). 01칸 아래에 오늘 할당량 사용량. 영상을 고르면 흐름 띠가 02로 넘어가고 02칸에 선택한 영상이 보인다
 - 02 영상 자료 (3단계): 영상을 고르면 맥락을 모으고 「자막 출처」(붙여 넣은 자막 n자 / 자막 없음 · 제목과 설명으로 대신)와 「인기 댓글」(n개 / 댓글이 막힌 영상) 줄을 보인다. 「자막 붙여넣기」(접어 둠)에 유튜브 '스크립트 표시'에서 복사한 자막을 넣고 [저장]하면 출처가 바뀐다. 붙여 넣은 자막은 지울 수 있다. 자막은 수동 붙여넣기만 쓴다(비공식 조회는 만들지 않았다)
 - 02 댓글 초안과 규칙 검사 (6단계): 영상을 고르면 「댓글 초안」 글 상자가 켜지고 `[광고] `가 미리 들어간다(표기는 금색). 사람이 직접 쓰고 입력을 0.4초 멈추면 V1~V11(길이 40~120자·한 줄, 링크, 해시태그, 표기 맨 앞, 브랜드 1~2번, 근거가 영상 자료에 있음, 글이 근거를 담음, 이용 후기 표현, 소비자인 척, 효능·최상급, 이전 글과 유사)을 검사해 글자 수와 결과를 보인다. 통과한 항목은 「11개 중 n개 통과」 한 줄로 접고, 걸린 항목만 무엇이 걸렸고 어떻게 고치면 되는지 펼친다. 모두 통과하면 이름표가 `DRAFT · REVIEW REQUIRED`에서 `CHECKED`로 바뀌고 흐름 띠가 03으로 넘어간다. 대조 자료는 3단계 맥락(제목·설명·붙여 넣은 자막·인기 댓글)이다. AI 초안은 아직 없다(5단계)
+- AI 연결 (4단계): 로컬 Ollama에 「이 모양의 JSON으로 답해라」를 시키고 받는 통로(`app/llm/`). 위 줄 AI 상태가 실제 값을 보인다 — 정상이면 「ollama · 모델 이름 · 로컬」(연두), Ollama가 꺼져 있으면 「ollama · 꺼짐」, 모델이 없으면 「모델 이름 · 모델 없음」(붉은 점, 마우스를 올리면 할 일). 30초마다 다시 확인한다. 생각 출력 기능이 있는 모델(qwen3.x)은 생각을 끄고 부른다. 답이 JSON이 아니거나 모양이 틀리면 한 번 다시 시킨다. LLM은 설정(`llm.active`)으로 고르는 틀이라 나중에 다른 공급자(OpenAI 호환·Claude·로그인된 CLI, 12단계)를 끼울 수 있다. 지금 구현한 공급자는 Ollama 하나다. 설치된 모델 시험 결과: [docs/MODEL_EVAL.md](docs/MODEL_EVAL.md)
 - 설정: `config.yaml`(규칙)과 `.env`(비밀값)를 앱이 읽는다. 키가 없어도 화면은 뜨고 불러오기 때 안내가 나온다
 - 0단계 하네스: 작업 규칙(`AGENTS.md`), 검증 스크립트(`scripts/verify.ps1`), pytest 설정과 테스트 도우미, 비밀값 검사(`scripts/check_secrets.py` + pre-commit 훅)
 
 **아직 안 되는 것** (화면에서 꺼진 상태로 "n단계에서 연결"이라고 보인다)
-- Ollama 연동, 고민 한 줄·AI 댓글 초안 생성·다른 초안 생성, 초안 저장과 승인 (4~5단계). 규칙 검사의 「이전 글과 유사」(V11)는 초안 표가 생기는 5단계부터 실제 이전 글과 비교한다(지금은 비교할 글이 없어 늘 통과)
+- 고민 한 줄·AI 댓글 초안 생성·다른 초안 생성, 초안 저장과 승인, 초안 품질로 모델 고르기 (5단계). 4단계는 AI를 부르는 통로까지이고 화면에서 AI가 글을 쓰지는 않는다. 모델 미리 불러 두기 버튼은 9단계(API는 있다). 규칙 검사의 「이전 글과 유사」(V11)는 초안 표가 생기는 5단계부터 실제 이전 글과 비교한다(지금은 비교할 글이 없어 늘 통과)
 - 통계 카드 실제 값, 영상당 1개·하루 상한·기록 (7단계)
 - 03 브라우저 연결(sandbox 자동 게시, 실제 유튜브는 열기만) (8단계)
 - 작업 기록 표(7단계), SETTINGS 패널(9단계)
@@ -35,7 +36,7 @@
 
 ## 설치와 실행 (Windows 11)
 
-필요: Python 3.12(`py -3.12`), Microsoft Edge WebView2 Runtime(Windows 11에는 기본으로 들어 있다). Ollama·YouTube API 키는 해당 단계부터 필요하다.
+필요: Python 3.12(`py -3.12`), Microsoft Edge WebView2 Runtime(Windows 11에는 기본으로 들어 있다). YouTube API 키(2단계부터), [Ollama](https://ollama.com)와 모델 하나(4단계부터, 예: `ollama pull qwen2.5:7b` — 이름을 `.env`의 `OLLAMA_MODEL`에).
 
 **처음 한 번 준비** (PowerShell, 저장소 폴더)
 
@@ -72,6 +73,7 @@ git config core.hooksPath .githooks      # 커밋 전 비밀값 검사 훅 (처�
 .\.venv\Scripts\python.exe -m pytest -m e2e      # Playwright 필요(8단계부터)
 $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env:RUN_LIVE
 .\.venv\Scripts\python.exe scripts\check_secrets.py --all
+.\.venv\Scripts\python.exe scripts\ollama_smoke.py           # 설치된 일반 모델마다 한국어 JSON 한 번(시간·성공 표)
 ```
 
 - 기본 테스트는 인터넷·API 키·Ollama 없이 돈다.
@@ -82,7 +84,8 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | 주소 | 내용 |
 |---|---|
 | `GET /api/health` | 서버 확인 (1단계부터 그대로) |
-| `GET /api/status` | 시스템 상태: YouTube 키가 있는지(`key_configured`)와 오늘 할당량. 키 값은 싣지 않는다 |
+| `GET /api/status` | 시스템 상태: `youtube`(키가 있는지 `key_configured`와 오늘 할당량, 키 값은 싣지 않는다), `ai`(`provider`·`model`·`reachable` 서버에 닿는지·`installed` 모델이 있는지·`local` 이 PC 안인지, 문제가 있으면 `error{kind, message, action}`) |
+| `POST /api/llm/warmup` | 고른 모델을 미리 불러 둔다(`keep_alive` 동안 메모리에 머문다). 응답 `provider`·`model`·`seconds`. 큰 모델은 몇 분 걸릴 수 있다 |
 | `GET /api/videos` | 최신 영상 목록. 입력 없이 부르면 기본 검색어. 선택 입력 `q`, `period`(day·week·month·any, 기본 week), `order`(date·relevance·viewCount), `max_results`(1~50) |
 | `POST /api/videos/resolve` | `{"url": "..."}` 유튜브 링크 → 영상 한 개 |
 | `GET /api/videos/{video_id}` | 영상 상세(10분 안이면 저장된 값) |
@@ -91,14 +94,14 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | `DELETE /api/videos/{video_id}/transcript` | 붙여 넣은 자막 지우기 후 같은 요약 |
 | `POST /api/validate` | `{"video_id": "...", "text": "..."}` 글 하나를 규칙 V1~V11로 검사한다. 응답: `passed`, `char_count`(표기 포함, NFC 코드 포인트), `min_chars`·`max_chars`, `evidence_quote`(영상 자료와 겹치는 가장 긴 구절), `passed_count`·`total`, `checks`(항목마다 `code`·`name`·`passed`·`message`). 맥락이 없으면 만들어서 쓰고(인기 댓글 1단위), 있으면 YouTube를 다시 부르지 않는다. 글은 2,000자까지 받는다 |
 
-오류는 `{"error": {"kind", "message", "action"}}` 모양이다. 검색은 100단위, 상세·댓글은 1단위를 쓴다(하루 10,000단위). 댓글이 막힌 영상은 오류가 아니라 빈 목록으로 진행한다.
+오류는 `{"error": {"kind", "message", "action"}}` 모양이다. AI 오류 종류: `llm_down`(Ollama 꺼짐 → `ollama serve`), `llm_model_missing`(→ `ollama pull <모델>`), `llm_timeout`, `llm_bad_output`(한 번 다시 시켜도 JSON이 아님), `llm_error`, `llm_provider_unknown`(`llm.active`가 없거나 아직 지원하지 않는 종류). 검색은 100단위, 상세·댓글은 1단위를 쓴다(하루 10,000단위). 댓글이 막힌 영상은 오류가 아니라 빈 목록으로 진행한다.
 
 ## 설정
 
 | 파일 | 내용 | 커밋 |
 |---|---|---|
-| `config.yaml` | 프로필, 댓글 글자 수·브랜드·홍보 표기, 하루 상한, 자막 출처(`transcript.provider: manual`), 모델에 넣을 영상 자료 길이(`llm.context_chars`, 기본 6,000자), 운명원에 대해 쓸 수 있는 사실 문장(`brand.facts`, 기본 「운명원은 연애 사주 상담을 하는 곳이다」 한 줄), 규칙 검사에 더할 표현(`validator.extra_patterns`, 항목 모양 `{code: V8·V9·V10, pattern: 정규식}`, 기본 빈 목록) 등 규칙 ([DESIGN 8절](docs/DESIGN.md#8-설정)) | 함 |
-| `.env` | `YOUTUBE_API_KEY`(2단계부터 사용), `OLLAMA_BASE_URL`, `OLLAMA_MODEL`. 선택: `APP_DB_PATH`(기본 `data/app.sqlite3`) | 금지 |
+| `config.yaml` | 프로필, 댓글 글자 수·브랜드·홍보 표기, 하루 상한, 자막 출처(`transcript.provider: manual`), 모델에 넣을 영상 자료 길이(`llm.context_chars`, 기본 6,000자), 운명원에 대해 쓸 수 있는 사실 문장(`brand.facts`, 기본 「운명원은 연애 사주 상담을 하는 곳이다」 한 줄), 규칙 검사에 더할 표현(`validator.extra_patterns`, 항목 모양 `{code: V8·V9·V10, pattern: 정규식}`, 기본 빈 목록), AI 설정(`llm.active`: `llm.providers`에서 고른 이름, 기본 `ollama` · `timeout_seconds` 180 · `num_ctx` 8192 · `keep_alive` 30m. 옛 키 `llm.provider`도 읽는다. 공급자 항목의 `api_key_env`에는 환경 변수 **이름**만 적고, 그 이름은 자동으로 비밀값·로그 가리기 대상이 된다) 등 규칙 ([DESIGN 8절](docs/DESIGN.md#8-설정)) | 함 |
+| `.env` | `YOUTUBE_API_KEY`(2단계부터 사용), `OLLAMA_BASE_URL`(기본 `http://127.0.0.1:11434`), `OLLAMA_MODEL`(기본 `qwen2.5:7b`, 확정은 5단계 끝). 선택: `APP_DB_PATH`(기본 `data/app.sqlite3`) | 금지 |
 
 ## 단계
 
@@ -109,7 +112,7 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | 2 | YouTube API 연동, 화면 골격 | 진행 중 (코드·자동 테스트 완료, 실제 키 확인·화면 확인 남음) |
 | 3 | 영상 맥락 수집 | 진행 중 (코드·자동 테스트 완료, 화면 확인 남음) |
 | P | 프로그램으로 실행 (자체 창) | 진행 중 (코드·자동 테스트·개발 PC 창 확인 완료, 대표 더블클릭 확인 남음) |
-| 4 | Ollama 연동, 모델 비교 | 미시작 |
+| 4 | Ollama 연동 (초안 품질 비교는 5단계) | 진행 중 (코드·자동 테스트·실제 모델 시험 완료, Ollama를 끄고 켜며 위 줄 AI 상태를 보는 화면 확인 남음) |
 | 5 | 분석과 초안 | 미시작 |
 | 6 | 규칙 검사 | 진행 중 (코드·자동 테스트 완료, 화면 확인 남음. 실행 순서상 4·5단계보다 먼저 했다) |
 | 7 | 운영 규칙과 기록 | 미시작 |

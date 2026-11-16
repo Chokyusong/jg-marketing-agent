@@ -27,5 +27,12 @@ browser:
   window_position: "60,-1060"
   typing_delay_ms: [60, 160]
 llm:
-  provider: ollama
-  context_chars: 6000   # 모델에 넣을 영상 자료 길이 한도(3단계)
+  active: ollama          # 아래 providers에서 고른 이름(DESIGN 5.2.1). 옛 키 provider: ollama도 읽는다
+  timeout_seconds: 180    # 답 하나를 기다리는 시간. 큰 모델은 첫 응답에 몇 분 걸릴 수 있다
+  num_ctx: 8192           # 모델 입력 길이(토큰)
+  keep_alive: "30m"       # 답한 뒤 모델을 메모리에 두는 시간
+  context_chars: 6000     # 모델에 넣을 영상 자료 길이 한도(3단계)
+  providers:
+    ollama: {type: ollama}   # 주소·모델은 .env의 OLLAMA_BASE_URL, OLLAMA_MODEL
+    # 12단계에서 다른 종류를 더한다. 키는 값이 아니라 환경 변수 이름만 적는다(값은 .env).
+    # 예: openai: {type: openai_compatible, base_url: "...", model: "...", api_key_env: OPENAI_API_KEY}

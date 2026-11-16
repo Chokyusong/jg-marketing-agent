@@ -1,8 +1,9 @@
-// 위 줄: 메뉴 이동(해당 칸 잠깐 강조), 좁은 화면 메뉴 단추, 시스템 상태, 할당량 표시.
+// 위 줄: 메뉴 이동(해당 칸 잠깐 강조), 좁은 화면 메뉴 단추, 시스템 상태(AI·YOUTUBE), 할당량 표시.
 import { api } from './api.js';
 import { setState, subscribe } from './state.js';
 
 const $ = (id) => document.getElementById(id);
+const STATUS_REFRESH_MS = 30000;
 
 function setupMenu() {
   const nav = $('nav');
@@ -35,16 +36,51 @@ function setupMenu() {
   }
 }
 
+// 다시 볼 때 달라진 것이 없으면 화면 전체를 다시 그리지 않는다(목록·글 상자가 흔들리지 않게)
+let lastStatusKey = null;
+function setIfChanged(patch) {
+  const key = JSON.stringify(patch);
+  if (key === lastStatusKey) return;
+  lastStatusKey = key;
+  setState(patch);
+}
+
 async function loadStatus() {
   try {
     const data = await api.status();
-    setState({ youtubeKey: data.youtube.key_configured, quota: data.youtube.quota });
+    setIfChanged({ youtubeKey: data.youtube.key_configured, quota: data.youtube.quota, ai: data.ai || null });
   } catch {
-    setState({ youtubeKey: null });
+    setIfChanged({ youtubeKey: null, ai: null });
   }
 }
 
+// AI 상태 한 줄: 정상이면 「공급자 · 모델 · 로컬/외부」, 문제면 짧은 이유. 자세한 안내는 마우스를 올리면.
+export function aiStatusText(ai) {
+  if (!ai) return { tone: 'is-wait', text: '확인 못 함', title: '' };
+  const where = ai.local ? '로컬' : '외부';
+  const title = ai.error ? `${ai.error.message} ${ai.error.action}`.trim() : '';
+  if (ai.error && ai.error.kind === 'llm_provider_unknown') {
+    return { tone: 'is-bad', text: `${ai.provider} · 설정 확인`, title };
+  }
+  if (!ai.reachable) return { tone: 'is-bad', text: `${ai.provider} · 꺼짐`, title };
+  if (!ai.installed) return { tone: 'is-bad', text: `${ai.model} · 모델 없음`, title };
+  return { tone: 'is-ok', text: `${ai.provider} · ${ai.model} · ${where}`, title: '' };
+}
+
+function renderAI(state) {
+  const dot = $('status-ai-dot');
+  const text = $('status-ai');
+  dot.classList.remove('is-ok', 'is-bad', 'is-wait');
+  const view = aiStatusText(state.ai);
+  dot.classList.add(view.tone);
+  text.textContent = view.text;
+  const item = $('status-ai-item');
+  if (view.title) item.title = view.title;
+  else item.removeAttribute('title');
+}
+
 function renderStatus(state) {
+  renderAI(state);
   const dot = $('status-youtube-dot');
   const text = $('status-youtube');
   dot.classList.remove('is-ok', 'is-bad', 'is-wait');
@@ -68,4 +104,6 @@ export function initTopbar() {
   setupMenu();
   subscribe(renderStatus);
   loadStatus();
+  // Ollama를 켜고 끄면 새로 고치지 않아도 위 줄이 따라오게 30초마다 다시 본다(가벼운 요청)
+  setInterval(loadStatus, STATUS_REFRESH_MS);
 }

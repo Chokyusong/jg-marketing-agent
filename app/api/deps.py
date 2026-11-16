@@ -13,6 +13,9 @@ from app.analysis.checking import CheckService
 from app.analysis.context import ContextService
 from app.analysis.validator import ValidatorRules
 from app.config import Settings, load_settings
+from app.errors import AppError
+from app.llm.base import LLMClient, LLMHealth
+from app.llm.registry import build_llm
 from app.youtube.client import YouTubeClient
 from app.youtube.quota import Clock, QuotaTracker, SearchCache, utc_now
 from app.youtube.service import VideoService
@@ -25,15 +28,32 @@ class Services:
     videos: VideoService
     context: ContextService
     checks: CheckService
+    # 4단계: 고른 LLM 공급자. 설정이 틀려 못 만들었으면 llm은 None, 이유는 llm_error
+    llm: LLMClient | None = None
+    llm_error: AppError | None = None
+
+    def require_llm(self) -> LLMClient:
+        if self.llm is None:
+            raise self.llm_error or AppError("llm_provider_unknown")
+        return self.llm
+
+    def llm_health(self) -> LLMHealth:
+        if self.llm is None:
+            llm = self.settings.llm
+            return LLMHealth(llm.active, "", False, False, True)
+        return self.llm.health()
 
     def close(self) -> None:
         self.videos.client.close()
+        if self.llm is not None:
+            self.llm.close()
 
 
 def build_services(
     settings: Settings,
     *,
     transport: httpx.BaseTransport | None = None,
+    llm_transport: httpx.BaseTransport | None = None,
     clock: Clock = utc_now,
 ) -> Services:
     db.init_db(settings.db_path)
@@ -58,8 +78,20 @@ def build_services(
         rules=ValidatorRules.from_config(settings.rules, settings.validator_extra_patterns),
         brand_facts=settings.brand_facts,
     )
+    llm: LLMClient | None = None
+    llm_error: AppError | None = None
+    try:
+        llm = build_llm(settings, transport=llm_transport)
+    except AppError as exc:  # 앱은 뜬다. AI 상태와 AI 기능에서 이유를 알린다
+        llm_error = exc
     return Services(
-        settings=settings, quota=quota, videos=videos, context=context, checks=checks
+        settings=settings,
+        quota=quota,
+        videos=videos,
+        context=context,
+        checks=checks,
+        llm=llm,
+        llm_error=llm_error,
     )
 
 
@@ -69,10 +101,12 @@ class ServiceHolder:
         settings: Settings | None = None,
         *,
         transport: httpx.BaseTransport | None = None,
+        llm_transport: httpx.BaseTransport | None = None,
         clock: Clock = utc_now,
     ) -> None:
         self._settings = settings
         self._transport = transport
+        self._llm_transport = llm_transport
         self._clock = clock
         self._services: Services | None = None
         self._lock = threading.Lock()
@@ -87,7 +121,10 @@ class ServiceHolder:
         with self._lock:
             if self._services is None:
                 self._services = build_services(
-                    self.settings, transport=self._transport, clock=self._clock
+                    self.settings,
+                    transport=self._transport,
+                    llm_transport=self._llm_transport,
+                    clock=self._clock,
                 )
             return self._services
 
