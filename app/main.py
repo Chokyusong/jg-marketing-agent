@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import mimetypes
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -25,6 +26,7 @@ from app.errors import AppError
 from app.youtube.quota import Clock, utc_now
 
 BASE_DIR = Path(__file__).resolve().parent
+mimetypes.add_type("font/woff2", ".woff2")  # 글꼴 파일을 올바른 형식으로 내려보낸다
 APP_VERSION = "0.2.0"
 STAGE = 2
 templates = Jinja2Templates(directory=BASE_DIR / "templates")

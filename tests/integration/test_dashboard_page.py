@@ -109,3 +109,6 @@ def test_js_does_not_use_inner_html(make_client):
 def test_bundled_serif_font_is_linked(page, make_client):
     assert '<link rel="stylesheet" href="/static/fonts/fonts.css" />' in page
     assert make_client(key=None).get("/static/fonts/fonts.css").status_code == 200
+    font = make_client(key=None).get("/static/fonts/NotoSerifKR-Regular-subset.woff2")
+    assert font.status_code == 200
+    assert font.headers["content-type"] == "font/woff2"
