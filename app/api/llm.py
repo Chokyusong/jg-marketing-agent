@@ -1,5 +1,5 @@
 """LLM 라우터: `POST /api/llm/warmup`(모델 미리 불러 두기),
-`GET /api/llm/models`(R2 모델 고르기)."""
+`GET /api/llm/models`(R2 모델 고르기), `GET /api/llm/loaded`(R4 모델이 메모리에 있는지)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from app.api.deps import Services, get_services
-from app.schemas import LLMModelOut, LLMModelsOut, WarmupOut
+from app.schemas import LLMLoadedOut, LLMModelOut, LLMModelsOut, WarmupOut
 
 router = APIRouter(prefix="/api/llm", tags=["llm"])
 
@@ -40,6 +40,17 @@ def warmup(services: Annotated[Services, Depends(get_services)]) -> WarmupOut:
     llm = services.require_llm()
     seconds = llm.warmup()
     return WarmupOut(provider=llm.provider, model=llm.model, seconds=seconds)
+
+
+@router.get("/loaded", response_model=LLMLoadedOut)
+def loaded(services: Annotated[Services, Depends(get_services)]) -> LLMLoadedOut:
+    """모델이 지금 메모리에 올라가 있는지. 모델을 부르지 않는다(②칸의 「불러오는 중」 안내)."""
+    llm = services.require_llm()
+    check = getattr(llm, "is_loaded", None)
+    state = check() if callable(check) else None
+    cold = getattr(llm, "cold_timeout_seconds", services.settings.llm.cold_timeout_seconds)
+    return LLMLoadedOut(provider=llm.provider, model=llm.model, loaded=state,
+                        cold_timeout_seconds=float(cold))
 
 
 @router.get("/models", response_model=LLMModelsOut)

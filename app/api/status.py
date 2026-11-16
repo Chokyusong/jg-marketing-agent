@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends
 from app.api.deps import Services, get_services
 from app.browser.chrome import profile_dir
 from app.browser.jobs import LOGIN_TRUST
+from app.config import DEFAULT_OLLAMA_MODEL
 from app.errors import AppError, ErrorKind
 from app.schemas import (
     AIStatusOut,
@@ -24,6 +25,16 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/api", tags=["status"])
+
+
+def same_model(a: str, b: str) -> bool:
+    """모델 이름이 같은지(태그가 없으면 :latest). Ollama 모듈은 registry만 부른다."""
+
+    def norm(n: str) -> str:
+        n = n.strip().lower()
+        return n if ":" in n else f"{n}:latest"
+
+    return norm(a) == norm(b)
 
 
 def _problem(error: AppError) -> ProblemOut:
@@ -39,7 +50,22 @@ def ai_status(services: Services) -> AIStatusOut:
         error = AppError(ErrorKind.LLM_DOWN)
     elif not health.installed:
         error = AppError(ErrorKind.LLM_MODEL_MISSING)
-    return AIStatusOut(**health.to_dict(), error=_problem(error) if error else None)
+    loaded, rec_installed = None, False
+    llm = services.llm
+    if llm is not None and health.reachable and health.installed:
+        is_loaded = getattr(llm, "is_loaded", None)
+        loaded = is_loaded() if callable(is_loaded) else None
+    if llm is not None and health.reachable and not same_model(health.model, DEFAULT_OLLAMA_MODEL):
+        lister = getattr(llm, "list_models", None)
+        found = lister() if callable(lister) else None
+        rec_installed = any(same_model(m["name"], DEFAULT_OLLAMA_MODEL) for m in found or [])
+    return AIStatusOut(
+        **health.to_dict(),
+        error=_problem(error) if error else None,
+        loaded=loaded,
+        recommended_model=DEFAULT_OLLAMA_MODEL,
+        recommended_installed=rec_installed,
+    )
 
 
 def browser_status(services: Services) -> BrowserStatusOut:

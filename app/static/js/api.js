@@ -107,6 +107,8 @@ export const api = {
   deleteKey: () => request('/api/settings/youtube-key', { method: 'DELETE' }),
   testKey: () => request('/api/settings/youtube-key/test', { method: 'POST' }),
   llmModels: () => request('/api/llm/models'),
+  // R4: 모델이 메모리에 올라가 있는지(아니면 ②칸에 「불러오는 중」 안내)
+  llmLoaded: () => request('/api/llm/loaded'),
   screens: () => request('/api/screens'),
   // R2: 프로필 로그인(크롬 창은 사람이 직접 로그인한다) · 로그인 확인(창 없이 읽기만)
   profileLogin: (name) => request(`/api/profiles/${encodeURIComponent(name)}/login`, { method: 'POST' }),

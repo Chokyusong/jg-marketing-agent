@@ -337,3 +337,39 @@ def test_settings_and_profile_screens_fit(app_with_key, size):
         assert m["minFont"] >= 12, (where, m["minFont"], m["minFontAt"])
         assert m["buttons"]["min"] >= 36, (where, m["buttons"])
     assert not errors, errors
+
+
+def test_setup_box_recommends_model_and_saves_it(app_no_key, chrome):
+    """R4: 지금 모델이 추천 모델이 아니고 추천 모델이 설치돼 있으면 [바꾸기].
+
+    누르면 프로그램 설정에 저장한다(.env는 그대로).
+    """
+    base = app_no_key["base"]
+    state = {"switched": False}
+
+    def status(route):
+        res = route.fetch()
+        data = res.json()
+        if not state["switched"]:  # 가짜 AI가 「qwen2.5:7b, 추천 모델도 설치됨」처럼 답한다
+            data["ai"].update(model="qwen2.5:7b", recommended_model="qwen3.8:27b",
+                              recommended_installed=True)
+        route.fulfill(response=res, json=data)
+
+    with headless_page(base) as (page, errors):
+        page.route(base + "/api/status", status)
+        page.goto(base + "/")
+        page.wait_for_function(STATUS_LOADED)
+        line = "지금 qwen2.5:7b — 추천 모델 qwen3.8:27b로 바꾸기"
+        assert page.text_content("#setup-ai-state") == line
+        assert page.text_content("#setup-ai-btn") == "바꾸기"
+        assert page.locator("#setup-ai.is-done").count() == 0
+        with page.expect_request(lambda r: r.url.endswith("/api/settings")
+                                 and r.method == "PUT") as req:
+            state["switched"] = True
+            page.click("#setup-ai-btn")
+        assert json.loads(req.value.post_data)["values"] == {"llm.model": "qwen3.8:27b"}
+        page.wait_for_function(
+            "document.getElementById('setup-ai-btn').textContent === '모델 확인'")
+        saved = httpx.get(base + "/api/settings", trust_env=False).json()["edit"]["values"]
+        assert saved["llm.model"] == "qwen3.8:27b"
+        assert errors == []

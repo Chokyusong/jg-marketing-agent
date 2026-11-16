@@ -20,7 +20,9 @@ R2: 설정과 프로필 로그인을 프로그램 안에서. `PUT /api/settings`
 
 from __future__ import annotations
 
+import logging
 import mimetypes
+import threading
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -52,11 +54,38 @@ mimetypes.add_type("font/woff2", ".woff2")  # 글꼴 파일을 올바른 형식�
 APP_VERSION = "0.9.0"  # 단계가 끝날 때마다 하나씩 올린다(실행 순서: 3 → P → 6 → 4 → 5 → 7 …)
 STAGE = 9
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+log = logging.getLogger(__name__)
 
 
 def daily_limit_options(maximum: int) -> list[int]:
     """03칸 일일 제한 고르기: 설정값과 그보다 낮은 값만(높일 수 없다. UI_SPEC 4절)."""
     return sorted({n for n in (maximum, 5, 3, 1) if 0 < n <= maximum}, reverse=True) or [maximum]
+
+
+def start_warmup(holder: ServiceHolder) -> threading.Thread | None:
+    """R4: 설정 「시작할 때 AI 모델 미리 불러오기」가 켜져 있으면 백그라운드에서 모델을 불러 둔다.
+
+    처음 분석이 모델을 불러오느라 시간 초과로 실패하지 않게. 실패해도 조용히(기록만) 넘어간다.
+    """
+    try:
+        if not holder.settings.llm.warmup_on_start:
+            return None
+    except Exception:  # noqa: BLE001 - 설정을 못 읽으면 미리 불러오지 않는다
+        return None
+
+    def run() -> None:
+        try:
+            llm = holder.get().llm
+            if llm is None:
+                return
+            seconds = llm.warmup()
+            log.info("AI 모델 미리 불러오기 끝: %s · %.1f초", llm.model, seconds)
+        except Exception as exc:  # noqa: BLE001 - 켤 때 돕는 일이라 실패해도 화면을 막지 않는다
+            log.info("AI 모델 미리 불러오기 실패(조용히 넘어감): %s", type(exc).__name__)
+
+    thread = threading.Thread(target=run, name="llm-warmup", daemon=True)
+    thread.start()
+    return thread
 
 
 def create_app(
@@ -67,6 +96,7 @@ def create_app(
     clock: Clock = utc_now,
     browser_hooks: BrowserHooks | None = None,
     on_build: Callable[[Services], None] | None = None,
+    warmup_on_start: bool | None = None,
 ) -> FastAPI:
     """앱을 만든다. 테스트는 임시 설정과 가짜 전송(httpx.MockTransport)을 넣는다.
 
@@ -74,6 +104,8 @@ def create_app(
     `browser_hooks`(8단계)는 크롬 찾기·실행, 테스트 페이지 실행기를 가짜로 바꿀 때 쓴다.
     `on_build`(R2)는 서비스 묶음을 만들 때마다 부른다
     (설정 저장으로 다시 만들어도 가짜 LLM을 끼우게).
+    `warmup_on_start`(R4): 켤 때 AI 모델을 백그라운드에서 미리 불러 둘지. 비우면 실제 프로그램
+    (`settings`를 넣지 않은 경우)만 설정 `llm.warmup_on_start`를 따른다. 테스트는 부르지 않는다.
     """
     holder = ServiceHolder(
         settings,
@@ -86,6 +118,8 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if warmup_on_start if warmup_on_start is not None else settings is None:
+            start_warmup(holder)
         yield
         holder.close()
 

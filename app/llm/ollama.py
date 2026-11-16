@@ -27,6 +27,12 @@
     기능 목록에 thinking이 있을 때만 싣는다.
 
 연결 오류·시간 초과·404는 `AppError`(llm_down·llm_timeout·llm_model_missing)로 바꾼다.
+
+R4(2026-11-17): 모델을 처음 불러올 때 첫 답이 180초를 넘겨 실패한 적이 있다.
+그래서 답을 부탁하기 전에
+`GET /api/ps`(메모리에 올라간 모델 목록, https://docs.ollama.com/api/ps — `models[].name`·`model`)로
+모델이 올라가 있는지 보고, 없으면 그 요청만 `cold_timeout_seconds`(기본 420초)를 기다린다.
+미리 불러오기(`warmup`)도 같은 시간을 기다린다. 목록을 못 읽으면(오래된 서버 등) 넉넉한 쪽을 쓴다.
 """
 
 from __future__ import annotations
@@ -67,6 +73,7 @@ class OllamaClient(TextJSONLLM):
         base_url: str = DEFAULT_BASE_URL,
         provider: str = "ollama",
         timeout_seconds: float = 180.0,
+        cold_timeout_seconds: float | None = None,
         num_ctx: int = 8192,
         keep_alive: str | int = "30m",
         transport: httpx.BaseTransport | None = None,
@@ -77,6 +84,10 @@ class OllamaClient(TextJSONLLM):
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = float(timeout_seconds)
+        # 모델이 아직 메모리에 없을 때 그 요청만 기다리는 시간(보통 시간보다 짧게는 두지 않는다)
+        self.cold_timeout_seconds = max(
+            self.timeout_seconds, float(cold_timeout_seconds or 420.0)
+        )
         self.num_ctx = int(num_ctx)
         self.keep_alive = keep_alive
         self._http = httpx.Client(
@@ -170,7 +181,11 @@ class OllamaClient(TextJSONLLM):
         body = self.chat_body(
             system=system, user=user, schema=schema, temperature=temperature, max_tokens=max_tokens
         )
-        data = self._post("/api/chat", body)
+        timeout = None if self.is_loaded() else self.cold_timeout_seconds
+        if timeout is not None:
+            log.info("ollama %s: 모델이 아직 메모리에 없어 이번 요청은 %d초까지 기다립니다",
+                     self.model, int(timeout))
+        data = self._post("/api/chat", body, timeout=timeout)
         message = data.get("message") if isinstance(data, dict) else None
         content = message.get("content") if isinstance(message, dict) else None
         return content if isinstance(content, str) else ""
@@ -205,13 +220,42 @@ class OllamaClient(TextJSONLLM):
                 out.append({"name": name, "size": int(size) if isinstance(size, int) else None})
         return out
 
+    def loaded_models(self) -> list[str] | None:
+        """메모리에 올라간 모델 이름들(`GET /api/ps`). 닿지 않거나 모양이 다르면 None."""
+        try:
+            res = self._http.get("/api/ps", timeout=HEALTH_TIMEOUT_SECONDS)
+            res.raise_for_status()
+            models = res.json().get("models")
+        except Exception:  # noqa: BLE001 - 알아보기만 하는 호출. 모르면 넉넉히 기다린다
+            return None
+        if not isinstance(models, list):
+            return None
+        names = []
+        for m in models:
+            if isinstance(m, dict):
+                name = str(m.get("name") or m.get("model") or "").strip()
+                if name:
+                    names.append(name)
+        return names
+
+    def is_loaded(self) -> bool | None:
+        """설정한 모델이 지금 메모리에 있는지. 모르면 None(그때는 넉넉히 기다린다)."""
+        names = self.loaded_models()
+        if names is None:
+            return None
+        return any(same_model(n, self.model) for n in names)
+
     def warmup(self) -> float:
-        """빈 `messages`로 모델을 불러 둔다(`keep_alive` 동안 머문다). 걸린 초를 돌려준다."""
+        """빈 `messages`로 모델을 불러 둔다(`keep_alive` 동안 머문다). 걸린 초를 돌려준다.
+
+        처음 불러올 때는 오래 걸리므로 `cold_timeout_seconds`까지 기다린다.
+        """
         started = time.monotonic()
         self.capabilities()
         self._post(
             "/api/chat",
             {"model": self.model, "messages": [], "stream": False, "keep_alive": self.keep_alive},
+            timeout=self.cold_timeout_seconds,
         )
         return round(time.monotonic() - started, 2)
 

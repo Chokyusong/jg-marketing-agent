@@ -148,6 +148,11 @@ class AIStatusOut(BaseModel):
     installed: bool
     local: bool
     error: ProblemOut | None = None  # 문제가 있을 때만: 무엇이 문제이고 무엇을 하면 되는지
+    # R4: 모델이 지금 메모리에 올라가 있는지(모르면 null). 아니면 첫 답이 1~3분 걸린다
+    loaded: bool | None = None
+    # R4: 추천 모델(코드 기본값)과 그것이 이 PC에 설치돼 있는지. 시작 준비 상자의 [바꾸기]
+    recommended_model: str = ""
+    recommended_installed: bool = False
 
 
 class BrowserProfileOut(BaseModel):
@@ -180,6 +185,15 @@ class StatusOut(BaseModel):
     youtube: YouTubeStatusOut
     ai: AIStatusOut
     browser: BrowserStatusOut | None = None  # 8단계
+
+
+class LLMLoadedOut(BaseModel):
+    """R4: 모델이 메모리에 올라가 있는지(`GET /api/ps`). 모르면 null."""
+
+    provider: str
+    model: str
+    loaded: bool | None
+    cold_timeout_seconds: float
 
 
 class WarmupOut(BaseModel):

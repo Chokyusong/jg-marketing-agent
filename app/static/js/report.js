@@ -20,6 +20,8 @@ const PHASE_TEXT = {
   check: '규칙 검사 정리 중',
 };
 const SLOW_NOTE = '처음에는 1분쯤 걸릴 수 있습니다';
+// R4: 모델이 아직 메모리에 없으면(GET /api/llm/loaded) 그 요청은 서버가 420초까지 기다린다
+export const COLD_NOTE = 'AI 모델을 불러오는 중입니다. 처음에는 1~3분 걸립니다';
 // 실제 데이터 보정: 영상 자료에 연애 고민이 없으면 서버가 초안을 만들지 않고 이 오류로 멈춘다.
 const NO_CONCERN = 'no_love_concern';
 
@@ -37,6 +39,15 @@ function openTranscriptPaste() {
   paste.open = true;
   const box = $('transcript-text');
   if (box && !box.disabled) box.focus({ preventScroll: true });
+}
+
+// 첫 AI 요청 전에 모델이 올라가 있는지 본다. 아니면 run.cold로 안내를 바꾼다(모르면 그대로)
+function checkCold(live) {
+  const ai = getState().ai;
+  if (ai && ai.loaded === false) setRun({ cold: true });
+  api.llmLoaded()
+    .then((d) => { if (live()) setRun({ cold: d.loaded === false }); })
+    .catch(() => {});
 }
 
 function setRun(patch) {
@@ -76,17 +87,19 @@ async function run(videoId, { another = false, analysis = null } = {}) {
     ...(analysis ? { analysis } : {}),
   });
   startTicker(token);
+  if (!another && analysis) checkCold(live); // 초안이 첫 AI 요청
   try {
     if (!another) {
       await waitForContext(videoId);
       if (!live()) return;
       if (!analysis) {
         setRun({ phase: 'analysis' });
+        checkCold(live);
         const fresh = await api.analyze(videoId);
         if (!live()) return;
         setState({ analysis: fresh });
       }
-      setRun({ phase: 'draft' });
+      setRun({ phase: 'draft', ...(analysis ? {} : { cold: false }) }); // 분석이 모델을 불러 뒀다
     }
     const draft = await api.createDraft(videoId, { another, disclose: discloseOn() });
     if (!live()) return;
@@ -215,7 +228,7 @@ function renderRun(state) {
   let text = SLOW_NOTE;
   if (!state.selectedId) text = SLOW_NOTE;
   else if (r && r.phase === 'restore') text = '앞서 만든 초안을 찾는 중…';
-  else if (r && running) text = `${PHASE_TEXT[r.phase]}… ${seconds(r)}초 · ${SLOW_NOTE}`;
+  else if (r && running) text = `${PHASE_TEXT[r.phase]}… ${seconds(r)}초 · ${r.cold && r.phase !== 'context' ? COLD_NOTE : SLOW_NOTE}`;
   else if (r && r.phase === 'done' && r.stored) text = '앞서 만든 초안입니다 · 새로 만들려면 [다른 댓글 만들기]';
   else if (r && r.phase === 'done') text = `${seconds(r)}초 · ${r.note}`;
   else if (r && r.phase === 'error') text = `${seconds(r)}초 만에 멈췄습니다 · 아래 안내를 확인해 주세요`;

@@ -250,3 +250,47 @@ def test_unload_uses_keep_alive_zero(ollama):
     ollama.add("POST", "/api/chat", json={"done": True, "done_reason": "unload"})
     make(ollama).unload()
     assert chat_bodies(ollama)[0]["keep_alive"] == 0
+
+
+# ---------------------------------------------------------------- R4 처음 불러올 때 넉넉히 기다리기
+
+
+def chat_read_timeouts(mock) -> list[float]:
+    return [r.extensions["timeout"]["read"] for r in mock.requests if r.url.path == "/api/chat"]
+
+
+def test_loaded_model_uses_normal_timeout(ollama):
+    ollama.add("GET", "/api/ps", json={"models": [{"name": "qwen2.5:7b", "model": "qwen2.5:7b"}]})
+    ollama.add("POST", "/api/chat", json=chat_reply('{"concern": "x"}'))
+    client = make(ollama, timeout_seconds=180, cold_timeout_seconds=420)
+    assert client.is_loaded() is True
+    ask(client)
+    assert chat_read_timeouts(ollama) == [180]
+
+
+def test_not_loaded_model_waits_longer(ollama):
+    ollama.add("GET", "/api/ps", json={"models": [{"name": "other:3b"}]})
+    ollama.add("POST", "/api/chat", json=chat_reply('{"concern": "x"}'))
+    client = make(ollama, timeout_seconds=180, cold_timeout_seconds=420)
+    assert client.is_loaded() is False
+    ask(client)
+    assert chat_read_timeouts(ollama) == [420]
+
+
+def test_unknown_loaded_state_waits_longer(ollama):
+    ollama.add("GET", "/api/ps", status_code=404, json={"error": "not found"})  # 오래된 서버
+    ollama.add("POST", "/api/chat", json=chat_reply('{"concern": "x"}'))
+    client = make(ollama, timeout_seconds=180)
+    assert client.is_loaded() is None and client.cold_timeout_seconds == 420
+    ask(client)
+    assert chat_read_timeouts(ollama) == [420]
+
+
+def test_cold_timeout_never_shorter_than_normal(ollama):
+    assert make(ollama, timeout_seconds=600, cold_timeout_seconds=420).cold_timeout_seconds == 600
+
+
+def test_warmup_waits_cold_timeout(ollama):
+    ollama.add("POST", "/api/chat", json={"model": "qwen2.5:7b", "done": True})
+    make(ollama, timeout_seconds=180, cold_timeout_seconds=420).warmup()
+    assert chat_read_timeouts(ollama) == [420]

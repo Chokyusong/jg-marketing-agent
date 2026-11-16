@@ -25,6 +25,9 @@ def test_status_ai_ok(make_client, ollama_up):
         "installed": True,
         "local": True,
         "error": None,
+        "loaded": None,  # R4: 불러온 모델 목록(/api/ps)을 못 읽으면 모른다
+        "recommended_model": "qwen3.8:27b",
+        "recommended_installed": False,  # 지금 모델이 추천 모델이면 따로 보지 않는다
     }
     assert set(data["youtube"]) == {"key_configured", "quota"}  # 기존 항목은 그대로
 
@@ -130,3 +133,115 @@ def test_dashboard_ai_status_is_wired(make_client):
     js = make_client().get("/static/js/topbar.js").text
     for text in ("aiStatusText", "꺼져 있음", "모델 없음", "이 PC", "외부"):
         assert text in js
+
+
+# ---------------------------------------------------------------- R4 모델을 불러왔는지 · 추천 모델
+
+
+def test_status_ai_loaded(make_client, ollama_up):
+    ollama_up.add("GET", "/api/ps", json={"models": [{"name": "qwen3.8:27b"}]})
+    ai = make_client(llm=ollama_up).get("/api/status").json()["ai"]
+    assert ai["loaded"] is True
+
+
+def test_llm_loaded_endpoint(make_client, ollama_up):
+    ollama_up.add("GET", "/api/ps", json={"models": []})
+    data = make_client(llm=ollama_up).get("/api/llm/loaded").json()
+    assert data == {"provider": "ollama", "model": "qwen3.8:27b", "loaded": False,
+                    "cold_timeout_seconds": 420.0}
+    assert not [r for r in ollama_up.requests if r.url.path == "/api/chat"]  # 모델을 부르지 않는다
+
+
+def _client_with_model(model, mock, make_settings, clock):
+    from dataclasses import replace
+
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    settings = make_settings(None)
+    settings = replace(settings, llm=replace(settings.llm, ollama_model=model))
+    return TestClient(create_app(settings, llm_transport=mock.transport, clock=clock))
+
+
+def test_recommended_model_installed(mock_http, make_settings, clock):
+    mock = mock_http()
+    mock.add("GET", "/api/tags", json={"models": [{"name": "qwen2.5:7b"}, {"name": "qwen3.8:27b"}]})
+    client = _client_with_model("qwen2.5:7b", mock, make_settings, clock)
+    ai = client.get("/api/status").json()["ai"]
+    assert ai["model"] == "qwen2.5:7b" and ai["installed"] is True
+    assert ai["recommended_model"] == "qwen3.8:27b" and ai["recommended_installed"] is True
+
+
+def test_recommended_model_not_installed(mock_http, make_settings, clock):
+    mock = mock_http()
+    mock.add("GET", "/api/tags", json={"models": [{"name": "qwen2.5:7b"}]})
+    client = _client_with_model("qwen2.5:7b", mock, make_settings, clock)
+    ai = client.get("/api/status").json()["ai"]
+    assert ai["recommended_installed"] is False
+
+
+# ---------------------------------------------------------------- R4 켤 때 미리 불러오기
+
+
+def test_start_warmup_runs_in_background(ollama_up, make_settings, clock):
+    from app.api.deps import ServiceHolder
+    from app.main import start_warmup
+
+    holder = ServiceHolder(make_settings(None), llm_transport=ollama_up.transport, clock=clock)
+    thread = start_warmup(holder)
+    assert thread is not None and thread.daemon
+    thread.join(5)
+    chat = [r for r in ollama_up.requests if r.url.path == "/api/chat"]
+    assert len(chat) == 1 and b'"messages":[]' in chat[0].content
+    holder.close()
+
+
+def test_start_warmup_off_by_setting(ollama_up, make_settings, clock):
+    from app.api.deps import ServiceHolder
+    from app.main import start_warmup
+
+    settings = make_settings(None, {"llm": {"warmup_on_start": False}})
+    holder = ServiceHolder(settings, llm_transport=ollama_up.transport, clock=clock)
+    assert start_warmup(holder) is None
+    assert ollama_up.requests == []
+    holder.close()
+
+
+def test_start_warmup_failure_is_silent(make_settings, clock):
+    from app.api.deps import ServiceHolder
+    from app.main import start_warmup
+
+    def down(request):
+        raise httpx.ConnectError("꺼짐")
+
+    holder = ServiceHolder(make_settings(None), llm_transport=httpx.MockTransport(down),
+                           clock=clock)
+    thread = start_warmup(holder)
+    thread.join(5)
+    assert not thread.is_alive()  # 예외 없이 끝났다
+    holder.close()
+
+
+def test_app_with_given_settings_does_not_warm_up(ollama_up, make_settings, clock):
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    app = create_app(make_settings(None), llm_transport=ollama_up.transport, clock=clock)
+    with TestClient(app) as client:  # lifespan이 돈다
+        client.get("/api/health")
+    assert not [r for r in ollama_up.requests if r.url.path == "/api/chat"]
+
+
+def test_cold_and_recommend_screen_words(make_client):
+    client = make_client()
+    report = client.get("/static/js/report.js").text
+    assert "AI 모델을 불러오는 중입니다. 처음에는 1~3분 걸립니다" in report
+    assert "api.llmLoaded()" in report
+    assert "/api/llm/loaded" in client.get("/static/js/api.js").text
+    setup = client.get("/static/js/setup.js").text
+    assert "`지금 ${ai.model} — 추천 모델 ${ai.recommended_model}로 바꾸기`" in setup
+    assert "'바꾸기'" in setup and "api.saveSettings({ 'llm.model': model })" in setup
+    settings = client.get("/static/js/settings.js").text
+    assert "llm.warmup_on_start" in settings

@@ -29,6 +29,7 @@ def _build_ollama(
         model=str(provider.options.get("model") or llm.ollama_model),
         base_url=str(provider.options.get("base_url") or llm.ollama_base_url),
         timeout_seconds=llm.timeout_seconds,
+        cold_timeout_seconds=llm.cold_timeout_seconds,
         num_ctx=llm.num_ctx,
         keep_alive=llm.keep_alive,
         transport=transport,
