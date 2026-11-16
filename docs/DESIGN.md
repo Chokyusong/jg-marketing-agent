@@ -225,7 +225,7 @@ config.yaml          비밀이 아닌 규칙 (과제 설정 예시와 같은 모
 ### 6.3 기술 선택
 
 - **Playwright 동기 API를 전용 스레드에서** 돌린다. Windows에서 uvicorn 이벤트 루프와 Playwright 비동기 API가 충돌하는 문제를 피한다.
-- 크롬은 `launch_persistent_context(user_data_dir=..., channel="chrome")`로 연다. 프로필 폴더는 저장소 밖(`%LOCALAPPDATA%\JGMarketingAgent\profiles\유튜브1` 등)에 둔다.
+- 크롬은 `launch_persistent_context(user_data_dir=..., channel="chrome")`로 연다. 프로필 폴더는 저장소 밖(`%LOCALAPPDATA%\JGMarketingAgent\profiles\profile-1` 등)에 둔다. 폴더 이름은 영문, 화면에 보이는 이름만 한글(유튜브1)이다.
 - 구글 로그인은 자동화 창에서 막히는 경우가 많다. `scripts/setup_profile.ps1`이 일반 크롬을 같은 폴더로 열어 사람이 한 번 로그인해 둔다. `sandbox`에는 로그인이 필요 없다.
 - **창 위치.** 시험·녹화용 창은 주 모니터에 띄우지 않는다. 자동 테스트는 창 없이(headless) 돌리고, 시연처럼 창이 보여야 할 때는 `config.yaml`의 `browser.window_position`(기본 `60,-1060`, 위쪽 2번 모니터)을 쓴다.
 - 실패하면 `error_screenshots/<작업ID>.png`를 남기고 사유를 `runs`에 적는다.
