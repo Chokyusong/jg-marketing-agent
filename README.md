@@ -2,9 +2,10 @@
 
 유튜브 영상을 분석해 홍보 표기(`[광고]`)가 붙은 댓글 초안을 만들고, 사람이 승인하는 로컬 대시보드(FastAPI). 제이지그룹 AI PM 채용 과제 TRACK 2 「마케팅 AI 에이전트 개발」.
 
-## 지금 되는 것 / 아직 안 되는 것 (2026-11-16, 3단계)
+## 지금 되는 것 / 아직 안 되는 것 (2026-11-16, 3단계 + P단계)
 
 **되는 것**
+- 프로그램으로 실행 (P단계): `JG-Marketing-Agent.cmd`를 더블클릭하면 브라우저 탭·주소창 없는 자체 창(「JG Marketing Agent」)이 뜬다. 창을 닫으면 프로그램이 끝난다. 이미 떠 있으면 새로 띄우지 않고 알린다. 창 안의 바깥 링크("YouTube에서 보기")는 기본 브라우저로 열린다
 - 대시보드 화면(`/`): 디자인 기준([docs/UI_SPEC.md](docs/UI_SPEC.md), 검정·금색 에디토리얼 목업)대로 위 줄 메뉴·시스템 상태, 제목과 오늘 통계, 흐름 띠, 3열, 작업 기록, 좁은 화면 배치
 - 01 영상 탐색 (2단계): [영상 찾기] 한 번으로 `config.yaml`의 기본 검색어(`discover.query`) 최신 영상 목록(썸네일·길이·제목·채널·조회수·올린 때). 검색어, 업로드 기간·정렬(최신·관련성·조회수)·표시 개수 거르기, URL 직접 입력, 영상 선택, 오류마다 문구와 다음 행동
 - YouTube Data API 연동: 검색·영상 상세·인기 댓글, 오류 6종 분류(키 없음·키 거부·할당량 초과·댓글 막힘·영상 없음·네트워크), 같은 검색 10분 저장, 오늘 사용 단위 기록(SQLite `data/app.sqlite3`)
@@ -19,6 +20,8 @@
 - 03 브라우저 연결(sandbox 자동 게시, 실제 유튜브는 열기만) (8단계)
 - 작업 기록 표(7단계), SETTINGS 패널(9단계)
 - 실제 YouTube 키로 한 번 불러 보는 확인(`live` 테스트)은 아직 하지 않았다. 3단계 02칸 화면도 대표 확인 전이다
+- 프로그램 창은 개발 PC에서 띄우고 닫아 봤다. 대표가 직접 더블클릭해 보는 확인은 아직이다
+- 실행 파일 한 개(`.exe`)로 묶기는 11단계다. 지금은 Python 가상환경(`.venv`)을 한 번 준비해야 한다
 
 ## 과제 원문과 다르게 만드는 부분
 
@@ -29,18 +32,35 @@
 
 이유(표시광고법·공정위 추천·보증 심사지침, 유튜브 약관)와 점수 영향은 [docs/DESIGN.md 2절](docs/DESIGN.md#2-원문과-다르게-만드는-부분-의도적-변경)에 있다.
 
-## 설치와 실행 (Windows 11, PowerShell)
+## 설치와 실행 (Windows 11)
 
-필요: Python 3.12(`py -3.12`). Ollama·YouTube API 키는 해당 단계부터 필요하다.
+필요: Python 3.12(`py -3.12`), Microsoft Edge WebView2 Runtime(Windows 11에는 기본으로 들어 있다). Ollama·YouTube API 키는 해당 단계부터 필요하다.
+
+**처음 한 번 준비** (PowerShell, 저장소 폴더)
 
 ```powershell
 cd "E:\Projects\JG\JG-Marketing-Agent-Stage1"
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-git config core.hooksPath .githooks      # 커밋 전 비밀값 검사 훅
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt     # 개발까지 하려면 requirements-dev.txt
 Copy-Item .env.example .env              # 비밀값은 .env에만 (커밋 금지)
+```
 
-.\scripts\run.ps1                        # http://127.0.0.1:8765
+### 1. 더블클릭으로 프로그램 실행 (평소)
+
+저장소 폴더의 **`JG-Marketing-Agent.cmd`**를 더블클릭한다.
+
+- 자체 창이 화면 가운데에 뜬다(기본 1600×1000, 최소 1100×720). 브라우저 탭·주소창이 없다.
+- 창을 닫으면 안쪽 서버도 멈추고 프로그램이 끝난다.
+- 이미 떠 있을 때 다시 더블클릭하면 새로 띄우지 않고 "이미 실행 중"이라고 알린 뒤 떠 있는 창을 앞으로 가져온다.
+- `.venv`가 없으면 위 준비 방법을 안내하고 멈춘다. WebView2 런타임이나 pywebview가 없으면 설치 방법을 알린다.
+- 콘솔 없이 돈다(`.cmd`를 여는 순간 콘솔 창이 잠깐 보였다가 닫힐 수 있다). 서버 기록은 `data/desktop.log`에 남는다(커밋하지 않는 폴더).
+- 안쪽 동작: 한 프로세스에서 FastAPI 서버를 스레드로 띄우고(127.0.0.1의 빈 포트), pywebview 창이 그 화면을 담는다(`app/desktop.py`). 명령으로 띄우려면 `.\.venv\Scripts\pythonw.exe -m app.desktop`.
+
+### 2. 개발용: 브라우저로 실행
+
+```powershell
+git config core.hooksPath .githooks      # 커밋 전 비밀값 검사 훅 (처음 한 번)
+.\scripts\run.ps1                        # http://127.0.0.1:8765 를 브라우저로 연다 (--reload 붙일 수 있음)
 ```
 
 ## 검증과 테스트
@@ -86,6 +106,7 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | 0 | 하네스 | 완료 |
 | 2 | YouTube API 연동, 화면 골격 | 진행 중 (코드·자동 테스트 완료, 실제 키 확인·화면 확인 남음) |
 | 3 | 영상 맥락 수집 | 진행 중 (코드·자동 테스트 완료, 화면 확인 남음) |
+| P | 프로그램으로 실행 (자체 창) | 진행 중 (코드·자동 테스트·개발 PC 창 확인 완료, 대표 더블클릭 확인 남음) |
 | 4 | Ollama 연동, 모델 비교 | 미시작 |
 | 5 | 분석과 초안 | 미시작 |
 | 6 | 규칙 검사 | 미시작 |
@@ -108,7 +129,8 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 ## 오픈소스 출처
 
 - **Noto Serif KR** (제목 글꼴) — (c) 2017-2024 Adobe, Google. [SIL Open Font License 1.1](app/static/fonts/OFL.txt). 굵기 400과 필요한 글자만 남긴 파일을 `app/static/fonts/`에 넣었다. 원본과 만든 방법: [app/static/fonts/README.md](app/static/fonts/README.md)
-- 파이썬 패키지는 `requirements.txt`, `requirements-dev.txt`에 적힌 것을 쓴다(FastAPI, Uvicorn, Jinja2, httpx, python-dotenv, PyYAML, pytest, ruff).
+- **pywebview** (자체 창, P단계) — [BSD 3-Clause License](https://github.com/r0x0r/pywebview/blob/master/LICENSE). Windows에서는 Microsoft Edge WebView2 Runtime으로 화면을 그린다. 함께 설치되는 pythonnet(MIT)·bottle(MIT)·proxy_tools(MIT)·clr_loader(MIT)도 쓴다. 이름·설치 방법·지원 환경·라이선스는 2026-11-16에 [PyPI](https://pypi.org/project/pywebview/)와 [공식 문서](https://pywebview.flowrl.com/guide/installation.html)로 확인했다(자세한 내용은 `app/desktop.py` 맨 위).
+- 파이썬 패키지는 `requirements.txt`, `requirements-dev.txt`에 적힌 것을 쓴다(FastAPI, Uvicorn, Jinja2, httpx, python-dotenv, PyYAML, pywebview, pytest, ruff).
 
 ## 보안
 

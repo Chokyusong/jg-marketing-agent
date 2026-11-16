@@ -42,6 +42,7 @@
 - 창이 꼭 필요하면 위쪽 2번 모니터: Chromium 인수 `--window-position=60,-1060` (주 모니터 (0,0) 1920×1080, 위쪽 모니터 (0,-1080) 1920×1080). 배치가 바뀌었을 수 있으면 PowerShell `[System.Windows.Forms.Screen]::AllScreens`로 먼저 확인한다.
 - 서브에이전트나 다른 세션에 브라우저 일을 맡길 때도 이 조건을 지시에 넣는다.
 - 서버 동작 확인은 가능하면 브라우저 대신 FastAPI `TestClient`로 한다.
+- 프로그램 창(`app/desktop.py`)을 확인용으로 띄울 때는 환경 변수 `JG_DESKTOP_WINDOW_POS="x,y"`에 2번 모니터 좌표를 준다(비워 두면 주 모니터 가운데에 뜬다). 자동 테스트는 창을 띄우지 않는다.
 
 ## 자주 쓰는 명령 (PowerShell, 저장소 루트)
 
@@ -50,7 +51,8 @@ py -3.12 -m venv .venv                                         # 처음 한 번
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 git config core.hooksPath .githooks                            # 처음 한 번(비밀값 검사 훅)
 
-.\scripts\run.ps1                    # 대시보드 http://127.0.0.1:8765 (--reload 붙일 수 있음)
+.\JG-Marketing-Agent.cmd             # 프로그램 창으로 실행(더블클릭과 같음, app/desktop.py)
+.\scripts\run.ps1                    # 개발용: 브라우저로 http://127.0.0.1:8765 (--reload 붙일 수 있음)
 .\scripts\verify.ps1                 # 단계 끝 검증: ruff check → pytest -q
 
 .\.venv\Scripts\python.exe -m pytest tests\unit -q          # 단위

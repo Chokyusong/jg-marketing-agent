@@ -75,10 +75,20 @@ FastAPI 앱, 읽기 전용 3열 화면, `/api/health`, 테스트 2개.
 - [ ] 실제 YouTube 키로 인기 댓글을 받아 보는 확인(2단계 `live` 확인과 함께)
 - PLAYBOOK과 다르게 둔 것: `build(video_id, refresh=False)`에 `refresh`를 더했다(저장된 댓글 재사용, PLAYBOOK "함정"의 할당량 규칙). 응답에 `transcript_text`(글 상자를 다시 채우려고)와 `transcript_truncated`·`context_chars`를 더했다. `config.yaml`에 `llm.context_chars: 6000`을 적었다.
 
-### [ ] P단계 — 프로그램으로 실행 (3단계 다음, 6단계 전)
+### [-] P단계 — 프로그램으로 실행 (3단계 다음, 6단계 전)
 
 - `app/desktop.py`(서버를 스레드로 띄우고 자체 창에 담는다), `JG-Marketing-Agent.cmd`(더블클릭 실행, 콘솔 창 없음). 화면과 서버 코드는 그대로. 상세는 PLAYBOOK P단계.
 - 완료 기준: 더블클릭 → 창이 뜨고 [영상 찾기] 동작 → 창을 닫으면 남는 프로세스 없음(사람이 확인). 창을 띄우지 않는 자동 테스트(서버 시작·포트·종료·중복 실행).
+
+**진행 상황 (2026-11-16)** — 코드·자동 테스트·개발 PC 창 확인은 끝났고, 대표가 직접 더블클릭해 보는 확인이 남아 `[-]`로 둔다.
+- [x] 창 라이브러리 pywebview 6.2.1(BSD 3-Clause, Windows는 Edge WebView2). 공식 문서 확인 날짜·출처는 `app/desktop.py` 맨 위, 라이선스는 README "오픈소스 출처"
+- [x] `app/desktop.py`: 중복 실행 확인(Windows 이름 있는 뮤텍스) → 빈 포트(운영체제가 고른 포트의 소켓을 uvicorn에 그대로 넘김) → 서버 스레드 → `/api/health` 대기 → 창(1600×1000, 최소 1100×720, 가운데) → 닫으면 서버 정지·잠금 해제. pythonw라 출력은 `data/desktop.log`, 알림은 메시지 상자
+- [x] 바깥 링크(`target=_blank`, "YouTube에서 보기")는 pywebview 설정 `OPEN_EXTERNAL_LINKS_IN_BROWSER`로 기본 브라우저에서 연다. WebView2가 없으면 창을 열지 않고 설치를 안내한다
+- [x] 자동 테스트 22개(`tests/integration/test_desktop.py`): 포트·준비 대기·실제 대시보드 서버로 열고 닫기·닫은 뒤 포트 닫힘·잠금 해제·중복 실행 거절·서버 시작 실패·창 오류·WebView2 없음·pywebview 없음·실행 파일 ASCII
+- [x] 개발 PC에서 창 한 번 띄워 봄(2번 모니터, 확인용 환경 변수 `JG_DESKTOP_WINDOW_POS`): 자체 창에 화면이 그려지고 `/api/status`까지 불림 → 창을 닫자 서버 종료, python·WebView2 프로세스 남지 않음. 한글 이름 폴더에서 실행해도 같음
+- [x] 브라우저로 여는 임시 `run-dashboard.cmd`는 지웠다. `scripts/run.ps1`은 개발용으로 그대로
+- [ ] 대표 확인: `JG-Marketing-Agent.cmd` 더블클릭 → 창이 화면 가운데에 뜨고 [영상 찾기] 동작 → "YouTube에서 보기"가 기본 브라우저로 열림 → 창 닫기 → 작업 관리자에 남는 python 없음. 이미 떠 있을 때 한 번 더 더블클릭하면 "이미 실행 중" 알림
+- 알아 둘 것: `.cmd`는 cmd.exe가 열기 때문에 더블클릭하면 콘솔 창이 잠깐 나타났다가 바로 닫힐 수 있다(`.cmd`는 pythonw를 띄우고 곧바로 끝난다. 개발 중에는 숨긴 채로 실행해 직접 보지는 못했다). 이것까지 없애려면 11단계 실행 파일(.exe)로 묶는다
 
 ### [ ] 4단계 — Ollama 연동
 
