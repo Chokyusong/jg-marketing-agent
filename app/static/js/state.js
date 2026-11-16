@@ -1,8 +1,10 @@
 // 화면 상태는 여기 한 곳에 둔다. 칸들은 subscribe로 바뀐 상태를 받아 다시 그린다.
 
 const state = {
-  tab: 'keyword',        // 'keyword' | 'url'
+  // R1: 지금 보이는 화면(작업 · 기록 · 프로필 · 설정). 화면을 바꿔도 작업 화면의 상태는 그대로 둔다
+  screen: 'work',        // 'work' | 'records' | 'profiles' | 'settings'
   loading: false,
+  loadMode: 'search',    // 지금(또는 마지막) 불러오기: 'search'(검색) | 'link'(영상 링크)
   error: null,           // { kind, message, action }
   videos: [],            // 목록에 보이는 영상
   meta: null,            // { query, cached, count, mode }
@@ -19,19 +21,19 @@ const state = {
   validation: null,      // { videoId, text, result: { passed, char_count, checks: [...], ... } }
   validationLoading: false,
   validationError: null, // { kind, message, action }
-  // 5단계: 분석과 AI 초안. [분석하고 초안 만들기]를 눌러야 돈다(모델이 느려서 고르자마자 돌지 않는다)
+  // 5단계: 분석과 AI 초안. R1: 영상을 고르면 자동으로 돈다(저장된 초안이 있으면 모델을 부르지 않고 그것을 보인다)
   analysis: null,        // POST/GET /api/analysis/{id} 응답 { video_id, topic, concern, tone, viewer_needs, evidence: [...] }
   draft: null,           // 지금 글 상자에 넣은 초안(POST /api/drafts 응답) { id, video_id, body, status, validation, ... }
   run: null,             // { videoId, phase: 'context'|'analysis'|'draft'|'check'|'done'|'error', startedAt, endedAt, note }
   runError: null,        // { kind, message, action }
   approving: false,
-  // 7단계: 오늘 통계·작업 기록·03칸 설정(ops.js). target은 작업 방식(sandbox | youtube)
+  // 7단계: 오늘 통계·작업 기록·③칸 설정(ops.js). target은 연습 모드 켬(sandbox) / 끔(youtube)
   ops: null,             // { target, profile, dailyLimit, stats, records, total, error }
-  // 8단계: 위 줄 BROWSER 상태(GET /api/status의 browser)와 03칸 게시 작업(job.js)
+  // 8단계: 아래 줄 프로필 상태(GET /api/status의 browser)와 ③칸 게시 작업(job.js)
   browser: null,         // { chrome_found, playwright_ready, profiles: [{name, folder, exists}], active_job_id }
   job: null,             // GET /api/jobs/{id} 응답 { id, mode, target, state, step, finished, reason, ... }
   jobError: null,        // { kind, message, action } 시작·승인·확인이 거절됐을 때
-  jobBusy: false,        // 시작·승인·확인 요청을 보내는 중
+  jobBusy: false,        // 저장·승인·시작·게시 요청을 보내는 중([댓글 달기] 한 번에 차례로)
 };
 
 const listeners = new Set();

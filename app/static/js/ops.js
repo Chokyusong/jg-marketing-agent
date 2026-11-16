@@ -1,17 +1,18 @@
-// 운영 규칙과 기록(7단계): 제목 영역의 오늘 통계 4개, 03칸 설정 4줄, 아래 작업 기록 표.
-// - 통계·기록은 GET /api/stats/today · /api/records. 분석·초안·승인이 끝나면 report.js가 refreshOps()를
-//   부르고, 그 밖에는 30초마다 다시 본다(한국 자정이 지나면 오늘 수가 0으로 돌아온다).
-// - 03칸: 사용 프로필(자동 배정 = 가장 오래 안 쓴 프로필), 작업 방식(대상: youtube = 사람이 게시,
-//   sandbox = 테스트 페이지 자동 실행), 일일 제한(설정값 이하로만), 오늘 작업 n / 상한.
-//   고른 값은 화면 상태에만 둔다. 게시 실행(8단계)이 이 값으로 예약하고, 서버가 상한을 다시 강제한다.
-// - 기록 표는 최근 3줄만(넓은 화면에서 높이를 고정한 띠, 2026-11-17 한 화면 배치)(전체 보기는 9단계 VIEW ALL, panels.js). 바깥 글은 textContent로만 넣는다.
+// 운영 규칙과 기록(7단계, R1): 기록 화면의 오늘 숫자 4개, ③칸 설정(프로필 · 연습 모드 · 하루 상한),
+// ③칸 아래 최근 게시 기록(4줄), 아래 줄 「오늘 게시 n/상한」.
+// - 숫자·기록은 GET /api/stats/today · /api/records. 분석·초안·승인·게시가 끝나면 refreshOps()를 부르고,
+//   그 밖에는 30초마다 다시 본다(한국 자정이 지나면 오늘 수가 0으로 돌아온다).
+// - 연습 모드 켬 = 연습 페이지(sandbox), 끔 = 실제 유튜브(youtube). 처음 값은 기본 작업 대상(browser.default_target).
+//   고른 값은 화면 상태에만 둔다. 게시 작업이 이 값으로 예약하고, 서버가 상한을 다시 강제한다.
+// - 바깥 글은 textContent로만 넣는다.
 import { api } from './api.js';
-import { el } from './format.js';
+import { el, targetName } from './format.js';
 import { getState, setState, subscribe } from './state.js';
 
 const $ = (id) => document.getElementById(id);
 const REFRESH_MS = 30000;
-const RECENT_ROWS = 3;
+const RECENT_ROWS = 4; // ③칸 아래 최근 게시 기록 줄 수
+const RECENT_FETCH = 60; // 게시 기록만 고르려고 넉넉히 받는다(분석·초안 기록이 섞여 있다)
 
 let lastKey = null;
 let seq = 0;
@@ -51,7 +52,7 @@ export async function refreshOps() {
   try {
     const [stats, records] = await Promise.all([
       api.todayStats(ops.target, ops.dailyLimit),
-      api.records(RECENT_ROWS),
+      api.records(RECENT_FETCH),
     ]);
     if (mine !== seq) return; // 그새 대상·상한을 바꿔 다시 불렀다
     const key = JSON.stringify([stats, records]);
@@ -65,22 +66,24 @@ export async function refreshOps() {
   }
 }
 
+export function practiceText(on) {
+  return on ? '켜짐 · 연습 페이지에 답니다' : '꺼짐 · 실제 유튜브에 답니다';
+}
+
 function setupSettings() {
-  const box = settingsBox();
   const profile = $('profile');
   const limit = $('limit');
+  const practice = $('practice-mode');
   profile.addEventListener('change', () => setOps({ profile: profile.value }));
   limit.addEventListener('change', () => {
     setOps({ dailyLimit: Number(limit.value) });
     refreshOps();
   });
-  for (const radio of box.querySelectorAll('input[name="mode"]')) {
-    radio.addEventListener('change', () => {
-      if (!radio.checked) return;
-      setOps({ target: radio.value });
-      refreshOps();
-    });
-  }
+  practice.addEventListener('change', () => {
+    $('practice-text').textContent = practiceText(practice.checked);
+    setOps({ target: practice.checked ? 'sandbox' : 'youtube' });
+    refreshOps();
+  });
 }
 
 function renderStats(ops) {
@@ -93,54 +96,61 @@ function renderStats(ops) {
   const rate = s ? successText(s.success_rate) : null;
   $('stat-success').replaceChildren(...(rate === null ? ['–'] : [rate, el('small', { text: '%' })]));
   const note = $('today-note');
-  if (ops.error) note.textContent = '오늘 통계를 불러오지 못했습니다';
-  else if (s) note.textContent = `오늘 ${s.day.slice(5).replace('-', '.')} · ${s.target_label} 기준`;
-  // 03칸 오늘 작업 n / 상한
+  if (ops.error) note.textContent = '오늘 숫자를 불러오지 못했습니다';
+  else if (s) note.textContent = `오늘 ${s.day.slice(5).replace('-', '.')} · ${targetName(s.target)} 기준`;
+  // 아래 줄 오늘 게시 n/상한
   $('today-count').replaceChildren(
     s ? String(s.videos) : '–',
     el('span', { class: 'slash', text: '/' }),
-    `${limit} `,
-    el('small', { text: s && s.remaining === 0 ? '건 · 오늘 상한' : '건' }),
+    String(limit),
+    s && s.remaining === 0 ? ' · 오늘 상한' : '',
   );
 }
 
+// 결과 칸: 게시면 「게시 완료/게시 실패」, 그 밖은 「초안 생성 · 완료」처럼 무엇을 했는지 함께
+export function resultText(r) {
+  return r.action === 'post' ? r.status_label : `${r.action_label} · ${r.status_label}`;
+}
+
+export function toneOf(r) {
+  return r.result === 'success' ? 'is-ok' : r.result === 'failure' ? 'is-bad' : 'is-info';
+}
+
+export function whereText(r) {
+  return [r.profile, targetName(r.target)].filter(Boolean).join(' · ');
+}
+
 function recordRow(r) {
-  const comment = r.comment_text || (r.action === 'analyze' ? r.reason : '');
-  const tone = r.result === 'success' ? 'is-ok' : r.result === 'failure' ? 'is-bad' : 'is-info';
-  const showReason = r.reason && (r.result === 'failure' || r.action === 'draft');
-  const status = el('td', { class: `st ${tone}`, title: r.reason || null }, [
-    el('b', { text: r.status_label }),
-    showReason ? el('span', { class: 'st-reason', text: ` · ${r.reason}` }) : null,
-  ]);
-  const where = [r.profile, r.target_label].filter(Boolean).join(' · ');
-  const link = r.video_url
-    ? el('a', { href: r.video_url, target: '_blank', rel: 'noopener noreferrer', title: '유튜브에서 영상 보기', 'aria-label': '유튜브에서 영상 보기', text: '↗' })
-    : null;
+  const tone = toneOf(r);
+  const status = el('td', { class: `st ${tone}`, title: r.reason || null }, [el('b', { text: r.status_label === '게시 완료' ? '성공' : r.status_label === '게시 실패' ? '실패' : r.status_label })]);
   return el('tr', {}, [
     el('td', { class: 'nowrap', text: formatKst(r.at), title: r.at }),
     el('td', { class: 'clip', text: r.video_title || r.video_id || '–', title: r.video_title || null }),
-    el('td', { class: 'nowrap', text: r.action_label }),
-    el('td', { class: 'clip', text: comment || '–', title: comment || null }),
+    el('td', { class: 'nowrap', text: r.profile || '–', title: whereText(r) || null }),
+    el('td', { class: 'clip', text: r.comment_text || '–', title: r.comment_text || null }),
     status,
-    el('td', { class: 'nowrap', text: where || '–' }),
-    el('td', { class: 'link' }, [link]),
   ]);
+}
+
+function emptyRow(text) {
+  return el('tr', {}, [el('td', { colspan: '5', class: 'empty-row', text })]);
 }
 
 function renderRecords(ops) {
   const body = $('records-body');
   const meta = $('records-meta');
   if (ops.error && !ops.records) {
-    body.replaceChildren(el('tr', {}, [el('td', { colspan: '7', class: 'empty-row', text: `기록을 불러오지 못했습니다. ${ops.error.message || ''}` })]));
+    body.replaceChildren(emptyRow(`기록을 불러오지 못했습니다. ${ops.error.message || ''}`));
     return;
   }
   if (!ops.records) return;
-  meta.textContent = `최근 ${Math.min(RECENT_ROWS, ops.total)}줄 · 전체 ${ops.total}건 · ACTIVITY ARCHIVE`;
-  if (!ops.records.length) {
-    body.replaceChildren(el('tr', {}, [el('td', { colspan: '7', class: 'empty-row', text: '아직 기록이 없습니다. 분석 · 초안 생성 · 승인 · 게시가 여기에 시간순(최신이 위)으로 남습니다.' })]));
+  const posts = ops.records.filter((r) => r.action === 'post').slice(0, RECENT_ROWS);
+  meta.textContent = posts.length ? `최근 게시 ${posts.length}줄` : '';
+  if (!posts.length) {
+    body.replaceChildren(emptyRow('아직 게시 기록이 없습니다. [댓글 달기]를 누르면 여기에 남습니다.'));
     return;
   }
-  body.replaceChildren(...ops.records.map(recordRow));
+  body.replaceChildren(...posts.map(recordRow));
 }
 
 let lastOps = null;
@@ -154,10 +164,13 @@ function render(state) {
 
 export function initOps() {
   const box = settingsBox();
-  const checked = box.querySelector('input[name="mode"]:checked');
+  const practice = $('practice-mode');
+  // 새로 고쳐도 브라우저가 앞서 바꾼 스위치를 되살리지 않게 처음 값(기본 작업 대상)으로
+  practice.checked = practice.defaultChecked;
+  $('practice-text').textContent = practiceText(practice.checked);
   setState({
     ops: {
-      target: checked ? checked.value : box.dataset.target || 'sandbox',
+      target: practice.checked ? 'sandbox' : 'youtube',
       profile: $('profile').value,
       dailyLimit: Number($('limit').value || box.dataset.limit || 10),
       stats: null,

@@ -3,321 +3,290 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>JG Marketing AI Agent — 유튜브 마케팅 에이전트</title>
+  <title>JG 마케팅 에이전트 · JG Marketing AI Agent</title>
   <link rel="stylesheet" href="/static/fonts/fonts.css" />
   <link rel="stylesheet" href="/static/css/style.css" />
   <script type="module" src="/static/js/app.js"></script>
 </head>
 <body>
-<main class="shell" id="top">
+<!-- 프로그램형 화면(UI_SPEC 4판, R1). 왼쪽 줄 / 위 줄 / 화면 내용 / 아래 줄. 화면 전체는 스크롤하지 않는다.
+     화면 네 개(작업·기록·프로필·설정)는 한 페이지 안에서 보이기/숨기기로 바꾼다(topbar.js). -->
+<div class="app" id="top">
 
-  <!-- 위 줄: 로고 · 메뉴 · 시스템 상태 (UI_SPEC 2.1) -->
-  <header class="top">
-    <div class="brand">
-      <div class="logo" aria-hidden="true">JG</div>
-      <div class="brand-copy">MARKETING<br />AI AGENT</div>
-      <span class="sr-only">JG Marketing AI Agent</span>
-    </div>
-    <button type="button" class="menu-toggle" id="menu-toggle" aria-controls="nav" aria-expanded="false">메뉴 <small>MENU</small></button>
-    <!-- 메뉴(9단계): 누르면 그 칸으로 이동하고 잠깐 강조. 지금 있는 칸에 표시(aria-current). 설정은 겹침 패널 -->
-    <nav class="nav" id="nav" aria-label="메뉴">
-      <a href="#top" data-target="top"><span class="ko">대시보드</span><small class="en">DASHBOARD</small></a>
-      <a href="#col-discover" data-target="col-discover"><span class="ko">영상 탐색</span><small class="en">DISCOVER</small></a>
-      <a href="#col-analyze" data-target="col-analyze"><span class="ko">분석</span><small class="en">ANALYZE</small></a>
-      <a href="#col-execute" data-target="col-execute"><span class="ko">실행</span><small class="en">EXECUTE</small></a>
-      <a href="#activity" data-target="activity"><span class="ko">기록</span><small class="en">ACTIVITY</small></a>
-      <button type="button" id="settings-open" aria-haspopup="dialog" aria-controls="settings-panel"><span class="ko">설정</span><small class="en">SETTINGS</small></button>
-    </nav>
-    <ul class="system" aria-label="시스템 상태">
-      <li id="status-ai-item"><i class="dot is-wait" id="status-ai-dot" aria-hidden="true"></i><span class="sys-ko">AI 모델</span><span class="sys-name">AI</span><span class="sys-text" id="status-ai">확인 중</span></li>
-      <li id="status-youtube-item"><i class="dot is-wait" id="status-youtube-dot" aria-hidden="true"></i><span class="sys-ko">유튜브</span><span class="sys-name">YOUTUBE</span><span class="sys-text" id="status-youtube">확인 중</span></li>
-      <li id="status-browser-item"><i class="dot is-wait" id="status-browser-dot" aria-hidden="true"></i><span class="sys-ko">브라우저</span><span class="sys-name">BROWSER</span><span class="sys-text" id="status-browser">확인 중</span></li>
-    </ul>
+  <!-- 왼쪽 줄: 로고와 화면 네 개 -->
+  <nav class="rail" id="nav" aria-label="화면">
+    <div class="logo" aria-hidden="true">JG</div>
+    <span class="sr-only">JG 마케팅 에이전트</span>
+    <button type="button" class="rail-btn" id="nav-work" data-screen="work" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="5" height="15" rx="1.2"/><rect x="9.5" y="4.5" width="5" height="15" rx="1.2"/><rect x="15.5" y="4.5" width="5" height="15" rx="1.2"/></svg>
+      <span>작업</span></button>
+    <button type="button" class="rail-btn" id="nav-records" data-screen="records">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/></svg>
+      <span>기록</span></button>
+    <button type="button" class="rail-btn" id="nav-profiles" data-screen="profiles">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 19.5c1.2-3.6 4-5 7-5s5.8 1.4 7 5"/></svg>
+      <span>프로필</span><i class="rail-dot" id="nav-profiles-dot" hidden></i></button>
+    <button type="button" class="rail-btn" id="nav-settings" data-screen="settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M6 18l1.6-1.6M16.4 7.6 18 6"/></svg>
+      <span>설정</span><i class="rail-dot" id="nav-settings-dot" hidden></i></button>
+  </nav>
+
+  <!-- 위 줄: 화면 이름, (작업 화면) 진행 단계와 다음 할 일 -->
+  <header class="topbar">
+    <h1 id="screen-title" tabindex="-1">작업</h1>
+    <ol class="progress" id="progress" aria-label="진행 단계">
+      <li class="step is-current" data-step="1">① 영상 불러오기</li>
+      <li class="step" data-step="2">② 영상 선택</li>
+      <li class="step" data-step="3">③ 댓글 달기</li>
+    </ol>
+    <p class="next-hint" id="next-hint" aria-live="polite">다음: [영상 불러오기]를 누르세요</p>
   </header>
 
-  <!-- 제목 영역 + 오늘 통계 4개 (UI_SPEC 2.2, 3절 A2) -->
-  <section class="hero">
-    <div class="hero-copy">
-      <p class="eyebrow">INTELLIGENT CONTENT WORKFLOW</p>
-      <h1>영상을 이해하고, 다음 행동을 설계합니다.</h1>
-      <p class="desc">탐색부터 맥락 분석, 초안 검토와 실행 관리까지. 모든 댓글은 <span class="gold">{{ disclosure }}</span>로 시작하고 사람이 최종 검토합니다.</p>
-    </div>
-    <div class="hero-right">
-      <!-- 오늘 통계(7단계): GET /api/stats/today. 03칸에서 고른 작업 방식의 대상 기준.
-           9단계: 한글 이름표(dt.ko)를 영문 이름표 앞에 둔다(한 dd를 dt 두 개가 설명) -->
-      <dl class="today" id="today-stats" aria-label="오늘 통계" aria-live="polite">
-        <div title="오늘 처리한 영상(예약 + 게시) / 하루 상한. 실패는 세지 않습니다"><dt class="ko">오늘 처리</dt><dt>TODAY · VIDEOS</dt><dd id="stat-videos">–</dd></div>
-        <div title="오늘 만든 댓글 초안"><dt class="ko">초안</dt><dt>DRAFTS</dt><dd id="stat-drafts">–</dd></div>
-        <div title="오늘 게시 완료"><dt class="ko">게시 완료</dt><dt>POSTED</dt><dd id="stat-posted">–</dd></div>
-        <div title="오늘 게시 성공률(게시 완료 ÷ 게시 시도). 시도가 없으면 –"><dt class="ko">성공률</dt><dt>SUCCESS</dt><dd id="stat-success">–</dd></div>
+  <main class="screens">
+
+    <!-- 작업 화면 -->
+    <section class="screen screen-work" id="screen-work" data-col="1" aria-labelledby="screen-title">
+      <!-- 좁은 창(1100px 아래): 세 칸을 탭으로 하나씩 -->
+      <div class="col-tabs" role="tablist" aria-label="작업 칸">
+        <button type="button" role="tab" class="col-tab" data-col="1" aria-selected="true">① 영상 불러오기</button>
+        <button type="button" role="tab" class="col-tab" data-col="2" aria-selected="false">② 영상 선택</button>
+        <button type="button" role="tab" class="col-tab" data-col="3" aria-selected="false">③ 댓글 달기</button>
+      </div>
+
+      <!-- ① 영상 불러오기 -->
+      <section class="column" id="col-discover" data-col="1" aria-labelledby="col-discover-title">
+        <div class="colhead"><h2 id="col-discover-title" tabindex="-1">① 영상 불러오기</h2></div>
+        <div class="col-body">
+          <form id="search-form" autocomplete="off">
+            <div class="search">
+              <button type="submit" class="btn" id="search-btn">영상 불러오기</button>
+              <label class="field-wrap"><span class="sr-only">검색어</span>
+                <input class="field" id="q" name="q" type="search" value="{{ default_query }}" maxlength="200" autocomplete="off" aria-label="검색어" placeholder="검색어 또는 유튜브 주소" /></label>
+            </div>
+            <div class="filters">
+              <label><small>기간</small>
+                <select id="period" name="period">
+                  <option value="day">최근 1일</option>
+                  <option value="week" selected>최근 1주</option>
+                  <option value="month">최근 1개월</option>
+                  <option value="any">전체 기간</option>
+                </select>
+              </label>
+              <label><small>정렬</small>
+                <select id="order" name="order">
+                  <option value="date" selected>최신순</option>
+                  <option value="relevance">관련성순</option>
+                  <option value="viewCount">조회수순</option>
+                </select>
+              </label>
+              <label><small>개수</small>
+                <select id="max-results" name="max_results">
+                  {% for n in max_results_options %}<option value="{{ n }}"{% if n == default_max_results %} selected{% endif %}>{{ n }}개</option>{% endfor %}
+                </select>
+              </label>
+              <label class="check shorts-toggle" title="짧은 영상(쇼츠)과 길이 정보가 없는 영상을 목록에서 뺍니다">
+                <input type="checkbox" id="exclude-shorts" name="exclude_shorts" autocomplete="off"{% if default_exclude_shorts %} checked{% endif %} /><i aria-hidden="true"></i>쇼츠 빼기</label>
+              <button type="button" class="btn btn-text" id="rising-btn" disabled title="곧 연결됩니다">뜨기 직전 영상<span class="soon">곧 연결</span></button>
+            </div>
+          </form>
+
+          <form id="resolve-form" class="link-row" autocomplete="off">
+            <label for="video-url">영상 링크로 불러오기</label>
+            <div class="search">
+              <input class="field" id="video-url" name="url" type="text" autocomplete="off" placeholder="https://www.youtube.com/watch?v=…" />
+              <button type="submit" class="btn" id="resolve-btn">불러오기</button>
+            </div>
+          </form>
+
+          <div class="alert" id="discover-error" role="alert" hidden>
+            <p class="alert-msg" id="discover-error-msg"></p>
+            <p class="alert-action" id="discover-error-action"></p>
+          </div>
+
+          <p class="result-meta" id="result-meta" aria-live="polite"></p>
+          <div class="video-list" id="video-list" aria-label="영상 목록" aria-busy="false">
+            <p class="empty">기본 검색어가 들어 있습니다. <b>[영상 불러오기]</b>를 누르면 최신 영상이 뜹니다.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ② 영상 선택: 영상을 고르면 자동으로 고민 한 줄과 댓글 초안 -->
+      <section class="column" id="col-analyze" data-col="2" aria-labelledby="col-analyze-title">
+        <div class="colhead"><h2 id="col-analyze-title" tabindex="-1">② 영상 선택</h2></div>
+        <div class="col-body">
+          <div class="midinfo" id="selected-summary">
+            <p class="empty-sm">①에서 영상을 고르면 고민 한 줄과 댓글 초안이 자동으로 나옵니다.</p>
+          </div>
+
+          <div class="report" id="report-box" aria-live="polite">
+            <div class="run-line">
+              <ol class="run-steps" id="run-steps" aria-label="만드는 단계">
+                <li data-phase="context">영상 자료 읽는 중</li><li data-phase="analysis">고민 정리 중</li><li data-phase="draft">댓글 쓰는 중</li>
+              </ol>
+              <span class="run-note" id="run-note">처음에는 1분쯤 걸릴 수 있습니다</span>
+            </div>
+            <div class="alert" id="run-error" role="alert" hidden>
+              <p class="alert-msg" id="run-error-msg"></p>
+              <p class="alert-action" id="run-error-action"></p>
+              <button type="button" class="btn btn-small" id="run-btn" disabled>다시 해 보기</button>
+            </div>
+            <div class="concern">
+              <p class="label">영상 속 고민 한 줄</p>
+              <p class="concern-text" id="an-concern">–</p>
+              <p class="evidence"><span class="label">근거</span> <span id="an-evidence">근거 문장과 출처</span></p>
+            </div>
+            <dl class="analysis" id="analysis-list">
+              <dt>주제</dt><dd id="an-topic">–</dd>
+              <dt>분위기</dt><dd id="an-tone">–</dd>
+              <dt>보는 사람이 바라는 것</dt><dd id="an-needs">–</dd>
+            </dl>
+          </div>
+
+          <div class="context" id="context-box" aria-live="polite">
+            <dl class="analysis analysis-inline">
+              <dt>자막</dt><dd id="ctx-transcript">영상을 고르면 표시됩니다.</dd>
+              <dt>인기 댓글</dt><dd id="ctx-comments">–</dd>
+            </dl>
+            <p class="caption" id="ctx-note" hidden></p>
+            <div class="alert" id="context-error" role="alert" hidden>
+              <p class="alert-msg" id="context-error-msg"></p>
+              <p class="alert-action" id="context-error-action"></p>
+            </div>
+            <details class="paste" id="transcript-paste">
+              <summary>자막 직접 넣기</summary>
+              <p class="caption">유튜브 영상 아래 「스크립트 표시」에서 복사해 붙여 넣으세요.</p>
+              <label class="sr-only" for="transcript-text">붙여 넣을 자막</label>
+              <textarea class="field" id="transcript-text" rows="5" spellcheck="false" placeholder="0:01 자막 내용…" data-max="{{ max_transcript_chars }}" disabled></textarea>
+              <div class="paste-actions">
+                <span class="paste-count" id="transcript-count">0 / {{ "{:,}".format(max_transcript_chars) }}자</span>
+                <button type="button" class="btn btn-small" id="transcript-clear" hidden disabled>넣은 자막 지우기</button>
+                <button type="button" class="btn btn-small" id="transcript-save" disabled>저장</button>
+              </div>
+            </details>
+          </div>
+
+          <div class="draft" id="draft-box" data-disclosure="{{ disclosure }}" data-min="{{ min_chars }}" data-max="{{ max_chars }}">
+            <div class="draft-head"><label for="draft-text">댓글 초안</label>
+              <label class="check disclose-toggle" id="disclose-toggle" title="내 채널 영상에서만 끌 수 있습니다"><input type="checkbox" id="disclose" checked disabled /><i aria-hidden="true"></i>광고 표기 붙이기</label>
+              <span class="draft-count" id="draft-count">0 / {{ max_chars }}자</span></div>
+            <div class="draft-edit" id="draft-edit">
+              <div class="draft-mirror" id="draft-mirror" aria-hidden="true"></div>
+              <textarea class="draft-input" id="draft-text" rows="2" maxlength="1000" spellcheck="false" placeholder="영상을 고르면 초안이 자동으로 들어옵니다. {{ disclosure }}로 시작해 직접 고쳐도 됩니다." aria-describedby="draft-checks" disabled></textarea>
+            </div>
+            <div class="draftfooter">
+              <span class="draft-labels"><span class="tag" id="draft-tag">검토 필요</span><span class="tone" id="draft-tone" title="말투(댓글 본문에는 넣지 않습니다)"></span></span>
+              <button type="button" class="btn btn-small" id="another-btn" disabled>다른 댓글 만들기</button>
+            </div>
+            <div class="checks" id="draft-checks" aria-live="polite">
+              <p class="checks-idle" id="checks-idle">영상을 고르면 초안을 만들고 규칙 검사를 합니다.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ③ 댓글 달기: [댓글 달기] 한 번으로 프로필 열기 → 입력 → 게시 → 확인 -->
+      <section class="column" id="col-execute" data-col="3" aria-labelledby="col-execute-title">
+        <div class="colhead"><h2 id="col-execute-title" tabindex="-1">③ 댓글 달기</h2></div>
+        <div class="col-body">
+          <div class="exec-settings" data-target="{{ default_target }}" data-limit="{{ daily_max_comments }}">
+            <fieldset class="settings" id="exec-settings">
+              <legend class="sr-only">게시 설정</legend>
+              <div class="setrow"><label for="profile">프로필</label>
+                <select id="profile"><option value="" selected>자동 배정</option>{% for p in profiles %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></div>
+              <div class="setrow"><span class="label" id="practice-label">연습 모드</span>
+                <label class="switch" title="켜면 실제 유튜브가 아니라 프로그램 안의 연습 페이지에 댓글을 답니다">
+                  <input type="checkbox" id="practice-mode" role="switch" aria-labelledby="practice-label"{% if default_target == "sandbox" %} checked{% endif %} /><i aria-hidden="true"></i>
+                  <span id="practice-text">{% if default_target == "sandbox" %}켜짐 · 연습 페이지에 답니다{% else %}꺼짐 · 실제 유튜브{% endif %}</span></label></div>
+              <div class="setrow"><label for="limit">하루 상한</label>
+                <select id="limit">{% for n in daily_limit_options %}<option value="{{ n }}"{% if n == daily_max_comments %} selected{% endif %}>{{ n }}개까지</option>{% endfor %}</select></div>
+            </fieldset>
+          </div>
+
+          <div class="jobbox" id="job-box" data-state="idle" aria-live="polite">
+            <div class="job-title" id="exec-title">영상 선택 대기</div>
+            <p class="job-desc" id="exec-desc">①에서 영상을 고르면 댓글 초안이 나오고, [댓글 달기]를 누르면 끝까지 진행합니다.</p>
+            <button type="button" class="btn btn-big" id="job-primary" disabled>댓글 달기</button>
+            <p class="job-why" id="job-why"></p>
+            <ol class="job-steps" id="job-steps" aria-label="진행 상태">
+              <li data-phase="1">프로필 여는 중</li><li data-phase="2">입력 중</li><li data-phase="3">게시</li><li data-phase="4">확인</li>
+            </ol>
+            <div class="job-actions" id="job-actions" hidden>
+              <button type="button" class="btn btn-small" id="job-copy" hidden>댓글 복사</button>
+              <button type="button" class="btn btn-small" id="job-not-posted" hidden>게시 안 함</button>
+              <button type="button" class="btn btn-small" id="job-cancel" hidden>그만두기</button>
+              <a class="btn btn-small" id="job-view" href="#" target="_blank" rel="noopener noreferrer" hidden>유튜브에서 내 댓글 보기</a>
+              <a class="btn btn-small" id="job-shot" href="#" target="_blank" rel="noopener" hidden>화면 캡처 보기</a>
+            </div>
+            <p class="job-error" id="job-error" role="alert" hidden></p>
+            <div class="taskstatus"><i class="dot is-wait" id="job-dot" aria-hidden="true"></i><span id="job-status">브라우저 확인 중</span></div>
+          </div>
+
+          <!-- 최근 기록(시간 · 영상 · 프로필 · 댓글 · 결과) -->
+          <section class="history" id="activity" aria-labelledby="activity-title">
+            <div class="history-top"><h3 id="activity-title">기록</h3>
+              <small id="records-meta">최근 4줄</small>
+              <button type="button" class="btn btn-text" id="records-all">기록 전체 보기</button></div>
+            <table class="mini-records">
+              <colgroup><col class="c-time" /><col class="c-video" /><col class="c-profile" /><col class="c-comment" /><col class="c-status" /></colgroup>
+              <thead><tr><th>시간</th><th>영상</th><th>프로필</th><th>댓글</th><th>결과</th></tr></thead>
+              <tbody id="records-body"><tr><td colspan="5" class="empty-row">아직 기록이 없습니다. 초안 만들기와 게시가 여기에 남습니다.</td></tr></tbody>
+            </table>
+          </section>
+        </div>
+      </section>
+    </section>
+
+    <!-- 기록 화면 -->
+    <section class="screen screen-records" id="screen-records" aria-labelledby="screen-title" hidden>
+      <dl class="today" id="today-stats" aria-label="오늘 숫자" aria-live="polite">
+        <div title="오늘 게시한 영상(예약 + 게시) / 하루 상한. 실패는 세지 않습니다"><dt>오늘 게시</dt><dd id="stat-videos">–</dd></div>
+        <div title="오늘 만든 댓글 초안"><dt>만든 댓글</dt><dd id="stat-drafts">–</dd></div>
+        <div title="오늘 게시 완료"><dt>게시 완료</dt><dd id="stat-posted">–</dd></div>
+        <div title="오늘 게시 성공률(게시 완료 ÷ 게시 시도). 시도가 없으면 –"><dt>성공률</dt><dd id="stat-success">–</dd></div>
       </dl>
-      <div class="record">
-        <p class="off-note" id="today-note">오늘 통계 불러오는 중</p>
-        <b>V {{ version }} — LOCAL · {{ stage }}단계</b>
-      </div>
-    </div>
-  </section>
-
-  <!-- 흐름 띠 (UI_SPEC 2.3). 9단계: 지금 단계의 설명 줄에 다음 행동을 쓴다(next.js) -->
-  <section class="progress" aria-label="작업 흐름" id="progress">
-    <div class="step is-current" data-step="1">
-      <div class="focus-icon"><div class="corners"></div><span>01</span></div>
-      <div class="text"><div class="phase">DISCOVER</div><b>영상 탐색</b><p class="step-hint" data-default="영상의 맥락을 발견합니다.">영상의 맥락을 발견합니다.</p></div>
-    </div>
-    <div class="step" data-step="2">
-      <div class="focus-icon"><div class="corners"></div><span>02</span></div>
-      <div class="text"><div class="phase">UNDERSTAND</div><b>AI 분석 · 초안</b><p class="step-hint" data-default="콘텐츠의 고민을 읽습니다.">콘텐츠의 고민을 읽습니다.</p></div>
-    </div>
-    <div class="step" data-step="3">
-      <div class="focus-icon"><div class="corners"></div><span>03</span></div>
-      <div class="text"><div class="phase">EXECUTE</div><b>실행 · 관리</b><p class="step-hint" data-default="검토 후 작업을 완료합니다.">검토 후 작업을 완료합니다.</p></div>
-    </div>
-  </section>
-
-  <section class="workspace" aria-label="세 단계 작업 화면">
-
-    <!-- 01 영상 탐색 (2단계에서 연결) -->
-    <div class="column" id="col-discover">
-      <div class="colhead"><h2 tabindex="-1">영상 탐색</h2><span class="number">01 / 03</span></div>
-      <div class="col-body">
-
-      <div class="tabs" role="tablist" aria-label="영상 불러오는 방법">
-        <button type="button" class="tab" role="tab" id="tab-keyword" aria-controls="pane-keyword" aria-selected="true">키워드 검색</button>
-        <button type="button" class="tab" role="tab" id="tab-url" aria-controls="pane-url" aria-selected="false" tabindex="-1">URL 직접 입력</button>
-      </div>
-
-      <div role="tabpanel" id="pane-keyword" aria-labelledby="tab-keyword">
-        <form id="search-form" autocomplete="off">
-          <div class="search">
-            <input class="field" id="q" name="q" type="search" value="{{ default_query }}" maxlength="100" autocomplete="off" aria-label="유튜브 검색어" placeholder="검색 키워드를 입력하세요" />
-            <button type="submit" id="search-btn">영상 찾기 ↗</button>
-          </div>
-          <div class="filters">
-            <label><small>업로드 기간</small>
-              <select id="period" name="period">
-                <option value="day">최근 1일</option>
-                <option value="week" selected>최근 1주</option>
-                <option value="month">최근 1개월</option>
-                <option value="any">전체 기간</option>
-              </select>
-            </label>
-            <label><small>정렬 방식</small>
-              <select id="order" name="order">
-                <option value="date" selected>최신순</option>
-                <option value="relevance">관련성순</option>
-                <option value="viewCount">조회수순</option>
-              </select>
-            </label>
-            <label><small>표시 개수</small>
-              <select id="max-results" name="max_results">
-                {% for n in max_results_options %}<option value="{{ n }}"{% if n == default_max_results %} selected{% endif %}>{{ n }}개</option>{% endfor %}
-              </select>
-            </label>
-            <label class="shorts-toggle" title="61초 미만 영상(쇼츠)과 길이 정보가 없는 영상을 목록에서 뺍니다. 검색 1회 100단위는 같습니다"><small>쇼츠</small>
-              <span class="check"><input type="checkbox" id="exclude-shorts" name="exclude_shorts" autocomplete="off"{% if default_exclude_shorts %} checked{% endif %} /><i aria-hidden="true"></i>쇼츠 제외</span>
-            </label>
-          </div>
-        </form>
-      </div>
-
-      <div role="tabpanel" id="pane-url" aria-labelledby="tab-url" hidden>
-        <form id="resolve-form">
-          <div class="search">
-            <input class="field" id="video-url" name="url" type="text" autocomplete="off" aria-label="유튜브 영상 주소" placeholder="유튜브 영상 URL을 입력하세요" />
-            <button type="submit" id="resolve-btn">불러오기 ↗</button>
-          </div>
-          <p class="caption">watch · youtu.be · shorts · live 주소와 영상 ID(11자)를 받습니다.</p>
-        </form>
-      </div>
-
-      <div class="alert" id="discover-error" role="alert" hidden>
-        <p class="alert-msg" id="discover-error-msg"></p>
-        <p class="alert-action" id="discover-error-action"></p>
-      </div>
-
-      <p class="result-meta" id="result-meta" aria-live="polite"></p>
-      <div class="video-list" id="video-list" aria-label="영상 목록" aria-busy="false">
-        <p class="empty">기본 검색어가 들어 있습니다. <b>[영상 찾기]</b>를 누르면 최신 영상이 뜹니다.</p>
-      </div>
-      <p class="note" id="quota-note">YouTube 할당량 오늘 <b id="quota-used">–</b> / <span id="quota-limit">10,000</span> 단위 · 검색 1회 100단위 · 같은 검색은 10분 동안 저장한 결과를 씁니다.</p>
-      </div>
-    </div>
-
-    <!-- 02 AI 분석과 댓글 초안 (3단계: 자막 출처·붙여넣기, 6단계: 초안 직접 쓰기·규칙 검사, 5단계: 분석·AI 초안·승인) -->
-    <div class="column" id="col-analyze">
-      <div class="colhead"><h2 tabindex="-1">AI 분석과 댓글 초안</h2><span class="number">02 / 03</span></div>
-      <div class="col-body">
-
-      <div class="midinfo" id="selected-summary">
-        <p class="empty-sm">01에서 영상을 고르면 여기에 표시됩니다.</p>
-      </div>
-
-      <!-- 영상 맥락 분석(5단계): [분석하고 초안 만들기]를 눌러야 시작한다(모델이 느려서 고르자마자 돌지 않는다) -->
-      <div class="report" id="report-box" aria-live="polite">
-        <div class="section-mini"><span class="report-title">영상 맥락 분석 <small>CONTEXT REPORT</small></span>
-          <button type="button" class="line-btn run-btn" id="run-btn" disabled>분석하고 초안 만들기 ↗</button></div>
-        <div class="run-line">
-          <ol class="run-steps" id="run-steps" aria-label="진행 단계">
-            <li data-phase="context">맥락 수집</li><li data-phase="analysis">분석</li><li data-phase="draft">초안</li><li data-phase="check">검사</li>
-          </ol>
-          <span class="run-note" id="run-note">큰 모델은 처음에 1분쯤 걸립니다</span>
+      <div class="records-tools">
+        <p class="caption" id="today-note">오늘 숫자 불러오는 중</p>
+        <div class="seg" role="radiogroup" aria-label="거르기">
+          <label><input type="radio" name="records-filter" value="all" checked /><span>전체</span></label>
+          <label><input type="radio" name="records-filter" value="post" /><span>게시</span></label>
+          <label><input type="radio" name="records-filter" value="failure" /><span>실패</span></label>
         </div>
-        <div class="alert" id="run-error" role="alert" hidden>
-          <p class="alert-msg" id="run-error-msg"></p>
-          <p class="alert-action" id="run-error-action"></p>
-        </div>
-        <dl class="analysis is-compact" id="analysis-list">
-          <dt>주요 주제</dt><dd id="an-topic">–</dd>
-          <dt>핵심 고민</dt><dd id="an-concern">–</dd>
-          <dt>영상 톤</dt><dd id="an-tone">–</dd>
-          <dt>시청자 니즈</dt><dd id="an-needs">–</dd>
-          <dt>분석 근거</dt><dd id="an-evidence">근거 문장과 출처</dd>
-        </dl>
+        <p class="caption" id="records-all-meta" aria-live="polite">불러오는 중…</p>
       </div>
-
-      <!-- 영상 자료: 자막 출처와 인기 댓글, 자막 붙여넣기 (3단계) -->
-      <div class="context" id="context-box" aria-live="polite">
-        <dl class="analysis">
-          <dt>자막 출처</dt><dd id="ctx-transcript">영상을 고르면 표시됩니다.</dd>
-          <dt>인기 댓글</dt><dd id="ctx-comments">–</dd>
-        </dl>
-        <p class="caption" id="ctx-note" hidden></p>
-        <div class="alert" id="context-error" role="alert" hidden>
-          <p class="alert-msg" id="context-error-msg"></p>
-          <p class="alert-action" id="context-error-action"></p>
-        </div>
-        <details class="paste" id="transcript-paste">
-          <summary>자막 붙여넣기</summary>
-          <p class="caption">유튜브 영상 아래 '스크립트 표시'에서 복사해 붙여 넣으세요.</p>
-          <label class="sr-only" for="transcript-text">붙여 넣을 자막</label>
-          <textarea class="field" id="transcript-text" rows="6" spellcheck="false" placeholder="0:01 자막 내용…" data-max="{{ max_transcript_chars }}" disabled></textarea>
-          <div class="paste-actions">
-            <span class="paste-count" id="transcript-count">0 / {{ "{:,}".format(max_transcript_chars) }}자</span>
-            <button type="button" class="line-btn" id="transcript-clear" hidden disabled>붙여 넣은 자막 지우기</button>
-            <button type="button" class="line-btn" id="transcript-save" disabled>저장</button>
-          </div>
-        </details>
+      <div class="table-wrap records-wrap">
+        <table class="records-all">
+          <colgroup><col class="c-time" /><col class="c-video" /><col class="c-profile" /><col class="c-comment" /><col class="c-status" /><col class="c-links" /></colgroup>
+          <thead><tr><th>시간</th><th>영상</th><th>프로필</th><th>댓글</th><th>결과</th><th><span class="sr-only">보기</span></th></tr></thead>
+          <tbody id="records-all-body"><tr><td colspan="6" class="empty-row">불러오는 중…</td></tr></tbody>
+        </table>
       </div>
+    </section>
 
-      <!-- 댓글 초안(6단계): 사람이 고치고, 입력이 멈추면 규칙 검사 V1~V12. AI 초안이 들어온다(5단계) -->
-      <div class="draft" id="draft-box" data-disclosure="{{ disclosure }}" data-min="{{ min_chars }}" data-max="{{ max_chars }}">
-        <div class="section-mini"><label for="draft-text">댓글 초안</label> <label class="check disclose-toggle" id="disclose-toggle" title="내 채널 영상(config.yaml own_video_ids)에서만 끌 수 있습니다"><input type="checkbox" id="disclose" checked disabled /><i aria-hidden="true"></i>홍보 표기</label> <span class="draft-count" id="draft-count">0 / {{ max_chars }}자</span></div>
-        <div class="draft-edit" id="draft-edit">
-          <div class="draft-mirror" id="draft-mirror" aria-hidden="true"></div>
-          <textarea class="draft-input" id="draft-text" rows="2" maxlength="1000" spellcheck="false" placeholder="[분석하고 초안 만들기]를 누르거나 {{ disclosure }}로 시작해 직접 써 보세요." aria-describedby="draft-checks" disabled></textarea>
-        </div>
-        <div class="draftfooter">
-          <span class="draft-labels"><span class="tag-ko" id="draft-tag-ko">검토 필요</span><span class="tag" id="draft-tag">DRAFT · REVIEW REQUIRED</span><span class="tone" id="draft-tone" title="말투 분류(댓글 본문에는 넣지 않습니다)"></span></span>
-          <span class="draft-actions">
-            <button type="button" class="line-btn" id="another-btn" disabled>다른 초안 생성 ↗</button>
-            <button type="button" class="line-btn approve-btn" id="approve-btn" disabled>이 초안 승인</button>
-          </span>
-        </div>
-        <div class="checks" id="draft-checks" aria-live="polite">
-          <p class="checks-idle" id="checks-idle">영상을 고르고 초안을 쓰면 규칙 검사(V1~V12)를 합니다.</p>
-        </div>
+    <!-- 프로필 화면 -->
+    <section class="screen screen-profiles" id="screen-profiles" aria-labelledby="screen-title" hidden>
+      <p class="screen-note">프로필은 유튜브에 댓글을 달 계정입니다. 프로필마다 크롬 사용자 폴더가 따로 있어 로그인이 섞이지 않습니다. 꼭 필요한 것은 유튜브1 하나입니다.</p>
+      <div class="cards" id="profiles-body" aria-live="polite"><p class="empty">프로필을 불러오는 중…</p></div>
+    </section>
+
+    <!-- 설정 화면(이번에는 보기만. 저장은 곧 연결) -->
+    <section class="screen screen-settings" id="screen-settings" aria-labelledby="screen-title" hidden>
+      <p class="screen-note">지금 쓰는 설정입니다. 프로그램 안에서 바꾸고 저장하는 기능은 곧 연결됩니다. API 키 값은 화면에 보이지 않습니다.</p>
+      <div class="set-body" id="settings-body" aria-live="polite"><p class="empty">설정을 불러오는 중…</p></div>
+      <div class="set-foot">
+        <button type="button" class="btn" id="settings-save" disabled title="곧 연결됩니다">저장</button>
+        <button type="button" class="btn btn-text" id="settings-reset" disabled title="곧 연결됩니다">기본값으로</button>
       </div>
-      <p class="note">영상의 구체적 장면은 실제 자막 등 검증 가능한 근거가 있을 때만 반영합니다.</p>
-      </div>
-    </div>
+    </section>
+  </main>
 
-    <!-- 03 실행 및 관리 (7단계: 설정 4줄, 8단계: 큰 버튼·진행 단계·승인·복사·확인) -->
-    <div class="column" id="col-execute">
-      <div class="colhead"><h2 tabindex="-1">실행 및 관리</h2><span class="number">03 / 03</span></div>
-      <div class="col-body">
-
-      <div class="exec-settings" data-target="{{ default_target }}" data-limit="{{ daily_max_comments }}">
-        <div class="section-mini">브라우저 환경 <span>LOCAL CONTROL</span></div>
-        <fieldset class="settings" id="exec-settings">
-          <legend class="sr-only">게시 설정</legend>
-          <div class="setrow"><label for="profile">사용 프로필</label>
-            <select id="profile"><option value="" selected>자동 배정</option>{% for p in profiles %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></div>
-          <div class="setrow"><span class="label" id="mode-label">작업 방식</span>
-            <div class="radios" role="radiogroup" aria-labelledby="mode-label">
-              <label class="radio" title="실제 유튜브: 프로필과 영상을 열어 주고, 붙여넣기와 게시는 사람이 직접 합니다. 내 채널 영상(own_video_ids)은 자동으로 입력하고 [게시 승인]을 누르면 게시합니다"><input type="radio" name="mode" value="youtube"{% if default_target == "youtube" %} checked{% endif %} /><i></i>수동 승인 후 게시 (권장)</label>
-              <label class="radio" title="통제된 테스트 페이지에서만 자동으로 입력·게시합니다(실제 유튜브가 아님)"><input type="radio" name="mode" value="sandbox"{% if default_target == "sandbox" %} checked{% endif %} /><i></i>테스트 페이지 자동 실행</label>
-            </div></div>
-          <div class="setrow"><label for="limit">일일 제한</label>
-            <select id="limit">{% for n in daily_limit_options %}<option value="{{ n }}"{% if n == daily_max_comments %} selected{% endif %}>최대 {{ n }}건</option>{% endfor %}</select></div>
-          <div class="setrow"><span class="label">오늘 작업</span>
-            <div class="count" id="today-count" aria-live="polite">–<span class="slash">/</span>{{ daily_max_comments }} <small>건</small></div></div>
-        </fieldset>
-      </div>
-
-      <!-- 작업 상자(8단계): 큰 버튼 → POST /api/jobs, 진행 단계는 GET /api/jobs/{id}를 0.5초마다.
-           테스트 페이지는 자동 입력 → [게시 승인] → 자동 게시·확인. 실제 유튜브는 크롬을 열기만 하고 사람이 게시 -->
-      <div class="asidebox" id="job-box" data-state="idle" aria-live="polite">
-        <div class="aside-title" id="exec-title">영상 선택 대기</div>
-        <p id="exec-desc">01에서 영상을 고르세요. 게시 여부는 로그인된 사용자 본인이 결정합니다.</p>
-        <button type="button" class="primary" id="job-primary" disabled>브라우저에서 영상 열기 ↗</button>
-        <ol class="job-steps" id="job-steps" aria-label="진행 단계">
-          <li data-step="0">대기</li><li data-step="1">프로필 실행</li><li data-step="2">댓글 입력</li><li data-step="3">승인 대기</li><li data-step="4">게시 완료</li><li data-step="5">확인</li>
-        </ol>
-        <div class="job-actions" id="job-actions" hidden>
-          <button type="button" class="line-btn" id="job-copy" hidden>초안 복사</button>
-          <button type="button" class="line-btn" id="job-not-posted" hidden>게시 안 함</button>
-          <button type="button" class="line-btn" id="job-cancel" hidden>작업 취소</button>
-          <a class="line-btn" id="job-view" href="#" target="_blank" rel="noopener noreferrer" hidden>댓글 보기 ↗</a>
-          <a class="line-btn" id="job-shot" href="#" target="_blank" rel="noopener" hidden>화면 캡처 ↗</a>
-        </div>
-        <p class="job-error" id="job-error" role="alert" hidden></p>
-        <div class="taskstatus"><i class="dot is-wait" id="job-dot" aria-hidden="true"></i><span id="job-status">브라우저 확인 중</span></div>
-      </div>
-
-      <div class="hint"><b>운영 원칙</b> <small>OPERATION NOTE</small><br />중복 작업 방지 · 활동 이력 기록 · 공개적 홍보 관계 표시<br />정책을 준수하는 사용자 승인 방식으로 설계</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 작업 기록 (7단계): GET /api/records. 최신이 위, 최근 3줄(넓은 화면에서 높이 고정 띠). 9단계: [전체 보기 VIEW ALL]은 겹침 패널 -->
-  <section class="history" id="activity">
-    <div class="history-top"><h2 tabindex="-1">작업 기록</h2>
-      <span class="history-tools"><small id="records-meta">최근 3줄 · ACTIVITY ARCHIVE</small>
-        <button type="button" class="line-btn" id="records-all" aria-haspopup="dialog" aria-controls="records-panel">전체 보기 <small>VIEW ALL</small> ↗</button></span></div>
-    <div class="table-wrap">
-      <table>
-        <colgroup><col class="c-time" /><col class="c-video" /><col class="c-action" /><col class="c-comment" /><col class="c-status" /><col class="c-profile" /><col class="c-link" /></colgroup>
-        <thead><tr><th><span class="ko">시간</span><small class="en">TIME</small></th><th><span class="ko">영상</span><small class="en">VIDEO</small></th><th><span class="ko">작업</span><small class="en">ACTION</small></th><th><span class="ko">댓글</span><small class="en">COMMENT</small></th><th><span class="ko">상태</span><small class="en">STATUS</small></th><th><span class="ko">프로필</span><small class="en">PROFILE</small></th><th><span class="sr-only">영상 보기</span></th></tr></thead>
-        <tbody id="records-body"><tr><td colspan="7" class="empty-row">아직 기록이 없습니다. 분석 · 초안 생성 · 승인 · 게시가 여기에 시간순(최신이 위)으로 남습니다.</td></tr></tbody>
-      </table>
-    </div>
-  </section>
-
-  <footer class="bottom"><span>JG MARKETING AGENT</span><span>V {{ version }} · STAGE {{ stage }}</span></footer>
-</main>
-
-<!-- SETTINGS 패널(9단계): 같은 화면의 겹침 패널, 읽기 전용. GET /api/settings.
-     Esc로 닫히고, 열 때 패널로 초점이 들어가며, 닫으면 연 단추로 초점이 돌아간다(panels.js) -->
-<dialog class="panel" id="settings-panel" aria-labelledby="settings-title">
-  <div class="panel-head">
-    <h2 id="settings-title" tabindex="-1">설정 <small>SETTINGS · 읽기 전용</small></h2>
-    <button type="button" class="line-btn panel-close" data-close aria-label="설정 닫기">닫기 ×</button>
-  </div>
-  <p class="panel-note">config.yaml과 .env에서 읽은 값입니다. 바꾸려면 파일을 고친 뒤 프로그램을 다시 켜세요. 키 값은 화면에 보이지 않습니다.</p>
-  <div class="panel-body" id="settings-body" aria-live="polite"><p class="empty">설정을 불러오는 중…</p></div>
-  <div class="panel-foot">
-    <button type="button" class="line-btn" id="warmup-btn">모델 미리 불러오기 ↗</button>
-    <p class="caption" id="warmup-note">시연 전에 한 번 누르면 첫 분석이 빨라집니다. 큰 모델은 1~2분 걸릴 수 있습니다.</p>
-  </div>
-</dialog>
-
-<!-- 작업 기록 전체(9단계 VIEW ALL): 실패 사유와 실패 화면 캡처 링크. GET /api/records?limit=200 -->
-<dialog class="panel panel-wide" id="records-panel" aria-labelledby="records-title">
-  <div class="panel-head">
-    <h2 id="records-title" tabindex="-1">작업 기록 전체 <small>ACTIVITY ARCHIVE</small></h2>
-    <button type="button" class="line-btn panel-close" data-close aria-label="전체 기록 닫기">닫기 ×</button>
-  </div>
-  <div class="panel-tools">
-    <p class="caption" id="records-all-meta" aria-live="polite">불러오는 중…</p>
-    <label class="check"><input type="checkbox" id="records-failed-only" /><i aria-hidden="true"></i>실패만 보기</label>
-  </div>
-  <div class="panel-body table-wrap">
-    <table class="records-all">
-      <colgroup><col class="c-time" /><col class="c-video" /><col class="c-action" /><col class="c-comment" /><col class="c-status" /><col class="c-profile" /><col class="c-shot" /><col class="c-link" /></colgroup>
-      <thead><tr><th><span class="ko">시간</span><small class="en">TIME</small></th><th><span class="ko">영상</span><small class="en">VIDEO</small></th><th><span class="ko">작업</span><small class="en">ACTION</small></th><th><span class="ko">댓글</span><small class="en">COMMENT</small></th><th><span class="ko">상태 · 사유</span><small class="en">STATUS</small></th><th><span class="ko">프로필</span><small class="en">PROFILE</small></th><th><span class="ko">캡처</span><small class="en">SHOT</small></th><th><span class="sr-only">영상 보기</span></th></tr></thead>
-      <tbody id="records-all-body"><tr><td colspan="8" class="empty-row">불러오는 중…</td></tr></tbody>
-    </table>
-  </div>
-</dialog>
+  <!-- 아래 줄: 상태 네 가지와 버전. 누르면 해당 화면으로 -->
+  <footer class="statusbar" aria-label="상태">
+    <button type="button" class="stat-item" id="status-ai-item" data-screen="settings"><i class="dot is-wait" id="status-ai-dot" aria-hidden="true"></i><span class="stat-name">AI 모델</span><span class="stat-text" id="status-ai">확인 중</span></button>
+    <button type="button" class="stat-item" id="status-youtube-item" data-screen="settings"><i class="dot is-wait" id="status-youtube-dot" aria-hidden="true"></i><span class="stat-name">유튜브 연결</span><span class="stat-text" id="status-youtube">확인 중</span></button>
+    <button type="button" class="stat-item" id="status-browser-item" data-screen="profiles"><i class="dot is-wait" id="status-browser-dot" aria-hidden="true"></i><span class="stat-name">프로필</span><span class="stat-text" id="status-browser">확인 중</span></button>
+    <button type="button" class="stat-item" id="today-item" data-screen="records"><span class="stat-name">오늘 게시</span><span class="stat-text" id="today-count">–/{{ daily_max_comments }}</span></button>
+    <span class="version">JG 마케팅 에이전트 · V {{ version }}</span>
+  </footer>
+</div>
 </body>
 </html>

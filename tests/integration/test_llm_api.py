@@ -128,5 +128,5 @@ def test_dashboard_ai_status_is_wired(make_client):
     assert 'id="status-ai"' in page and 'id="status-ai-dot"' in page
     assert "4단계에서 연결" not in page
     js = make_client().get("/static/js/topbar.js").text
-    for text in ("aiStatusText", "꺼짐", "모델 없음", "로컬", "외부"):
+    for text in ("aiStatusText", "꺼져 있음", "모델 없음", "이 PC", "외부"):
         assert text in js

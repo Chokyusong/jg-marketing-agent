@@ -19,8 +19,8 @@ async function request(path, options = {}) {
   } catch {
     throw new ApiError({
       kind: 'server_down',
-      message: '대시보드 서버에 연결하지 못했습니다.',
-      action: '.\\scripts\\run.ps1로 서버가 켜져 있는지 확인해 주세요.',
+      message: '프로그램 안의 서버에 연결하지 못했습니다.',
+      action: '프로그램을 껐다가 다시 켜 주세요.',
     });
   }
   let body = null;

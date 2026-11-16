@@ -1,25 +1,34 @@
-// 흐름 띠와 03 작업 상자: 지금 사용자가 있는 단계를 밝힌다(UI_SPEC 2.3).
-// 고르기 전 01, 고르면 02, 글 상자의 초안을 승인하면 03(5단계). 규칙 검사만 통과하면 02에 머물고
-// 03 상자가 "승인 대기"를 알린다. 승인한 뒤와 게시 작업 중의 03 상자 문구·큰 버튼은 job.js(8단계)가 쓴다.
-import { isApproved } from './draft.js';
+// 위 줄 진행 단계(UI_SPEC 0·2절): ① 영상 불러오기 → ② 영상 선택 → ③ 댓글 달기.
+// 영상이 없으면 ①, 목록이 뜨면(고르기·초안 만드는 중) ②, 초안이 규칙 검사를 통과했거나 게시 중이면 ③.
+// 좁은 창(1100px 아래, 세 칸을 탭으로)에서는 영상을 고를 때 ②, 게시를 시작하면 ③ 탭으로 넘긴다.
+import { draftText } from './draft.js';
 import { getState, selectedVideo, subscribe } from './state.js';
+import { showColumn } from './topbar.js';
 
-function draftChecked(state) {
+const NARROW = '(max-width: 1099px)';
+
+function draftReady(state) {
   const v = state.validation;
-  const input = document.getElementById('draft-text');
-  return Boolean(v && v.videoId === state.selectedId && input && v.text === input.value && v.result.passed);
+  return Boolean(v && v.videoId === state.selectedId && v.text === draftText() && v.result.passed);
+}
+
+export function currentStep(state) {
+  const video = selectedVideo();
+  const job = state.job;
+  const jobHere = job && (!job.finished || (video && job.video_id === video.video_id));
+  if (jobHere || state.jobBusy || (video && draftReady(state))) return 3;
+  if (state.videos.length) return 2;
+  return 1;
 }
 
 export function initFlow() {
   const steps = [...document.querySelectorAll('.progress .step')];
-  const title = document.getElementById('exec-title');
-  const desc = document.getElementById('exec-desc');
+  const narrow = window.matchMedia(NARROW);
+  let lastSelected = null;
+  let lastJobId = null;
   const paint = () => {
     const state = getState();
-    const video = selectedVideo();
-    const approved = Boolean(video) && isApproved(state);
-    const checked = Boolean(video) && draftChecked(state);
-    const current = approved ? 3 : video ? 2 : 1;
+    const current = currentStep(state);
     for (const step of steps) {
       const n = Number(step.dataset.step);
       step.classList.toggle('is-current', n === current);
@@ -27,21 +36,15 @@ export function initFlow() {
       if (n === current) step.setAttribute('aria-current', 'step');
       else step.removeAttribute('aria-current');
     }
-    const job = state.job;
-    if (approved || (job && (!job.finished || job.video_id === state.selectedId))) {
-      return; // 초안 승인 완료 뒤의 문구(작업 준비 완료·진행 단계)는 job.js가 쓴다
-    } else if (checked) {
-      title.textContent = '규칙 검사 통과 · 승인 대기';
-      desc.textContent = `선택: ${video.title} — 02의 [이 초안 승인]을 누르면 실행 단계로 넘어갑니다. 게시 여부는 로그인된 사용자 본인이 결정합니다.`;
-    } else if (video) {
-      title.textContent = '초안 대기';
-      desc.textContent = `선택: ${video.title} — 초안이 규칙 검사를 통과하고 승인돼야 열 수 있습니다. 게시 여부는 로그인된 사용자 본인이 결정합니다.`;
-    } else {
-      title.textContent = '영상 선택 대기';
-      desc.textContent = '01에서 영상을 고르세요. 게시 여부는 로그인된 사용자 본인이 결정합니다.';
+    if (state.selectedId !== lastSelected) {
+      lastSelected = state.selectedId;
+      if (state.selectedId && narrow.matches) showColumn(2);
     }
+    const jobId = state.job && !state.job.finished ? state.job.id : null;
+    if (jobId && jobId !== lastJobId && narrow.matches) showColumn(3);
+    lastJobId = jobId || lastJobId;
   };
   subscribe(paint);
-  // 글을 고치는 순간 통과·승인 표시를 내린다(검사는 입력이 멈춘 뒤에 다시 한다).
+  // 글을 고치는 순간 통과 표시를 내린다(검사는 입력이 멈춘 뒤에 다시 한다).
   document.getElementById('draft-text').addEventListener('input', paint);
 }

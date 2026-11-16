@@ -36,6 +36,26 @@ export function formatAgo(iso, now = Date.now()) {
   return `${Math.floor(day / 365)}년 전`;
 }
 
+// 올린 날짜(한국 시각) 「11.17」. 올해가 아니면 「2025.11.17」
+export function formatDay(iso, now = Date.now()) {
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return '';
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' })
+      .formatToParts(t).map((p) => [p.type, p.value]),
+  );
+  const thisYear = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric' })
+    .formatToParts(new Date(now)).find((p) => p.type === 'year').value;
+  return `${parts.year === thisYear ? '' : `${parts.year}.`}${parts.month}.${parts.day}`;
+}
+
+// 화면의 대상 이름: 연습 모드(sandbox)는 「연습」, 실제 유튜브는 「유튜브」
+export function targetName(target) {
+  if (target === 'sandbox') return '연습';
+  if (target === 'youtube') return '유튜브';
+  return '';
+}
+
 export function formatDate(iso) {
   const t = new Date(iso);
   if (Number.isNaN(t.getTime())) return '';

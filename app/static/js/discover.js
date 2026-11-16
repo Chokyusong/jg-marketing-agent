@@ -1,40 +1,21 @@
-// ① 영상 탐색: 탭, 검색창과 거르기(쇼츠 제외 포함), 영상 목록, 선택, 오류 문구.
+// ① 영상 불러오기: [영상 불러오기](검색어 칸과 한 줄 거르기), 「영상 링크로 불러오기」, 영상 목록과 고르기.
+// - 검색어 칸에 유튜브 주소를 넣고 [영상 불러오기]를 눌러도 그 영상 하나를 불러온다.
+// - 링크로 불러온 영상은 목록 맨 위에 넣고 바로 고른다(고르면 ②가 자동으로 초안을 만든다).
+// - 목록 한 줄: 썸네일 · 제목(끝의 #태그는 흐리게) · 채널 · 올린 날짜(11.17 · 7시간 전) · 조회수, 「댓글 달았음」.
 import { api } from './api.js';
-import { el, formatAgo, formatViews, thumbnail, titleNode } from './format.js';
+import { el, formatAgo, formatDay, formatViews, thumbnail, titleNode } from './format.js';
 import { getState, setState, subscribe } from './state.js';
 
 const $ = (id) => document.getElementById(id);
-
-function setupTabs() {
-  const tabs = [$('tab-keyword'), $('tab-url')];
-  const panes = { keyword: $('pane-keyword'), url: $('pane-url') };
-
-  const activate = (name, focus = false) => {
-    setState({ tab: name, error: null });
-    tabs.forEach((tab) => {
-      const on = tab.id === `tab-${name}`;
-      tab.setAttribute('aria-selected', String(on));
-      tab.tabIndex = on ? 0 : -1;
-      if (on && focus) tab.focus();
-    });
-    panes.keyword.hidden = name !== 'keyword';
-    panes.url.hidden = name !== 'url';
-  };
-
-  tabs.forEach((tab, i) => {
-    tab.addEventListener('click', () => activate(tab.id.replace('tab-', '')));
-    tab.addEventListener('keydown', (event) => {
-      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
-      event.preventDefault();
-      const next = tabs[(i + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
-      activate(next.id.replace('tab-', ''), true);
-    });
-  });
-}
+const YOUTUBE_URL = /^(https?:\/\/)?((www|m|music)\.)?(youtube\.com|youtu\.be)\//i;
 
 async function runSearch() {
   const query = $('q').value.trim();
-  setState({ loading: true, error: null });
+  if (YOUTUBE_URL.test(query)) {
+    runResolve(query); // 검색어 칸에 주소를 넣었으면 링크로 불러오기와 같게
+    return;
+  }
+  setState({ loading: true, loadMode: 'search', error: null });
   try {
     const data = await api.searchVideos({
       q: query,
@@ -60,23 +41,28 @@ async function runSearch() {
   }
 }
 
-async function runResolve() {
-  const url = $('video-url').value.trim();
+async function runResolve(given) {
+  const url = (given ?? $('video-url').value).trim();
   if (!url) {
     setState({ error: { message: '영상 주소를 넣어 주세요.', action: '예: https://youtu.be/영상ID' } });
     $('video-url').focus();
     return;
   }
-  setState({ loading: true, error: null });
+  setState({ loading: true, loadMode: 'link', error: null });
   try {
     const data = await api.resolveVideo(url);
+    const item = data.item;
+    const rest = getState().videos.filter((v) => v.video_id !== item.video_id);
     setState({
       loading: false,
-      videos: [data.item],
+      videos: [item, ...rest],
       quota: data.quota,
-      selectedId: data.item.video_id,
-      meta: { mode: 'link', count: 1, cached: false },
+      selectedId: item.video_id,
+      meta: { ...(getState().meta || {}), mode: getState().meta ? getState().meta.mode : 'link', linked: true, count: rest.length + 1 },
     });
+    if (given === undefined) $('video-url').value = '';
+    const list = $('video-list');
+    if (list) list.scrollTop = 0;
   } catch (error) {
     setState({ loading: false, error });
   }
@@ -85,24 +71,28 @@ async function runResolve() {
 // 7단계: 댓글을 단(게시 완료) 대상. 없으면 null
 export function commentedText(commented) {
   if (!commented) return null;
-  const where = [commented.sandbox ? '테스트 페이지' : null, commented.youtube ? '유튜브' : null].filter(Boolean);
-  return where.length ? `댓글 단 영상 · ${where.join('·')}` : null;
+  const where = [commented.sandbox ? '연습' : null, commented.youtube ? '유튜브' : null].filter(Boolean);
+  if (!where.length) return null;
+  return commented.youtube ? '댓글 달았음' : '댓글 달았음 · 연습';
 }
 
 function videoRow(video, selected) {
-  const meta = [video.channel_title, formatViews(video.view_count), formatAgo(video.published_at)].filter(Boolean);
+  const day = formatDay(video.published_at);
+  const ago = formatAgo(video.published_at);
   const done = commentedText(video.commented);
-  const body = el('span', {}, [
+  const body = el('span', { class: 'vid-body' }, [
     titleNode(video.title), // 끝의 #태그는 흐리게(원문은 title 속성에 그대로)
+    el('span', { class: 'video-meta', text: video.channel_title || '' }),
     el('span', { class: 'video-meta' }, [
-      done ? el('span', { class: 'commented', text: done }) : null,
-      meta.join(' · '),
+      day ? el('b', { class: 'vid-day', text: day }) : null,
+      [ago, formatViews(video.view_count)].filter(Boolean).map((t) => ` · ${t}`).join(''),
     ]),
+    done ? el('span', { class: 'commented', text: done }) : null,
   ]);
   return el(
     'button',
     { type: 'button', class: 'vid', 'aria-pressed': String(selected), 'data-id': video.video_id, title: video.title },
-    [thumbnail(video), body, el('i', { class: 'pick', 'aria-hidden': 'true' })],
+    [thumbnail(video), body],
   );
 }
 
@@ -111,19 +101,20 @@ function renderList(state) {
   list.setAttribute('aria-busy', String(state.loading));
   $('search-btn').disabled = state.loading;
   $('resolve-btn').disabled = state.loading;
-  $('search-btn').textContent = state.loading && state.tab === 'keyword' ? '찾는 중…' : '영상 찾기 ↗';
-  $('resolve-btn').textContent = state.loading && state.tab === 'url' ? '불러오는 중…' : '불러오기 ↗';
+  $('search-btn').textContent = state.loading && state.loadMode === 'search' ? '불러오는 중…' : '영상 불러오기';
+  $('resolve-btn').textContent = state.loading && state.loadMode === 'link' ? '불러오는 중…' : '불러오기';
 
   const focusedId = document.activeElement?.dataset?.id;
   list.replaceChildren();
   if (!state.videos.length) {
-    // 9단계: 불러오는 중·결과 없음·처음 화면마다 문구와 다음 행동
     const text = state.loading
-      ? (state.tab === 'url' ? '영상을 불러오는 중입니다… 보통 1~2초 걸립니다.' : '영상을 찾는 중입니다… 보통 1~2초 걸립니다.')
+      ? '영상을 불러오는 중입니다… 보통 1~2초 걸립니다.'
       : state.meta
-        ? '조건에 맞는 영상이 없습니다. 업로드 기간을 넓히거나 검색어를 바꿔 [영상 찾기]를 다시 눌러 보세요.'
+        ? '조건에 맞는 영상이 없습니다. 기간을 넓히거나 검색어를 바꿔 [영상 불러오기]를 다시 눌러 보세요.'
         : null;
-    list.append(text ? el('p', { class: 'empty', text }) : emptyIntro(state.tab));
+    list.append(text ? el('p', { class: 'empty', text }) : el('p', { class: 'empty' }, [
+      '기본 검색어가 들어 있습니다. ', el('b', { text: '[영상 불러오기]' }), '를 누르면 최신 영상이 뜹니다.',
+    ]));
     return;
   }
   for (const video of state.videos) {
@@ -132,39 +123,23 @@ function renderList(state) {
   if (focusedId) list.querySelector(`[data-id="${CSS.escape(focusedId)}"]`)?.focus();
 }
 
-function emptyIntro(tab) {
-  if (tab === 'url') {
-    return el('p', { class: 'empty' }, [
-      '유튜브 영상 주소를 넣고 ',
-      el('b', { text: '[불러오기]' }),
-      '를 누르면 그 영상 하나가 뜹니다.',
-    ]);
-  }
-  return el('p', { class: 'empty' }, [
-    '기본 검색어가 들어 있습니다. ',
-    el('b', { text: '[영상 찾기]' }),
-    '를 누르면 최신 영상이 뜹니다.',
-  ]);
-}
-
 function renderMeta(state) {
   const meta = $('result-meta');
   meta.replaceChildren();
   if (!state.meta || state.loading) return;
   if (state.meta.mode === 'search') {
     meta.append(`‘${state.meta.query}’ 영상 ${state.meta.count}개`);
-    // 실제 데이터 보정: 쇼츠(61초 미만·길이 없음)를 뺀 수
+    // 실제 데이터 보정: 쇼츠(짧은 영상·길이 없음)를 뺀 수
     if (state.meta.shortsExcluded != null) {
-      meta.append(el('span', { class: 'shorts-note', title: '61초 미만 영상과 길이 정보가 없는 영상은 목록에서 뺍니다', text: `쇼츠 ${state.meta.shortsExcluded}개 제외` }));
+      meta.append(el('span', { class: 'shorts-note', title: '짧은 영상(쇼츠)과 길이 정보가 없는 영상은 목록에서 뺍니다', text: `쇼츠 ${state.meta.shortsExcluded}개 뺌` }));
     }
     if (state.meta.cached) {
-      meta.append(el('span', { class: 'tag', title: '같은 검색은 10분 동안 저장한 결과를 씁니다(할당량 절약)', text: '10분 저장 결과 · SAVED' }));
+      meta.append(el('span', { class: 'shorts-note', title: '같은 검색은 10분 동안 앞서 불러온 결과를 다시 씁니다', text: '10분 안에 불러온 결과' }));
     }
   } else {
     meta.append('링크로 불러온 영상');
   }
-  if (state.selectedId) meta.append(el('span', { class: 'tag', text: '1개 선택됨 · SELECTED' }));
-  else if (state.videos.length) meta.append(el('span', { class: 'pick-hint', text: '영상을 하나 고르세요' }));
+  if (!state.selectedId && state.videos.length) meta.append(el('span', { class: 'pick-hint', text: '영상을 하나 고르세요' }));
 }
 
 function renderError(state) {
@@ -183,8 +158,8 @@ function setupList() {
   list.addEventListener('click', (event) => {
     const card = event.target.closest('.vid');
     if (!card) return;
-    const id = card.dataset.id;
-    setState({ selectedId: getState().selectedId === id ? null : id });
+    // 고르면 ②가 바로 분석·초안을 시작한다. 같은 영상을 다시 눌러도 그대로 둔다
+    if (getState().selectedId !== card.dataset.id) setState({ selectedId: card.dataset.id });
   });
   list.addEventListener('keydown', (event) => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
@@ -197,11 +172,10 @@ function setupList() {
 }
 
 export function initDiscover() {
-  // 「쇼츠 제외」는 늘 config.yaml 기본값(discover.exclude_shorts)으로 시작한다. 창을 새로 고쳐도
+  // 「쇼츠 빼기」는 늘 기본값(discover.exclude_shorts)으로 시작한다. 창을 새로 고쳐도
   // 브라우저가 앞서 바꾼 체크 상태를 되살리지 않게 HTML의 처음 값으로 되돌린다(2026-11-17)
   const shorts = $('exclude-shorts');
   if (shorts) shorts.checked = shorts.defaultChecked;
-  setupTabs();
   setupList();
   $('search-form').addEventListener('submit', (event) => {
     event.preventDefault();

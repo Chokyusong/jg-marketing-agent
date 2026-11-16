@@ -1,5 +1,6 @@
-// 02 영상 자료(3단계): 영상을 고르면 맥락을 만들고 「자막 출처」·「인기 댓글」 줄을 실제 값으로 그린다.
-// 「자막 붙여넣기」에 넣고 [저장]하면 출처가 "붙여 넣은 자막 n자"로 바뀐다.
+// ② 영상 자료(3단계): 영상을 고르면 맥락을 만들고 「자막」·「인기 댓글」 줄을 실제 값으로 그린다.
+// 「자막 직접 넣기」에 넣고 [저장]하면 자막이 "붙여 넣은 자막 n자"로 바뀌고, 'transcript:saved'를 알린다
+// (초안이 아직 없으면 report.js가 그 자막으로 다시 만든다).
 import { api } from './api.js';
 import { getState, setState, subscribe } from './state.js';
 
@@ -9,7 +10,7 @@ const n = (value) => Number(value || 0).toLocaleString('ko-KR');
 let lastSelected = null;
 
 // 응답이 왔을 때 사용자가 그새 다른 영상을 골랐으면 버린다.
-async function run(videoId, call, { fill = true } = {}) {
+async function run(videoId, call, { fill = true, saved = false } = {}) {
   setState({ contextLoading: true, contextError: null });
   try {
     const data = await call();
@@ -17,6 +18,7 @@ async function run(videoId, call, { fill = true } = {}) {
     if (fill) $('transcript-text').value = data.transcript_text || '';
     setState({ context: data, contextLoading: false, quota: data.quota });
     updateCount();
+    if (saved) document.dispatchEvent(new CustomEvent('transcript:saved', { detail: videoId }));
   } catch (error) {
     if (getState().selectedId !== videoId) return;
     setState({ contextLoading: false, contextError: error });
@@ -32,7 +34,7 @@ function load(videoId) {
 function transcriptLine(ctx) {
   if (ctx.transcript_source === 'manual') return `붙여 넣은 자막 ${n(ctx.transcript_chars)}자`;
   if (ctx.transcript_source === 'unofficial') return `비공식 조회 자막 ${n(ctx.transcript_chars)}자`;
-  return '자막 없음 · 제목과 설명으로 대신';
+  return '자막 없음 · 제목과 설명으로 대신 읽음';
 }
 
 function commentsLine(ctx) {
@@ -113,7 +115,7 @@ export function initContext() {
     const videoId = getState().selectedId;
     const text = $('transcript-text').value;
     if (!videoId || !text.trim()) return;
-    run(videoId, () => api.saveTranscript(videoId, text));
+    run(videoId, () => api.saveTranscript(videoId, text), { saved: true });
   });
   $('transcript-clear').addEventListener('click', () => {
     const videoId = getState().selectedId;

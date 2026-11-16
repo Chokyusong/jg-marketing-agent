@@ -1,4 +1,10 @@
-"""화면 골격(UI_SPEC 세 번째 판, 에디토리얼 목업): TestClient로 HTML 구조와 정적 파일을 확인한다."""
+"""화면 골격(UI_SPEC 4판, R1 프로그램형 화면): TestClient로 HTML 구조와 정적 파일을 확인한다.
+
+3판(에디토리얼 목업) 구조를 확인하던 테스트를 R1 구조로 옮겼다. 확인하는 기능은 같다:
+세 칸과 진행 단계, 검색·거르기·링크 불러오기, 자막 붙여넣기, 초안 글 상자와 규칙 검사, 분석 줄,
+오늘 숫자·설정·기록, 게시 작업 상자, 상태 줄, 쇼츠 빼기, 연애 고민 없음 안내, 다음 행동 하나만 강조,
+한 화면 배치, 글자 크기, 해시태그 흐리게. 3판의 겹침 패널(설정·기록 전체)은 화면으로 옮겼다.
+"""
 
 import re
 
@@ -6,7 +12,9 @@ import pytest
 
 JS_FILES = ["app.js", "api.js", "state.js", "format.js", "discover.js", "analysis.js", "flow.js",
             "topbar.js", "context.js", "draft.js", "report.js", "ops.js", "job.js", "sandbox.js",
-            "next.js", "panels.js", "layout.js"]
+            "next.js", "screens.js", "layout.js"]
+# 화면에 쓰지 않는 개발 용어(UI_SPEC 4판 1절 5)
+FORBIDDEN = ("sandbox", "assist", "target", "config", "env", "단위", "playwright", "headless")
 
 
 @pytest.fixture
@@ -21,56 +29,62 @@ def _section(page: str, start: str, end: str) -> str:
 
 
 def test_layout_parts_exist(page):
-    assert "JG Marketing" in page  # 1단계 테스트와 같은 확인
-    assert 'class="sidebar"' not in page  # 세 번째 판: 사이드바 없음
-    assert '<header class="top">' in page
-    for menu in ("DASHBOARD", "DISCOVER", "ANALYZE", "EXECUTE", "ACTIVITY", "SETTINGS"):
-        assert f">{menu}<" in page
-    for item in ("AI", "YOUTUBE", "BROWSER"):
-        assert f'<span class="sys-name">{item}</span>' in page
-    assert "INTELLIGENT CONTENT WORKFLOW" in page
-    assert '<section class="progress"' in page
-    for col in ("col-discover", "col-analyze", "col-execute"):
+    assert "JG Marketing" in page  # 1단계 테스트와 같은 확인(창 제목)
+    # 왼쪽 줄 · 위 줄 · 화면 내용 · 아래 줄
+    assert '<nav class="rail" id="nav" aria-label="화면">' in page
+    assert '<div class="logo" aria-hidden="true">JG</div>' in page
+    screens = (("work", "작업"), ("records", "기록"), ("profiles", "프로필"), ("settings", "설정"))
+    for key, name in screens:
+        btn = _section(page, f'id="nav-{key}" data-screen="{key}"', "</button>")
+        assert "<svg" in btn and f"<span>{name}</span>" in btn  # 인라인 아이콘 + 한글 이름
+        assert f'id="screen-{key}"' in page
+    assert '<header class="topbar">' in page and 'id="screen-title"' in page
+    steps = re.findall(r'<li class="step[^"]*" data-step="(\d)">([^<]+)</li>', page)
+    assert steps == [("1", "① 영상 불러오기"), ("2", "② 영상 선택"), ("3", "③ 댓글 달기")]
+    assert 'id="next-hint"' in page and "다음: [영상 불러오기]를 누르세요" in page
+    assert '<footer class="statusbar" aria-label="상태">' in page
+    for col, title in (("col-discover", "① 영상 불러오기"), ("col-analyze", "② 영상 선택"),
+                       ("col-execute", "③ 댓글 달기")):
         assert f'id="{col}"' in page
-    for title in ("영상 탐색", "AI 분석과 댓글 초안", "실행 및 관리", "작업 기록"):
-        assert title in page
+        assert f'<h2 id="{col}-title" tabindex="-1">{title}</h2>' in page
     assert 'id="activity"' in page
+    # 작업 화면 말고는 처음에 숨겨 둔다
+    for key in ("records", "profiles", "settings"):
+        assert re.search(rf'id="screen-{key}"[^>]*hidden>', page)
 
 
 def test_discover_column_is_wired(page):
-    assert 'role="tablist"' in page
-    assert 'id="tab-keyword"' in page and 'id="tab-url"' in page
+    assert 'id="tab-keyword"' not in page and 'id="tab-url"' not in page  # 탭 없이 둘 다 보인다
     assert re.search(r'id="q"[^>]*value="연애 고민"', page)  # 입력 없이 바로 누를 수 있다
-    assert 'id="search-btn">영상 찾기 ↗<' in page
+    assert 'id="search-btn">영상 불러오기<' in page
     assert 'id="period"' in page and 'id="order"' in page and 'id="max-results"' in page
     for order in ("date", "relevance", "viewCount"):
         assert f'<option value="{order}"' in page
     assert '<option value="12" selected>' in page  # config.yaml discover.max_results
     assert 'id="video-list"' in page
     assert 'id="discover-error"' in page and 'role="alert"' in page
-    assert 'id="resolve-form"' in page
+    # 「영상 링크로 불러오기」는 눈에 보이게 따로(가점 항목)
+    link = _section(page, '<form id="resolve-form"', "</form>")
+    assert '<label for="video-url">영상 링크로 불러오기</label>' in link
+    assert 'id="resolve-btn">불러오기</button>' in link
     assert "디자인 시연용 가상 데이터" not in page
 
 
 def test_unconnected_parts_are_off_and_labelled(page):
-    assert "8단계에서 연결" not in page  # 8단계에서 켠 큰 버튼·진행 단계·BROWSER 상태도
-    assert "3단계에서 연결" not in page  # 3단계에서 켠 요소는 문구도 지운다
-    assert "5단계에서 연결" not in page  # 5단계에서 켠 분석·AI 초안·다른 초안·승인도
-    assert "6단계에서 연결" not in page  # 6단계에서 켠 요소(초안 글 상자·규칙 검사)도
-    assert "4단계에서 연결" not in page  # 4단계에서 켠 위 줄 AI 상태도
-    assert "7단계에서 연결" not in page  # 7단계에서 켠 오늘 통계·03칸 설정·작업 기록도
-    assert '<dl class="today is-off"' not in page and '<dl class="today"' in page
-    assert '<fieldset class="settings" disabled>' not in page
-    assert '<button type="button" class="primary" disabled>' not in page  # 큰 버튼은 8단계에 켰다
-    # 9단계: SETTINGS를 켰다(읽기 전용 설정 창을 연다)
-    assert "9단계에서 연결" not in page
-    assert ('<button type="button" id="settings-open" aria-haspopup="dialog" '
-            'aria-controls="settings-panel">') in page
+    for stage in range(3, 10):
+        assert f"{stage}단계에서 연결" not in page
+    # 다음 차례(R2·R4)에 연결할 단추는 꺼 두고 「곧 연결」로 알린다
+    rising = _section(page, 'id="rising-btn"', "</button>")
+    assert "disabled" in rising and "곧 연결" in rising
+    for bid in ("settings-save", "settings-reset"):
+        assert re.search(rf'id="{bid}" disabled title="곧 연결됩니다"', page)
+    assert "<dialog" not in page  # 3판의 겹침 패널은 화면으로 옮겼다
+    assert '<fieldset class="settings" id="exec-settings">' in page  # ③ 설정은 켜져 있다
 
 
 def test_no_example_numbers(page):
     today = _section(page, '<dl class="today', "</dl>")
-    for value in re.findall(r"<dd>(.*?)</dd>", today, re.S):
+    for value in re.findall(r'<dd id="[^"]+">(.*?)</dd>', today, re.S):
         assert value.strip().startswith("–")
     history = _section(page, 'id="activity"', "</section>")
     assert "<td>" not in history  # 기록 줄을 박아 넣지 않는다(빈 안내 한 줄만)
@@ -98,13 +112,26 @@ def test_static_js_served(make_client, name):
     assert "javascript" in res.headers["content-type"]
 
 
-def test_static_css_follows_mockup(make_client):
+def test_panels_js_is_gone(make_client):
+    # 겹침 패널(panels.js)은 기록·프로필·설정 화면(screens.js)으로 옮겼다
+    assert make_client(key=None).get("/static/js/panels.js").status_code == 404
+
+
+def test_static_css_follows_spec(make_client):
+    # UI_SPEC 4판 8절의 색
     css = make_client(key=None).get("/static/css/style.css").text
-    for token in ("--bg: #0a0a0a", "--gold: #d1b990", "--dim: #918e88", "Noto Serif KR"):
-        assert token in css
-    for bp in ("max-width: 1120px", "max-width: 750px"):
-        assert bp in css
+    for token in ("--bg: #0b0b0c", "--panel: #141416", "--field: #1b1b1e", "--line: #2a2a2e",
+                  "--text: #f1efea", "--sub: #a8a59e", "--gold: #d1b990", "--ok: #8fbf8f",
+                  "--bad: #e08b7f", "--warn: #e0c27a", "Noto Serif KR"):
+        assert token in css, token
+    assert "@media (max-width: 1099px)" in css  # 1100px 아래: 아이콘만 · 세 칸은 탭
     assert "@import" not in css and "url(http" not in css  # 외부 글꼴 없음
+    # 명조는 로고와 화면 이름에만
+    serif = [line.split("{", 1)[0].strip() for line in css.splitlines() if "var(--serif)" in line]
+    assert serif == [".logo", ".topbar h1"]
+    # 모서리: 단추 6px, 칸 8px
+    assert "border-radius: 6px" in css.split(".btn {", 1)[1].split("}", 1)[0]
+    assert "border-radius: 8px" in css.split(".column {", 1)[1].split("}", 1)[0]
 
 
 def test_js_does_not_use_inner_html(make_client):
@@ -121,19 +148,25 @@ def test_bundled_serif_font_is_linked(page, make_client):
     assert font.headers["content-type"] == "font/woff2"
 
 
-def test_label_text_is_at_least_11px(make_client):
-    # UI_SPEC 6절: 이름표 11px 이상(영상 길이, 진행 단계 이름 포함, 좁은 화면 포함).
-    # 9단계에서 가장 작은 글자를 11.5px로 올렸다(본문 14px · 보조 12px 이상)
+def test_text_is_at_least_12px(make_client):
+    # UI_SPEC 4판 1절 7: 가장 작은 글 12px(영상 길이, 진행 단계 이름, 좁은 화면 포함)
     css = make_client(key=None).get("/static/css/style.css").text
     sizes = [float(x) for x in re.findall(r"font-size:\s*([\d.]+)px", css)]
-    assert sizes and min(sizes) >= 11.5
-    for selector in (".duration {", ".job-steps li {"):
+    assert sizes and min(sizes) >= 12
+    for selector in (".duration {", ".job-steps li {", ".run-steps li {"):
         rule = css.split(selector, 1)[1].split("}", 1)[0]
-        assert "font-size: 11.5px" in rule
+        assert "font-size: 12px" in rule
+
+
+def test_buttons_and_inputs_are_at_least_36px(make_client):
+    css = make_client(key=None).get("/static/css/style.css").text
+    for selector in (".btn {", ".field, select {", ".col-tab {", ".seg span {"):
+        rule = css.split(selector, 1)[1].split("}", 1)[0]
+        assert "min-height: 36px" in rule, selector
 
 
 def test_broken_thumbnail_falls_back_to_empty_box(make_client):
-    # 그림을 못 불러오면 img를 떼어 내 빈 자리(.thumb 배경)만 남긴다. 01·02칸이 같은 함수를 쓴다.
+    # 그림을 못 불러오면 img를 떼어 내 빈 자리(.thumb 배경)만 남긴다. ①·② 칸이 같은 함수를 쓴다.
     client = make_client(key=None)
     fmt = client.get("/static/js/format.js").text
     body = fmt.split("export function thumbnail(video) {", 1)[1]
@@ -144,26 +177,114 @@ def test_broken_thumbnail_falls_back_to_empty_box(make_client):
         assert "el('img'" not in js  # 썸네일 그림은 thumbnail()만 만든다
 
 
-# ---------------------------------------------------------------- 3단계: 02칸 자막 출처·붙여넣기
+# ---------------------------------------------------------------- 화면 글: 쉬운 한국어만
+
+
+def _visible_text(page: str) -> list[str]:
+    """템플릿을 그린 HTML에서 사람이 보는 글: 글자 마디와 title·placeholder·aria-label 값."""
+    body = page.split("<body>", 1)[1]
+    body = re.sub(r"<!--.*?-->", " ", body, flags=re.S)
+    body = re.sub(r"<(script|style)\b.*?</\1>", " ", body, flags=re.S)
+    attrs = re.findall(r'(?:title|placeholder|aria-label)="([^"]*)"', body)
+    text = re.sub(r"<[^>]+>", "\n", body)
+    return [t.strip() for t in text.splitlines() + attrs if t.strip()]
+
+
+def _js_text_literals(source: str) -> list[str]:
+    """JS 소스의 문자열 글자 부분(주석과 템플릿 문자열의 ${…} 식은 뺀다).
+
+    한글이 든 것만 돌려준다.
+    """
+    out: list[str] = []
+    stack: list[list] = [["code", 0]]  # 맨 위가 지금 읽는 곳: ["code", 중괄호 깊이] | ["tpl", 글자]
+    i, n = 0, len(source)
+    while i < n:
+        top, c = stack[-1], source[i]
+        if top[0] == "tpl":
+            if c == "\\":
+                top[1] += source[i:i + 2]
+                i += 2
+            elif c == "`":
+                out.append(stack.pop()[1])
+                i += 1
+            elif source.startswith("${", i):
+                stack.append(["code", 1])
+                i += 2
+            else:
+                top[1] += c
+                i += 1
+        elif source.startswith("//", i):
+            end = source.find(chr(10), i)
+            i = n if end < 0 else end
+        elif source.startswith("/*", i):
+            i = source.find("*/", i) + 2
+        elif c in "'\"":
+            j, buf = i + 1, []
+            while j < n and source[j] != c:
+                buf.append(source[j:j + 2] if source[j] == "\\" else source[j])
+                j += 2 if source[j] == "\\" else 1
+            out.append("".join(buf))
+            i = j + 1
+        elif c == "`":
+            stack.append(["tpl", ""])
+            i += 1
+        elif c == "{":
+            top[1] += 1
+            i += 1
+        elif c == "}":
+            top[1] -= 1
+            if top[1] == 0 and len(stack) > 1:
+                stack.pop()  # ${ … } 끝: 템플릿 글자로 돌아간다
+            i += 1
+        else:
+            i += 1
+    return [t for t in out if re.search(r"[가-힣]", t)]
+
+
+def test_js_text_literal_reader_skips_code_inside_templates():
+    src = "const a = `${targetName(job.target)} · 실패`; // sandbox 주석\nconst b = '연습 페이지';"
+    assert _js_text_literals(src) == [" · 실패", "연습 페이지"]
+
+
+def test_screen_text_has_no_dev_words_or_english_labels(page, make_client):
+    visible = _visible_text(page)
+    joined = "\n".join(visible).lower()
+    for word in FORBIDDEN:
+        assert word not in joined, word
+    for gone in ("INTELLIGENT CONTENT WORKFLOW", "01 / 03", "02 / 03", "03 / 03", "↗"):
+        assert gone not in page
+    # 영문 대문자 이름표 없음(JG·AI·API·PC는 이름이라 둔다)
+    upper = {w for t in visible for w in re.findall(r"\b[A-Z]{2,}\b", t)}
+    assert upper <= {"JG", "AI", "API", "PC"}, upper
+    client = make_client(key=None)
+    for name in JS_FILES:
+        if name == "sandbox.js":  # 연습 페이지(유튜브 흉내 화면) 전용
+            continue
+        literals = _js_text_literals(client.get(f"/static/js/{name}").text)
+        for text in literals:
+            low = text.lower()
+            for word in FORBIDDEN:
+                assert word not in low, (name, word, text)
+            assert "↗" not in text and "V1~V12" not in text, (name, text)
+
+
+# ---------------------------------------------------------------- 3단계: ② 자막·붙여넣기
 
 
 def test_context_rows_are_on(page):
     analyze = _section(page, 'id="col-analyze"', 'id="col-execute"')
     box = _section(analyze, 'id="context-box"', 'id="draft-box"')
-    assert 'class="is-off"' not in box  # 켠 요소: 꺼짐 표시 없음
-    assert "<dt>자막 출처</dt>" in box and 'id="ctx-transcript"' in box
-    assert "<dt>인기 댓글</dt>" in box and 'id="ctx-comments"' in box
+    assert 'class="is-off"' not in box
+    assert '<dt>자막</dt><dd id="ctx-transcript">' in box
+    assert '<dt>인기 댓글</dt><dd id="ctx-comments">' in box
     assert 'id="context-error"' in box and 'role="alert"' in box
-    # 분석(5단계)도 켰다: 02칸에 꺼 둔 덩어리가 없다
-    assert '<div class="is-off">' not in analyze
-    assert 'class="line-btn is-off"' not in analyze
 
 
 def test_transcript_paste_box(page):
     box = _section(page, 'id="transcript-paste"', "</details>")
     assert page.count('<details class="paste" id="transcript-paste">') == 1  # 접어 둔 채(open 없음)
-    assert "<summary>자막 붙여넣기</summary>" in box
-    assert "유튜브 영상 아래 '스크립트 표시'에서 복사해 붙여 넣으세요." in box
+    assert "<summary>자막 직접 넣기</summary>" in box
+    assert "유튜브 영상 아래 「스크립트 표시」에서 복사해 붙여 넣으세요." in box
     assert '<textarea class="field" id="transcript-text"' in box
     assert 'data-max="20000"' in box
     assert "0 / 20,000자" in box
@@ -179,46 +300,43 @@ def test_context_js_wires_the_three_apis(make_client):
         assert snippet in api
     js = client.get("/static/js/context.js").text
     for text in ("붙여 넣은 자막 ", "자막 없음 · 제목과 설명으로 대신", "인기 댓글 ",
-                 "댓글이 막힌 영상"):
+                 "댓글이 막힌 영상", "transcript:saved"):
         assert text in js
     assert "api.buildContext(videoId)" in js
     assert "api.saveTranscript(videoId, text)" in js
     assert "initContext" in client.get("/static/js/app.js").text
 
 
-def test_version_shows_current_stage(page):
-    # 버전은 단계가 끝날 때마다 하나씩 올린다(실행 순서 3 → P → 6 → 4 → 5 → 7 → 8: 0.3.0 … 0.8.0)
-    assert "V 0.9.0 — LOCAL · 9단계" in page
-    assert "STAGE 9" in page
+def test_version_shows_in_status_bar(page):
+    # 버전은 단계가 끝날 때마다 하나씩 올린다. 아래 줄 맨 오른쪽
+    bar = _section(page, '<footer class="statusbar"', "</footer>")
+    assert '<span class="version">JG 마케팅 에이전트 · V 0.9.0</span>' in bar
 
 
-# ---------------------------------------------------------------- 6단계: 02칸 댓글 초안·규칙 검사
+# ---------------------------------------------------------------- 6단계: ② 댓글 초안·규칙 검사
 
 
 def test_draft_box_is_on(page):
     analyze = _section(page, 'id="col-analyze"', 'id="col-execute"')
-    draft = _section(analyze, 'id="draft-box"', '<p class="note">')
-    assert 'class="is-off"' not in draft.split('class="draftfooter"', 1)[0]  # 글 상자는 켜져 있다
+    draft = _section(analyze, 'id="draft-box"', "</section>")
     assert 'data-min="40"' in page and 'data-max="120"' in page  # config.yaml comment
     assert '<label for="draft-text">댓글 초안</label>' in draft
     assert 'id="draft-count">0 / 120자</span>' in draft
     assert '<textarea class="draft-input" id="draft-text"' in draft
     assert 'id="draft-mirror" aria-hidden="true"' in draft  # 표기 금색으로 칠하는 거울
-    assert 'id="draft-tag">DRAFT · REVIEW REQUIRED</span>' in draft
+    assert 'id="draft-tag">검토 필요</span>' in draft
     assert 'id="draft-checks" aria-live="polite"' in draft
-    # 5단계에서 켰다: [다른 초안 생성]·[이 초안 승인](초안이 생기기 전에는 눌리지 않는다)
-    another = '<button type="button" class="line-btn" id="another-btn" disabled>다른 초안 생성 ↗'
-    assert another in draft
-    assert 'id="approve-btn" disabled>이 초안 승인</button>' in draft
-    assert "영상의 구체적 장면은 실제 자막 등 검증 가능한 근거가 있을 때만 반영합니다." in analyze
+    # [다른 댓글 만들기](초안이 생기기 전에는 눌리지 않는다). 따로 승인하는 단추는 없다
+    assert 'id="another-btn" disabled>다른 댓글 만들기</button>' in draft
+    assert 'id="approve-btn"' not in page
 
 
 def test_disclosure_toggle_starts_on_and_locked(page):
-    # 「홍보 표기」: 켠 채 잠겨 있다가 내 채널 영상(맥락 응답 own_video)일 때만 끌 수 있다
+    # 「광고 표기 붙이기」: 켠 채 잠겨 있다가 내 채널 영상(맥락 응답 own_video)일 때만 끌 수 있다
     draft = _section(page, 'id="draft-box"', 'class="draft-edit"')
-    assert 'id="disclose-toggle"' in draft
+    assert 'id="disclose-toggle"' in draft and "광고 표기 붙이기" in draft
     assert '<input type="checkbox" id="disclose" checked disabled />' in draft
-    assert "own_video_ids" in draft  # 왜 잠겼는지 title로 알린다
+    assert "내 채널 영상에서만 끌 수 있습니다" in draft  # 왜 잠겼는지 title로 알린다
 
 
 def test_draft_js_checks_after_pause_and_folds_passed_items(make_client):
@@ -229,54 +347,55 @@ def test_draft_js_checks_after_pause_and_folds_passed_items(make_client):
     js = client.get("/static/js/draft.js").text
     assert "const DEBOUNCE_MS = 400;" in js  # 입력이 0.4초 멈추면 검사
     assert "api.validate(videoId, text)" in js
-    for text in ("'CHECKED'", "'DRAFT · REVIEW REQUIRED'", "개 중 ", "개 통과", "개 모두 통과",
+    for text in ("'검사 통과'", "'검토 필요'", "'승인됨'", "개 중 ", "개 통과", "개 모두 통과",
                  "checks-fail", "class: 'disclosure'", "normalize('NFC').trim()"):
         assert text in js
     # 통과 항목은 접어 두고(details) 실패만 펼친다
     assert "el('details'" in js and "failed.map(" in js
     assert "initDraft" in client.get("/static/js/app.js").text
     flow = client.get("/static/js/flow.js").text
-    assert "v.result.passed" in flow and "규칙 검사 통과" in flow
+    assert "v.result.passed" in flow  # 초안이 통과하면 진행 단계 ③
 
 
 def test_draft_styles(make_client):
     css = make_client(key=None).get("/static/css/style.css").text
-    mirror = css.split(".draft-mirror .disclosure {", 1)[1].split("}", 1)[0]
-    assert "var(--gold)" in mirror
+    assert ".gold, .disclosure { color: var(--gold); }" in css  # 거울의 표기를 금색으로
     assert ".draft-input {" in css and "color: transparent" in css.split(".draft-input {", 1)[1]
     assert ".checks-fail li {" in css and ".tag.is-ok" in css
 
 
-# ---------------------------------------------------------------- 5단계: 02칸 분석·AI 초안·승인
+# ---------------------------------------------------------------- 5단계: ② 자동 분석·초안
 
 
-def test_report_box_is_on_with_run_button_and_five_lines(page):
+def test_report_box_runs_by_itself_with_three_steps(page):
     analyze = _section(page, 'id="col-analyze"', 'id="col-execute"')
     report = _section(analyze, 'id="report-box"', 'id="context-box"')
-    assert "영상 맥락 분석" in report and "CONTEXT REPORT" in report
-    # 영상을 고르자마자 돌지 않는다: 단추로 시작(영상을 고르기 전에는 눌리지 않는다)
-    assert 'id="run-btn" disabled>분석하고 초안 만들기 ↗</button>' in report
-    for phase, label in (("context", "맥락 수집"), ("analysis", "분석"), ("draft", "초안"),
-                         ("check", "검사")):
-        assert f'<li data-phase="{phase}">{label}</li>' in report
-    assert "큰 모델은 처음에 1분쯤 걸립니다" in report  # 긴 작업 안내
+    # 영상을 고르면 자동으로 돈다: [분석하고 초안 만들기] 단추가 없다. [다시 해 보기]는 오류 안에만
+    assert "분석하고 초안 만들기" not in page
+    run_error = _section(report, 'id="run-error"', "</div>")
+    assert 'id="run-btn" disabled>다시 해 보기</button>' in run_error
+    phases = re.findall(r'<li data-phase="(\w+)">([^<]+)</li>', report)
+    assert phases == [
+        ("context", "영상 자료 읽는 중"), ("analysis", "고민 정리 중"), ("draft", "댓글 쓰는 중")]
+    assert "처음에는 1분쯤 걸릴 수 있습니다" in report  # 긴 작업 안내
     assert 'id="run-error" role="alert" hidden' in report
-    for dt, dd in (("주요 주제", "an-topic"), ("핵심 고민", "an-concern"), ("영상 톤", "an-tone"),
-                   ("시청자 니즈", "an-needs"), ("분석 근거", "an-evidence")):
+    assert '<p class="label">영상 속 고민 한 줄</p>' in report and 'id="an-concern"' in report
+    assert 'id="an-evidence"' in report  # 근거 문장
+    terms = (("주제", "an-topic"), ("분위기", "an-tone"), ("보는 사람이 바라는 것", "an-needs"))
+    for dt, dd in terms:
         assert f'<dt>{dt}</dt><dd id="{dd}">' in report
     assert 'id="draft-tone"' in page  # 말투 분류(본문에는 넣지 않는다)
 
 
-def test_execute_button_is_on_from_stage_8(page):
+def test_post_button_is_one_click(page):
     execute = _section(page, 'id="col-execute"', 'id="activity"')
-    # 8단계: 큰 버튼은 켜는 조건(승인한 초안 + 댓글 안 단 영상 + 오늘 남은 횟수)을 job.js가 본다
-    button = ('<button type="button" class="primary" id="job-primary" disabled>'
-              "브라우저에서 영상 열기 ↗</button>")
-    assert button in execute
-    assert "작업 실행은 8단계에서 연결" not in execute
+    # [댓글 달기] 하나로 저장 → 승인 → 게시 작업 시작(켜는 조건은 job.js의 startBlocker)
+    primary = '<button type="button" class="btn btn-big" id="job-primary" disabled>'
+    assert primary + "댓글 달기</button>" in execute
+    assert 'id="job-why"' in execute  # 못 누를 때 이유
 
 
-def test_report_js_runs_steps_in_order_on_button_only(make_client):
+def test_report_js_runs_steps_in_order_when_video_is_picked(make_client):
     client = make_client(key=None)
     api = client.get("/static/js/api.js").text
     for snippet in ("`/api/analysis/${encodeURIComponent(videoId)}`, { method: 'POST' }",
@@ -284,89 +403,86 @@ def test_report_js_runs_steps_in_order_on_button_only(make_client):
                     "method: 'PATCH'", "`/api/drafts/${id}/approve`", "this.failures = failures"):
         assert snippet in api, snippet
     js = client.get("/static/js/report.js").text
-    assert "$('run-btn').addEventListener('click'" in js
-    # 영상을 고르면 저장된 것만 불러온다(api.analyze는 단추를 눌렀을 때만)
+    # 영상을 고르면: 저장된 초안이 있으면 그것(모델을 부르지 않는다), 없으면 자동으로 만든다
     select_block = js.split("if (state.selectedId !== lastSelected) {", 1)[1].split("return;", 1)[0]
-    assert "restore(" in select_block and "run(" not in select_block
+    assert "runToken += 1" in select_block and "pick(state.selectedId)" in select_block
+    pick = js.split("async function pick(videoId) {", 1)[1].split("\n}\n", 1)[0]
+    order = [pick.index(s) for s in ("api.listDrafts(videoId)", "loadDraft(stored)", "run(videoId")]
+    assert order == sorted(order)
     assert js.index("waitForContext(videoId)") < js.index("api.analyze(videoId)") < js.index(
         "api.createDraft(videoId")
-    for text in ("큰 모델은 처음에 1분쯤 걸립니다", "번째에 통과", "초", "another: true",
-                 "api.updateDraft(draft.id, text)", "api.approveDraft(current.id)", "외 ",
-                 "setAttribute('title'"):
+    # 늦게 온 결과는 버린다(차례 번호), 타이머도 그 차례 것만 멈춘다
+    assert "const live = () => token === runToken && mine(videoId);" in js
+    assert "if (token === runToken) stopTicker();" in js
+    for text in ("처음에는 1분쯤 걸릴 수 있습니다", "번째 초안이 규칙 검사를 통과했습니다",
+                 "another: true", "api.updateDraft(draft.id, text)",
+                 "api.approveDraft(current.id)", "외 ", "setAttribute('title'",
+                 "export async function ensureApproved()", "앞서 만든 초안"):
         assert text in js, text
     draft = client.get("/static/js/draft.js").text
-    # 9단계: 한국어 이름표(승인됨)를 앞에 따로 두고 영어 꼬리표는 짧게
-    assert "export function loadDraft(draft)" in draft
-    assert "'APPROVED'" in draft and "'승인됨'" in draft
-    assert "말투 · " in draft
+    assert "export function loadDraft(draft)" in draft and "말투 · " in draft
     assert "initReport" in client.get("/static/js/app.js").text
     flow = client.get("/static/js/flow.js").text
-    assert "const current = approved ? 3 : video ? 2 : 1;" in flow  # 승인하면 03
-    # 승인 뒤 03 문구는 8단계 job.js가 쓴다
-    assert "초안 승인 완료" in client.get("/static/js/job.js").text
+    assert "return 3;" in flow and "return 2;" in flow and "return 1;" in flow
 
 
 def test_report_lines_are_clipped_to_one_line(make_client):
     css = make_client(key=None).get("/static/css/style.css").text
-    rule = css.split(".report .analysis dd {", 1)[1].split("}", 1)[0]
+    rule = css.split(".analysis dd {", 1)[1].split("}", 1)[0]
     for token in ("white-space: nowrap", "overflow: hidden", "text-overflow: ellipsis"):
         assert token in rule
-    assert ".run-steps li.is-current" in css and ".line-btn.approve-btn" in css
+    assert ".run-steps li.is-current" in css
 
 
-# ---------------------------------------------------------------- 7단계: 오늘 통계·설정·기록
+# ---------------------------------------------------------------- 7단계: 오늘 숫자·설정·기록
 
 
 def test_today_stats_are_on_and_start_empty(page):
-    today = _section(page, '<dl class="today"', "</dl>")
-    for dd_id, label in (("stat-videos", "TODAY · VIDEOS"), ("stat-drafts", "DRAFTS"),
-                         ("stat-posted", "POSTED"), ("stat-success", "SUCCESS")):
+    records = _section(page, 'id="screen-records"', "</section>")
+    today = _section(records, '<dl class="today"', "</dl>")
+    for dd_id, label in (("stat-videos", "오늘 게시"), ("stat-drafts", "만든 댓글"),
+                         ("stat-posted", "게시 완료"), ("stat-success", "성공률")):
         assert f'<dt>{label}</dt><dd id="{dd_id}">–</dd>' in today  # 값은 화면이 API로 채운다
     assert 'id="today-note"' in page
-    assert "오늘 통계 · 7단계에서 연결" not in page
+    assert 'id="today-count">–/10</span>' in page  # 아래 줄 오늘 게시 n/상한
 
 
 def test_execute_settings_are_on(page):
     execute = _section(page, 'id="col-execute"', 'id="activity"')
-    settings = _section(execute, '<div class="exec-settings"', '<div class="asidebox">')
+    settings = _section(execute, '<div class="exec-settings"', '<div class="jobbox"')
     assert 'class="is-off"' not in settings
-    assert 'data-target="sandbox"' in settings and 'data-limit="10"' in settings
-    assert "LOCAL CONTROL</span>" in settings and "7·8단계에서 연결" not in settings
+    assert 'data-limit="10"' in settings
     assert '<option value="" selected>자동 배정</option>' in settings
     for name in ("유튜브1", "유튜브2", "유튜브3"):
         assert f'<option value="{name}">{name}</option>' in settings
-    # 작업 방식 두 가지: 기본은 config.yaml browser.default_target(sandbox)
-    assert re.search(r'name="mode" value="youtube" />.*수동 승인 후 게시 \(권장\)', settings)
-    assert re.search(r'name="mode" value="sandbox" checked />.*테스트 페이지 자동 실행', settings)
-    assert "통제된 테스트 페이지에서만" in settings
-    # 일일 제한은 설정값 이하로만 고른다
-    assert re.findall(r'<option value="(\d+)"[^>]*>최대 \d+건', settings) == ["10", "5", "3", "1"]
-    assert '<option value="10" selected>최대 10건</option>' in settings
-    assert 'id="today-count"' in settings
-    # 큰 실행 버튼과 진행 단계 표시는 8단계에 켰다
-    assert '<ol class="job-steps" id="job-steps" aria-label="진행 단계">' in execute
+    # 연습 모드 스위치: 처음 값은 기본 작업 대상(config.yaml browser.default_target = 연습 페이지)
+    assert re.search(r'id="practice-mode" role="switch"[^>]*checked', settings)
+    assert '<span class="label" id="practice-label">연습 모드</span>' in settings
+    assert "켜짐 · 연습 페이지에 답니다" in settings
+    # 하루 상한은 설정값 이하로만 고른다
+    assert re.findall(r'<option value="(\d+)"[^>]*>\d+개까지', settings) == ["10", "5", "3", "1"]
+    assert '<option value="10" selected>10개까지</option>' in settings
+    assert '<ol class="job-steps" id="job-steps" aria-label="진행 상태">' in execute
 
 
 def test_daily_limit_options_follow_config(make_client):
     page = make_client(key=None, overrides={"limits": {"daily_max_comments": 3},
                                             "browser": {"default_target": "assist"}}).get("/").text
-    settings = _section(page, '<div class="exec-settings"', '<div class="asidebox">')
-    assert re.findall(r'<option value="(\d+)"[^>]*>최대 \d+건', settings) == ["3", "1"]
-    assert 'name="mode" value="youtube" checked />' in settings  # assist → 실제 유튜브
+    settings = _section(page, '<div class="exec-settings"', '<div class="jobbox"')
+    assert re.findall(r'<option value="(\d+)"[^>]*>\d+개까지', settings) == ["3", "1"]
+    assert not re.search(r'id="practice-mode"[^>]*checked', settings)  # 실제 유튜브 → 연습 모드 끔
+    assert "꺼짐 · 실제 유튜브" in settings
 
 
 def test_records_table_is_on(page):
     history = _section(page, 'id="activity"', "</section>")
-    assert "7단계에서 연결" not in history
-    # 9단계: 한국어 이름을 위에, 영어는 작게 아래에
-    # 한 화면 배치(2026-11-17): 첫 화면은 높이를 고정한 띠에 최근 3줄
-    assert 'id="records-meta">최근 3줄 · ACTIVITY ARCHIVE<' in history
-    for ko, en in (("시간", "TIME"), ("영상", "VIDEO"), ("작업", "ACTION"), ("댓글", "COMMENT"),
-                   ("상태", "STATUS"), ("프로필", "PROFILE")):
-        assert f'<th><span class="ko">{ko}</span><small class="en">{en}</small></th>' in history
+    assert 'id="records-meta">최근 4줄<' in history
+    heads = re.findall(r"<th>([^<]+)</th>", history)
+    assert heads == ["시간", "영상", "프로필", "댓글", "결과"]
     assert '<tbody id="records-body">' in history
     assert "아직 기록이 없습니다." in history
     assert '<col class="c-comment" />' in history
+    assert 'id="records-all">기록 전체 보기</button>' in history
 
 
 def test_ops_js_wires_the_three_apis(make_client):
@@ -375,49 +491,58 @@ def test_ops_js_wires_the_three_apis(make_client):
     for snippet in ("`/api/profiles?target=", "`/api/records?limit=", "`/api/stats/today?"):
         assert snippet in api, snippet
     js = client.get("/static/js/ops.js").text
-    for text in ("api.todayStats(ops.target, ops.dailyLimit)", "api.records(RECENT_ROWS)",
-                 "const RECENT_ROWS = 3;", "timeZone: 'Asia/Seoul'", "'–'",
-                 "setInterval(refreshOps", "export async function refreshOps()"):
+    for text in ("api.todayStats(ops.target, ops.dailyLimit)", "api.records(RECENT_FETCH)",
+                 "const RECENT_ROWS = 4;", "r.action === 'post'", "timeZone: 'Asia/Seoul'", "'–'",
+                 "setInterval(refreshOps", "export async function refreshOps()",
+                 "practice.checked ? 'sandbox' : 'youtube'",
+                 "practice.checked = practice.defaultChecked;"):
         assert text in js, text
     assert "initOps" in client.get("/static/js/app.js").text
     report = client.get("/static/js/report.js").text
     assert report.count("refreshOps();") == 2  # 분석·초안이 끝날 때, 승인이 끝날 때
     discover = client.get("/static/js/discover.js").text
-    assert "댓글 단 영상 · " in discover and "video.commented" in discover
+    assert "댓글 달았음" in discover and "video.commented" in discover
 
 
 def test_records_and_commented_styles(make_client):
     css = make_client(key=None).get("/static/css/style.css").text
-    assert ".video-meta .commented {" in css and "var(--gold)" in css.split(
-        ".video-meta .commented {", 1)[1].split("}", 1)[0]
+    assert ".commented {" in css and "var(--ok)" in css.split(".commented {", 1)[1].split("}", 1)[0]
     assert "table-layout: fixed" in css
-    for tone in (".history td.st.is-ok b", ".history td.st.is-bad b"):
+    for tone in (".st.is-ok b", ".st.is-bad b"):
         assert tone in css
 
 
-# ---------------------------------------------------------------- 8단계: 03칸 작업 상자 · BROWSER
+# ---------------------------------------------------------------- 8단계: ③ 작업 상자 · 상태 줄
 
 
-def test_job_box_has_six_steps_and_only_needed_buttons(page):
-    box = _section(page, 'id="job-box"', '<div class="hint">')
-    steps = re.findall(r'<li data-step="(\d)">([^<]+)</li>', box)
-    assert steps == [("0", "대기"), ("1", "프로필 실행"), ("2", "댓글 입력"), ("3", "승인 대기"),
-                     ("4", "게시 완료"), ("5", "확인")]
-    # 상태에 따라 필요한 것만 보인다: 작은 단추 줄과 실패 사유는 처음에 숨김
+def test_job_box_has_four_steps_and_only_needed_buttons(page):
+    box = _section(page, 'id="job-box"', '<section class="history"')
+    steps = re.findall(r'<li data-phase="(\d)">([^<]+)</li>', box)
+    assert steps == [("1", "프로필 여는 중"), ("2", "입력 중"), ("3", "게시"), ("4", "확인")]
+    # 상태에 따라 필요한 것만 보인다: 작은 단추 줄과 실패 이유는 처음에 숨김
     assert 'class="job-actions" id="job-actions" hidden' in box
-    for bid, text in (("job-copy", "초안 복사"), ("job-not-posted", "게시 안 함"),
-                      ("job-cancel", "작업 취소")):
+    for bid, text in (("job-copy", "댓글 복사"), ("job-not-posted", "게시 안 함"),
+                      ("job-cancel", "그만두기")):
         assert f'id="{bid}" hidden>{text}</button>' in box
-    view = 'id="job-view" href="#" target="_blank" rel="noopener noreferrer" hidden>댓글 보기 ↗'
+    view = ('id="job-view" href="#" target="_blank" rel="noopener noreferrer" hidden>'
+            '유튜브에서 내 댓글 보기')
     assert view in box
-    assert 'id="job-shot"' in box and 'id="job-error" role="alert" hidden' in box
+    assert 'id="job-shot"' in box and "화면 캡처 보기" in box
+    assert 'id="job-error" role="alert" hidden' in box
     assert 'id="job-status"' in box
 
 
-def test_browser_status_is_on(page):
-    top = _section(page, '<ul class="system"', "</ul>")
-    assert 'id="status-browser-dot"' in top and 'id="status-browser">확인 중<' in top
-    assert "8단계에서 연결" not in top
+def test_status_bar_is_on(page):
+    bar = _section(page, '<footer class="statusbar"', "</footer>")
+    items = (("ai", "AI 모델", "settings"), ("youtube", "유튜브 연결", "settings"),
+             ("browser", "프로필", "profiles"))
+    for name, label, screen in items:
+        item = _section(bar, f'id="status-{name}-item"', "</button>")
+        assert f'data-screen="{screen}"' in item  # 누르면 해당 화면으로
+        assert f'id="status-{name}-dot"' in item
+        assert f'<span class="stat-name">{label}</span>' in item
+        assert f'id="status-{name}">확인 중<' in item
+    assert 'id="today-item" data-screen="records"' in bar
 
 
 def test_job_js_wires_the_job_apis(make_client):
@@ -431,15 +556,18 @@ def test_job_js_wires_the_job_apis(make_client):
                  "api.confirmJob(job.id, true)", "api.confirmJob(job.id, false)",
                  "api.cancelJob(job.id)", "navigator.clipboard.writeText(job.comment_text)",
                  "refreshOps();", "commented: { ...(v.commented || {}), [job.target]: true }",
-                 "통제된 테스트 페이지에서 실행", "video.commented[target]",
-                 "ops.stats.remaining <= 0", "active_job_id", "게시했어요", "게시 승인"):
+                 "연습 모드 · 실제 유튜브가 아니라", "video.commented[target]",
+                 "ops.stats.remaining <= 0", "active_job_id", "게시했어요", "'게시'",
+                 "'다시 시도'", "프로필 여는 중", "입력 중", "게시 완료"):
         assert text in js, text
+    # [댓글 달기] 한 번: 저장·승인(ensureApproved) 다음에 시작
+    start = js.split("function start() {", 1)[1].split("\n}\n", 1)[0]
+    assert start.index("await ensureApproved()") < start.index("api.startJob(")
     assert "innerHTML" not in js
     assert "initJob" in client.get("/static/js/app.js").text
     topbar = client.get("/static/js/topbar.js").text
-    assert "export function browserStatusText" in topbar and "renderBrowser(state)" in topbar
-    flow = client.get("/static/js/flow.js").text
-    assert "job.js" in flow
+    assert "export function browserStatusText" in topbar
+    assert "paintItem('browser', browser)" in topbar
 
 
 def test_job_box_styles(make_client):
@@ -452,37 +580,35 @@ def test_job_box_styles(make_client):
 def test_hidden_job_buttons_stay_hidden(make_client):
     """작은 단추의 display 규칙이 hidden을 이기면 안 된다(상태마다 필요한 단추만 보인다)."""
     css = make_client(key=None).get("/static/css/style.css").text
-    shown = css.index(".job-actions .line-btn {")
-    hidden = css.index(".job-actions .line-btn[hidden] { display: none; }")
-    assert hidden > shown
+    assert "[hidden] { display: none !important; }" in css
 
 
 # ---------------------------------------------------------------- 실제 데이터 보정
 
 
 def test_discover_has_exclude_shorts_checked_by_default(page, make_client):
-    # 01칸 거르기 옆 「쇼츠 제외」 체크(config.yaml discover.exclude_shorts = 기본 켬)
+    # ① 거르기 줄의 「쇼츠 빼기」 체크(config.yaml discover.exclude_shorts = 기본 켬)
     assert re.search(r'id="exclude-shorts"[^>]*checked', page)
-    assert "쇼츠 제외" in page
+    assert "쇼츠 빼기" in page
     client = make_client(key=None)
     api = client.get("/static/js/api.js").text
     assert "params.set('exclude_shorts', String(excludeShorts))" in api
     discover = client.get("/static/js/discover.js").text
     assert "excludeShorts: $('exclude-shorts')" in discover
-    assert "`쇼츠 ${state.meta.shortsExcluded}개 제외`" in discover  # 결과 줄
-    css = client.get("/static/css/style.css").text
-    assert ".filters .shorts-toggle { flex: none; }" in css  # 같은 줄(높이가 늘지 않게)
+    assert "`쇼츠 ${state.meta.shortsExcluded}개 뺌`" in discover  # 결과 줄
+    filters = _section(page, '<div class="filters">', "</div>")
+    assert 'id="exclude-shorts"' in filters  # 같은 줄(높이가 늘지 않게)
 
 
 def test_exclude_shorts_always_starts_from_config_default(page, make_client):
-    # 대표 화면에서 「쇼츠 제외」가 꺼진 채 보였다(2026-11-17). 창을 새로 고쳐도 브라우저가
-    # 앞서 바꾼 체크를 되살리지 않게 폼 자동 복원을 끄고, 시작할 때 HTML의 처음 값으로 되돌린다
+    # 창을 새로 고쳐도 브라우저가 앞서 바꾼 체크를 되살리지 않게 폼 자동 복원을 끄고,
+    # 시작할 때 HTML의 처음 값으로 되돌린다(2026-11-17)
     assert '<form id="search-form" autocomplete="off">' in page
     assert re.search(r'id="exclude-shorts"[^>]*autocomplete="off"', page)
     discover = make_client(key=None).get("/static/js/discover.js").text
     init = discover.split("export function initDiscover() {", 1)[1]
     assert "shorts.checked = shorts.defaultChecked;" in init
-    assert init.index("shorts.defaultChecked") < init.index("setupTabs();")
+    assert init.index("shorts.defaultChecked") < init.index("setupList();")
 
 
 def test_exclude_shorts_unchecked_when_config_turns_it_off(make_client):
@@ -498,105 +624,102 @@ def test_no_love_concern_shows_message_and_opens_transcript_paste(make_client):
     assert "const NO_CONCERN = 'no_love_concern';" in js
     assert "if (error.kind === NO_CONCERN) openTranscriptPaste();" in js
     assert "paste.open = true;" in js
-    assert "'연애 고민 없음'" in js  # 분석 줄 「핵심 고민」
+    assert "이 영상에서는 연애 고민을 찾지 못했습니다" in js  # 고민 한 줄 자리
     # 오류 문구는 서버 문구를 그대로 띄운다(run-error)
     assert "$('run-error-msg').textContent = err.message" in js
+    # 자막을 넣고 [저장]하면 초안을 다시 만든다
+    assert "document.addEventListener('transcript:saved'" in js
     page = client.get("/").text
     assert 'id="transcript-paste"' in page and 'id="run-error"' in page
 
 
-# ---------------------------------------------------------------- 9단계: 대시보드 완성
+# ---------------------------------------------------------------- R1: 화면 네 개
 
 
-def test_korean_labels_come_first_and_english_is_small(page):
-    nav = _section(page, '<nav class="nav"', "</nav>")
-    for ko, en in (("대시보드", "DASHBOARD"), ("영상 탐색", "DISCOVER"), ("분석", "ANALYZE"),
-                   ("실행", "EXECUTE"), ("기록", "ACTIVITY"), ("설정", "SETTINGS")):
-        assert f'<span class="ko">{ko}</span><small class="en">{en}</small>' in nav
-    assert 'class="on"' not in nav  # 지금 칸 표시는 topbar.js가 붙인다
-    for ko in ("AI 모델", "유튜브", "브라우저"):
-        assert f'<span class="sys-ko">{ko}</span>' in page
-    today = _section(page, '<dl class="today', "</dl>")
-    for ko, en in (("오늘 처리", "TODAY · VIDEOS"), ("초안", "DRAFTS"), ("게시 완료", "POSTED"),
-                   ("성공률", "SUCCESS")):
-        assert f'<dt class="ko">{ko}</dt><dt>{en}</dt>' in today
+def test_screens_replace_overlay_panels(page):
+    records = _section(page, 'id="screen-records"', "<!-- 프로필 화면 -->")
+    assert 'role="radiogroup" aria-label="거르기"' in records
+    for value, label in (("all", "전체"), ("post", "게시"), ("failure", "실패")):
+        assert f'name="records-filter" value="{value}"' in records
+        assert f"<span>{label}</span>" in records
+    assert 'id="records-all-body"' in records
+    heads = re.findall(r"<th>([^<]+)</th>", records)
+    assert heads == ["시간", "영상", "프로필", "댓글", "결과"]
+    profiles = _section(page, 'id="screen-profiles"', "<!-- 설정 화면")
+    assert 'class="screen-note"' in profiles and "꼭 필요한 것은 유튜브1 하나입니다" in profiles
+    assert 'id="profiles-body"' in profiles
+    settings = _section(page, 'id="screen-settings"', "</section>")
+    assert 'id="settings-body"' in settings and 'id="settings-save"' in settings
 
 
-def test_settings_and_records_panels_are_dialogs(page):
-    for panel, title, label in (("settings-panel", "settings-title", "설정 닫기"),
-                                ("records-panel", "records-title", "전체 기록 닫기")):
-        assert f'id="{panel}" aria-labelledby="{title}">' in page
-        block = _section(page, f'id="{panel}"', "</dialog>")
-        assert f'<h2 id="{title}" tabindex="-1">' in block  # 열면 제목으로 초점
-        assert f'data-close aria-label="{label}"' in block  # 닫기 단추에 이름
-    settings = _section(page, 'id="settings-panel"', "</dialog>")
-    assert 'id="settings-body"' in settings and 'id="warmup-btn"' in settings
-    records = _section(page, 'id="records-panel"', "</dialog>")
-    assert 'id="records-failed-only"' in records and 'id="records-all-body"' in records
-    assert '<span class="ko">캡처</span>' in records  # 실패 화면 캡처 칸
-    assert 'id="records-all" aria-haspopup="dialog" aria-controls="records-panel"' in page
-    for col in ("영상 탐색", "AI 분석과 댓글 초안", "실행 및 관리"):
-        assert f'<h2 tabindex="-1">{col}</h2>' in page  # 메뉴로 가면 칸 제목에 초점
-
-
-def test_panels_js_opens_closes_and_returns_focus(make_client):
+def test_screens_js_loads_on_show_and_keeps_keys_hidden(make_client):
     client = make_client(key=None)
-    js = client.get("/static/js/panels.js").text
-    for snippet in ("panel.showModal();", "(title || panel).focus();",
-                    "panel.addEventListener('close'", "opener.focus()", "event.target === panel",
-                    "api.records(ALL_ROWS)", "has_screenshot",
-                    "/screenshot`", "'data-label': '댓글'", "실패 "):
+    js = client.get("/static/js/screens.js").text
+    for snippet in ("document.addEventListener('screen:show'", "api.records(ALL_ROWS)",
+                    "has_screenshot", "/screenshot`", "화면 캡처", "유튜브에서 보기",
+                    "api.profiles('sandbox')", "api.profiles('youtube')", "로그인하기",
+                    "로그인 확인", "유튜브 열기", "곧 연결", "'유튜브 연결'", "'AI 모델'",
+                    "'댓글 규칙'", "'게시'", "'영상 찾기'",
+                    "showScreen('records'"):
         assert snippet in js, snippet
-    # [모델 미리 불러오기]는 단추를 눌렀을 때만 부른다(패널을 연다고 부르지 않는다)
+    # [미리 불러오기]는 단추를 눌렀을 때만 부른다(화면을 연다고 부르지 않는다)
     assert js.count("api.warmup()") == 1
     assert "$('warmup-btn').addEventListener('click', warmup);" in js
-    settings_open = js.split("$('settings-open').addEventListener('click'", 1)[1].split("});", 1)[0]
-    assert "warmup" not in settings_open and "loadSettings();" in settings_open
     api = client.get("/static/js/api.js").text
     assert "settings: () => request('/api/settings')" in api
     assert "warmup: () => request('/api/llm/warmup', { method: 'POST' })" in api
     # 화면에 키 값을 그리지 않는다(있다/없다만)
     assert "key_configured" in js and "api_key" not in js
+    topbar = client.get("/static/js/topbar.js").text
+    for snippet in ("export function showScreen(", "aria-current', 'page'",
+                    "dispatchEvent(new CustomEvent('screen:show'",
+                    "export function showColumn(", "nav-profiles-dot", "nav-settings-dot"):
+        assert snippet in topbar, snippet
 
 
 def test_next_action_highlights_one_thing_in_order(make_client):
     client = make_client(key=None)
     js = client.get("/static/js/next.js").text
-    order = ["'search-btn'", "'video-list'", "'job-primary'", "'approve-btn'", "'draft-edit'"]
-    for snippet in order + ["'resolve-btn'", "'transcript-paste'", "'transcript-save'", "'run-btn'",
-                            "classList.add('is-next')", "is-next-hint", "WAIT_HINT"]:
+    order = ["'search-btn'", "'video-list'", "'job-primary'", "'draft-edit'"]
+    for snippet in order + ["'transcript-paste'", "'transcript-save'", "'run-btn'",
+                            "classList.add('is-next')", "WAIT_HINT", "next-hint", "[게시]"]:
         assert snippet in js, snippet
-    assert "1~2분" in js  # 오래 걸리는 일에는 예상 시간
+    # 금색은 [영상 불러오기] → 고르기 → [댓글 달기]
+    assert "'approve-btn'" not in js and "'resolve-btn'" not in js
+    assert "처음에는 1분쯤 걸릴 수 있습니다" in js  # 오래 걸리는 일에는 예상 시간
     app = client.get("/static/js/app.js").text
     assert app.rstrip().splitlines()[-1].startswith("initNext();")  # 다른 칸이 다 그린 뒤
     css = client.get("/static/css/style.css").text
-    assert "button.is-next:not(:disabled)" in css and "--btn-line:" in css
-    assert ".column.is-focus" in css
+    assert ".btn.is-next {" in css
+    assert "color: #000" in css.split(".btn.is-next {", 1)[1].split("}", 1)[0]
 
 
-def test_columns_scroll_inside_when_window_is_short(make_client):
-    # 한 화면 배치(2026-11-17): 9단계의 JS 칸 높이(--col-max) 대신 CSS 격자. 넓은 화면에서 페이지는
-    # 스크롤하지 않고, 칸 제목은 고정, 칸 몸통(.col-body)만 스크롤, 01칸은 영상 목록만 스크롤
+def test_one_screen_without_page_scroll(make_client):
+    # 페이지는 스크롤하지 않는다. 칸 머리는 고정, 칸 몸통(.col-body)만 스크롤,
+    # ①은 영상 목록만 스크롤
     client = make_client(key=None)
     css = client.get("/static/css/style.css").text
-    fit_query = "@media (min-width: 1121px) and (min-height: 600px) {"
-    fit = css.split(fit_query, 1)[1].split("\n}\n", 1)[0]
-    for token in ("html, body { height: 100%; overflow: hidden; }",
-                  "grid-template-rows: auto auto auto minmax(0, 1fr) auto",
+    for token in ("html, body { height: 100%; margin: 0; overflow: hidden; }",
+                  "grid-template-rows: var(--top) minmax(0, 1fr) var(--bottom);",
+                  "grid-template-columns: minmax(0, 30fr) minmax(0, 38fr) minmax(0, 32fr);",
                   ".colhead { flex: none;",
-                  ".col-body { flex: 1 1 auto; min-height: 0; overflow-y: auto;",
-                  "#col-discover .col-body > .video-list { flex: 1 1 0;"):
-        assert token in fit, token
+                  "#col-discover .col-body { overflow: hidden; }",
+                  ".video-list { position: relative; flex: 1 1 auto; min-height: 0; "
+                  "overflow-y: auto;"):
+        assert token in css, token
+    col_body = css.split(".col-body {", 1)[1].split("}", 1)[0]
+    assert "min-height: 0" in col_body and "overflow-y: auto" in col_body
     assert "--col-max" not in css and "is-capped" not in css
+    narrow = css.split("@media (max-width: 1099px) {", 1)[1]
+    assert '.screen-work[data-col="1"] .column:not([data-col="1"])' in narrow  # 좁은 창: 칸 하나씩
+    assert ".col-tabs { display: flex;" in narrow
     page = client.get("/").text
     for col in ("col-discover", "col-analyze", "col-execute"):
-        # 칸 제목(colhead)은 몸통(.col-body) 밖, 바로 앞에 있다
+        # 칸 머리(colhead)는 몸통(.col-body) 밖, 바로 앞에 있다
         head = _section(page, f'id="{col}"', '<div class="col-body">')
         assert head.count('<div class="colhead">') == 1 and "</h2>" in head
     layout = client.get("/static/js/layout.js").text
-    assert "(min-width: 1121px) and (min-height: 600px)" in layout and "keepInList" in layout
-    topbar = client.get("/static/js/topbar.js").text
-    assert "aria-current" in topbar and "is-focus" in topbar and "preventScroll" in topbar
+    assert "keepInList" in layout
 
 
 def test_body_and_list_text_sizes(make_client):
@@ -605,13 +728,10 @@ def test_body_and_list_text_sizes(make_client):
     def rule(selector, text=css):
         return text.split(selector, 1)[1].split("}", 1)[0]
 
-    assert "font-size: 14px" in rule("body {")
+    assert "15px" in rule(chr(10) + "body {")  # 본문 15px
     assert "font-size: 14px" in rule(".video-title { display")
-    # 넓은 화면(1600px 이상)은 한 단계 더: 본문·목록 제목 15px, 보조 글 13px
-    wide = css.split("@media (min-width: 1600px) {", 1)[1]
-    assert "font-size: 15px" in rule("body {", wide)
-    assert "font-size: 15px" in rule(".vid .video-title, .midinfo .video-title {", wide)
-    assert "font-size: 13px" in rule(".video-meta {", wide)
+    assert "font-size: 13px" in rule(".caption, .empty-sm {")  # 보조 글 13px
+    assert "font-size: 12px" in rule(".video-meta {")
 
 
 def test_title_hashtags_are_dimmed_but_title_text_is_unchanged(make_client):
@@ -630,11 +750,20 @@ def test_title_hashtags_are_dimmed_but_title_text_is_unchanged(make_client):
     assert ".title-tags { color: var(--dim);" in css
 
 
+def test_upload_date_is_shown_as_date(make_client):
+    client = make_client(key=None)
+    fmt = client.get("/static/js/format.js").text
+    assert "export function formatDay(iso" in fmt and "timeZone: 'Asia/Seoul'" in fmt
+    discover = client.get("/static/js/discover.js").text
+    assert "formatDay(video.published_at)" in discover
+    assert "formatAgo(video.published_at)" in discover
+
+
 def test_empty_loading_and_error_texts_name_the_next_step(make_client):
     client = make_client(key=None)
     discover = client.get("/static/js/discover.js").text
-    for text in ("보통 1~2초 걸립니다", "[영상 찾기]를 다시 눌러 보세요", "[불러오기]",
-                 "영상을 하나 고르세요"):
+    for text in ("보통 1~2초 걸립니다", "[영상 불러오기]를 다시 눌러 보세요", "[영상 불러오기]",
+                 "영상을 하나 고르세요", "영상 주소를 넣어 주세요."):
         assert text in discover, text
     page = client.get("/").text
     assert "아직 기록이 없습니다." in page

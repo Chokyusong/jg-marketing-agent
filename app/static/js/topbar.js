@@ -1,93 +1,58 @@
-// 위 줄: 메뉴 이동(해당 칸 잠깐 강조, 지금 있는 칸 표시), 좁은 화면 메뉴 단추, 시스템 상태(AI·YOUTUBE·BROWSER),
-// 할당량 표시. SETTINGS 단추는 panels.js가 연다.
+// 틀(R1): 왼쪽 줄로 화면 바꾸기(작업 · 기록 · 프로필 · 설정), 위 줄 화면 이름, 아래 줄 상태 네 가지.
+// - 화면 네 개는 한 페이지 안의 구역이다. 보이기/숨기기만 바꾸므로 작업 화면의 고른 영상·초안·진행 중인
+//   게시는 다른 화면에 갔다 와도 그대로 남는다. 화면이 바뀌면 document에 'screen:show'를 알린다(screens.js가 불러온다).
+// - 아래 줄 상태를 누르면 관련 화면으로 간다. 준비가 안 된 화면에는 왼쪽 줄에 작은 붉은 점.
+// - 좁은 창(1100px 아래)에서는 작업 화면 세 칸을 탭으로 하나씩 보인다(showColumn).
 import { api } from './api.js';
-import { setState, subscribe } from './state.js';
+import { getState, setState, subscribe } from './state.js';
 
 const $ = (id) => document.getElementById(id);
 const STATUS_REFRESH_MS = 30000;
+const SCREENS = { work: '작업', records: '기록', profiles: '프로필', settings: '설정' };
 
-const COLUMNS = ['col-discover', 'col-analyze', 'col-execute'];
-const FLASH_MS = 1400;
-let manual = null; // 메뉴로 고른 칸 { id, step }: 흐름 단계가 바뀔 때까지 그 칸을 「지금 있는 칸」으로
-
-function flowStep() {
-  const current = document.querySelector('.progress .step.is-current');
-  return current ? Number(current.dataset.step) : 1;
-}
-
-// 지금 있는 칸(9단계): 작업 기록이 화면 가운데까지 올라오면 기록, 한 열(좁은 화면)이면 스크롤 위치,
-// 여러 열이면 흐름 띠의 지금 단계 칸(메뉴로 다른 칸을 골랐으면 그 칸)
-export function currentSection() {
-  const mid = window.innerHeight * 0.45;
-  const history = $('activity');
-  if (history && history.getBoundingClientRect().top < mid) return 'activity';
-  if (window.matchMedia('(max-width: 750px)').matches) {
-    let at = 'top';
-    for (const id of COLUMNS) if ($(id).getBoundingClientRect().top < mid) at = id;
-    return at;
+export function showScreen(name, { focus = false } = {}) {
+  if (!SCREENS[name]) return;
+  for (const key of Object.keys(SCREENS)) {
+    $(`screen-${key}`).hidden = key !== name;
+    const btn = $(`nav-${key}`);
+    if (key === name) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
   }
-  const step = flowStep();
-  if (manual && manual.step === step) return manual.id;
-  manual = null;
-  return COLUMNS[step - 1] || 'top';
+  $('top').dataset.screen = name;
+  $('screen-title').textContent = SCREENS[name];
+  if (focus) $('screen-title').focus({ preventScroll: true });
+  if (getState().screen !== name) setState({ screen: name });
+  document.dispatchEvent(new CustomEvent('screen:show', { detail: name }));
 }
 
-function markMenu() {
-  const at = currentSection();
-  for (const link of $('nav').querySelectorAll('a')) {
-    const on = link.dataset.target === at;
-    link.classList.toggle('on', on);
-    if (on) link.setAttribute('aria-current', 'location');
-    else link.removeAttribute('aria-current');
+// 좁은 창: 세 칸 가운데 하나만(넓은 창에서는 셋 다 보이므로 아무 일도 하지 않는 것과 같다)
+export function showColumn(n, { focus = false } = {}) {
+  const work = $('screen-work');
+  work.dataset.col = String(n);
+  for (const tab of work.querySelectorAll('.col-tab')) {
+    const on = tab.dataset.col === String(n);
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+    if (on && focus) tab.focus();
   }
 }
 
-function flash(target) {
-  target.classList.remove('is-focus');
-  void target.offsetWidth; // 같은 칸을 다시 눌러도 강조가 다시 보이게
-  target.classList.add('is-focus');
-  clearTimeout(target.flashTimer);
-  target.flashTimer = setTimeout(() => target.classList.remove('is-focus'), FLASH_MS);
-}
-
-function setupMenu() {
-  const nav = $('nav');
-  const toggle = $('menu-toggle');
-  const setOpen = (open) => {
-    nav.classList.toggle('is-open', open);
-    toggle.setAttribute('aria-expanded', String(open));
-  };
-  toggle.addEventListener('click', () => setOpen(!nav.classList.contains('is-open')));
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && nav.classList.contains('is-open')) {
-      setOpen(false);
-      toggle.focus();
-    }
-  });
-
-  for (const link of nav.querySelectorAll('a')) {
-    link.addEventListener('click', (event) => {
+function setupNav() {
+  for (const btn of document.querySelectorAll('button[data-screen]')) {
+    btn.addEventListener('click', () => showScreen(btn.dataset.screen, { focus: true }));
+  }
+  const tabs = [...document.querySelectorAll('.col-tab')];
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => showColumn(Number(tab.dataset.col)));
+    tab.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
       event.preventDefault();
-      const id = link.dataset.target;
-      const target = $(id);
-      manual = { id, step: flowStep() };
-      target?.scrollIntoView({ block: 'start' });
-      if (target && target !== $('top')) {
-        flash(target);
-        target.querySelector('h2[tabindex]')?.focus({ preventScroll: true }); // 키보드로도 그 칸에서 이어 가게
-      }
-      setOpen(false);
-      requestAnimationFrame(markMenu);
+      const next = tabs[(i + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+      showColumn(Number(next.dataset.col), { focus: true });
     });
-  }
-  let frame = 0;
-  const later = () => {
-    if (!frame) frame = requestAnimationFrame(() => { frame = 0; markMenu(); });
-  };
-  window.addEventListener('scroll', later, { passive: true });
-  window.addEventListener('resize', later);
-  subscribe(later); // 흐름 단계가 바뀌면 지금 칸도 바뀐다
-  markMenu();
+  });
+  showScreen('work');
+  showColumn(1);
 }
 
 // 다시 볼 때 달라진 것이 없으면 화면 전체를 다시 그리지 않는다(목록·글 상자가 흔들리지 않게)
@@ -112,83 +77,65 @@ async function loadStatus() {
 
 export const refreshStatus = loadStatus;
 
-// BROWSER 상태 한 줄(8단계): 크롬·Playwright·프로필 폴더. 게시 작업 중이면 「작업 중」.
+// 프로필 상태 한 줄(아래 줄): 크롬과 프로필 폴더. 게시 중이면 「게시 중」.
 export function browserStatusText(browser, job) {
   if (!browser) return { tone: 'is-wait', text: '확인 못 함', title: '' };
   if (!browser.chrome_found) {
-    return { tone: 'is-bad', text: '크롬 없음', title: '크롬을 설치하거나 config.yaml의 browser.chrome_path에 chrome.exe 위치를 적어 주세요.' };
+    return { tone: 'is-bad', text: '크롬 없음', title: '이 PC에서 크롬을 찾지 못했습니다. 크롬을 설치해 주세요.' };
   }
   const ready = browser.profiles.filter((p) => p.exists).length;
   const title = browser.playwright_ready
-    ? `프로필 폴더 ${ready}/${browser.profiles.length}개 있음. 구글 로그인은 scripts\\setup_profile.ps1로 직접 합니다.`
-    : 'Playwright가 없어 테스트 페이지 자동 실행을 못 합니다. pip install -r requirements.txt';
-  if (job && !job.finished) return { tone: 'is-wait', text: `크롬 · 작업 중`, title };
-  if (!browser.playwright_ready) return { tone: 'is-bad', text: '크롬 · 자동 실행 불가', title };
-  return { tone: 'is-ok', text: `크롬 · 프로필 ${ready}/${browser.profiles.length}`, title };
+    ? `준비된 프로필 ${ready}개 / ${browser.profiles.length}개. 누르면 프로필 화면으로 갑니다.`
+    : '자동 입력 도구가 설치되지 않아 연습 모드와 내 채널 영상 자동 게시를 쓸 수 없습니다.';
+  if (job && !job.finished) return { tone: 'is-wait', text: '게시 중', title };
+  if (!browser.playwright_ready) return { tone: 'is-bad', text: '자동 입력 불가', title };
+  if (!ready) return { tone: 'is-bad', text: '준비 안 됨', title };
+  return { tone: 'is-ok', text: `${ready}/${browser.profiles.length} 준비됨`, title };
 }
 
-function renderBrowser(state) {
-  const view = browserStatusText(state.browser, state.job);
-  const dot = $('status-browser-dot');
-  dot.classList.remove('is-ok', 'is-bad', 'is-wait');
-  dot.classList.add(view.tone);
-  $('status-browser').textContent = view.text;
-  const item = $('status-browser-item');
-  if (view.title) item.title = view.title;
-  else item.removeAttribute('title');
-}
-
-// AI 상태 한 줄: 정상이면 「공급자 · 모델 · 로컬/외부」, 문제면 짧은 이유. 자세한 안내는 마우스를 올리면.
+// AI 상태 한 줄: 정상이면 「모델 · 이 PC/외부」, 문제면 짧은 이유. 자세한 안내는 마우스를 올리면.
 export function aiStatusText(ai) {
   if (!ai) return { tone: 'is-wait', text: '확인 못 함', title: '' };
-  const where = ai.local ? '로컬' : '외부';
+  const where = ai.local ? '이 PC' : '외부';
   const title = ai.error ? `${ai.error.message} ${ai.error.action}`.trim() : '';
-  if (ai.error && ai.error.kind === 'llm_provider_unknown') {
-    return { tone: 'is-bad', text: `${ai.provider} · 설정 확인`, title };
-  }
-  if (!ai.reachable) return { tone: 'is-bad', text: `${ai.provider} · 꺼짐`, title };
+  if (ai.error && ai.error.kind === 'llm_provider_unknown') return { tone: 'is-bad', text: '설정 확인 필요', title };
+  if (!ai.reachable) return { tone: 'is-bad', text: '꺼져 있음', title };
   if (!ai.installed) return { tone: 'is-bad', text: `${ai.model} · 모델 없음`, title };
-  return { tone: 'is-ok', text: `${ai.provider} · ${ai.model} · ${where}`, title: '' };
+  return { tone: 'is-ok', text: `${ai.model} · ${where}`, title: '' };
 }
 
-function renderAI(state) {
-  const dot = $('status-ai-dot');
-  const text = $('status-ai');
+export function youtubeStatusText(key) {
+  if (key === true) return { tone: 'is-ok', text: '연결됨', title: 'API 키가 있습니다(값은 보이지 않습니다).' };
+  if (key === false) return { tone: 'is-bad', text: '키 없음', title: '유튜브 API 키가 없어 영상을 불러올 수 없습니다. 설정 화면에서 확인해 주세요.' };
+  return { tone: 'is-wait', text: '확인 못 함', title: '' };
+}
+
+function paintItem(name, view) {
+  const dot = $(`status-${name}-dot`);
   dot.classList.remove('is-ok', 'is-bad', 'is-wait');
-  const view = aiStatusText(state.ai);
   dot.classList.add(view.tone);
-  text.textContent = view.text;
-  const item = $('status-ai-item');
+  $(`status-${name}`).textContent = view.text;
+  const item = $(`status-${name}-item`);
   if (view.title) item.title = view.title;
   else item.removeAttribute('title');
 }
 
 function renderStatus(state) {
-  renderAI(state);
-  renderBrowser(state);
-  const dot = $('status-youtube-dot');
-  const text = $('status-youtube');
-  dot.classList.remove('is-ok', 'is-bad', 'is-wait');
-  if (state.youtubeKey === true) {
-    dot.classList.add('is-ok');
-    text.textContent = '키 설정됨';
-  } else if (state.youtubeKey === false) {
-    dot.classList.add('is-bad');
-    text.textContent = '키 없음 · .env 확인';
-  } else {
-    dot.classList.add('is-wait');
-    text.textContent = '확인 못 함';
-  }
-  if (state.quota) {
-    $('quota-used').textContent = state.quota.used_today.toLocaleString('ko-KR');
-    $('quota-limit').textContent = state.quota.daily_limit.toLocaleString('ko-KR');
-  }
+  const ai = aiStatusText(state.ai);
+  const youtube = youtubeStatusText(state.youtubeKey);
+  const browser = browserStatusText(state.browser, state.job);
+  paintItem('ai', ai);
+  paintItem('youtube', youtube);
+  paintItem('browser', browser);
+  // 준비가 안 된 화면: 프로필(크롬·폴더), 설정(AI·유튜브 키)
+  $('nav-profiles-dot').hidden = !(state.browser && browser.tone === 'is-bad');
+  $('nav-settings-dot').hidden = !(ai.tone === 'is-bad' || youtube.tone === 'is-bad');
 }
 
 export function initTopbar() {
-  setupMenu();
+  setupNav();
   subscribe(renderStatus);
   loadStatus();
-  // Ollama를 켜고 끄면 새로 고치지 않아도 위 줄이 따라오게 30초마다 다시 본다(가벼운 요청)
+  // AI 모델을 켜고 끄면 새로 고치지 않아도 아래 줄이 따라오게 30초마다 다시 본다(가벼운 요청)
   setInterval(loadStatus, STATUS_REFRESH_MS);
 }

@@ -1,9 +1,8 @@
-// 대시보드 시작점. 2단계: 위 줄 상태와 01칸. 3단계: 02칸 자막 출처·자막 붙여넣기.
-// 6단계: 02칸 댓글 초안 글 상자와 규칙 검사. 5단계: 02칸 분석·AI 초안·승인(report.js).
-// 03은 선택한 영상과 승인 여부를 따라 바뀐다.
-// 7단계: 오늘 통계·03칸 설정·작업 기록(ops.js), 01칸 「댓글 단 영상」 표시.
-// 8단계: 03칸 게시 작업(job.js) — 큰 버튼, 진행 단계, 승인·복사·확인, 위 줄 BROWSER.
-// 9단계: 다음 행동 하나만 강조(next.js), 겹침 패널 SETTINGS·VIEW ALL(panels.js), 칸 높이 맞추기(layout.js).
+// 화면 시작점(R1 프로그램형 화면, UI_SPEC 4판).
+// 왼쪽 줄·위 줄·아래 줄과 화면 바꾸기(topbar.js), 작업 화면 세 칸:
+//   ① 영상 불러오기(discover.js) → ② 영상 선택(analysis.js 요약, context.js 자막, report.js 자동 분석·초안,
+//   draft.js 글 상자와 규칙 검사) → ③ 댓글 달기(ops.js 설정·기록, job.js [댓글 달기] 한 번에 게시까지).
+// 기록·프로필·설정 화면(screens.js). 진행 단계(flow.js), 다음 행동 하나만 금색(next.js, 맨 마지막).
 import { initAnalysis } from './analysis.js';
 import { initContext } from './context.js';
 import { initDiscover } from './discover.js';
@@ -13,8 +12,8 @@ import { initJob } from './job.js';
 import { initLayout } from './layout.js';
 import { initNext } from './next.js';
 import { initOps } from './ops.js';
-import { initPanels } from './panels.js';
 import { initReport } from './report.js';
+import { initScreens } from './screens.js';
 import { initTopbar } from './topbar.js';
 
 initTopbar();
@@ -26,6 +25,6 @@ initReport();
 initFlow();
 initOps();
 initJob();
-initPanels();
+initScreens();
 initLayout();
 initNext(); // 다른 칸이 단추를 다 그린 뒤에 다음 행동을 고른다(맨 마지막)

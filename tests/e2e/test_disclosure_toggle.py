@@ -1,10 +1,11 @@
-"""e2e: 02칸 「홍보 표기」 켬/끔 — 내 채널 영상(own_video_ids)에서만 끌 수 있다(창 없는 크롬).
+"""e2e: ② 「광고 표기 붙이기」 켬/끔 — 내 채널 영상(own_video_ids)에서만 끌 수 있다(창 없는 크롬).
 
-- 내 채널 영상을 고르면 체크가 풀려(켜진 채) 끌 수 있고, 끄면 글 상자 맨 앞 표기가 빠진다.
-- 표기를 끈 채 [분석하고 초안 만들기]를 누르면 표기 없는 초안이 나오고 규칙 검사를 통과한다.
-- 다른 영상으로 바꾸면 체크가 켜진 채 잠기고 글 상자는 표기로 시작한다.
-- 내 채널 영상에서 「수동 승인 후 게시」(youtube)를 고르면 자동 게시(youtube_auto)로 돈다:
-  가짜 YouTube 페이지에 입력 → [게시 승인] → 게시 완료(실제 YouTube에는 접속하지 않는다).
+- 내 채널 영상을 고르면 초안이 자동으로 나오고(표기 붙음), 체크가 풀려(켜진 채) 끌 수 있다.
+  끄면 글 상자 맨 앞 표기가 빠진다.
+- 표기를 끈 채 [다른 댓글 만들기]를 누르면 표기 없는 초안이 나오고 규칙 검사를 통과한다.
+- 다른 영상으로 바꾸면 체크가 켜진 채 잠기고 초안은 표기로 시작한다.
+- 내 채널 영상에서 연습 모드를 끄면(실제 유튜브) 자동 게시(youtube_auto)로 돈다:
+  [댓글 달기] → 가짜 YouTube 페이지에 입력 → [게시] → 게시 완료(실제 YouTube에는 접속하지 않는다).
 - 유튜브는 가짜 응답, AI는 가짜 LLM. 실제 유튜브를 여는 크롬은 막아 둔다. 창을 띄우지 않는다.
 """
 
@@ -18,7 +19,6 @@ from test_dashboard_flow import (
     DRAFT,
     DRAFT_TAG,
     JOB_STATE,
-    TRANSCRIPT,
     VID,
     ScriptedLLM,
     _no_real_chrome,
@@ -68,10 +68,24 @@ def base(tmp_path: Path, make_config, fixture_json) -> Iterator[str]:
 
 
 def _pick(page, video_id: str) -> None:
+    """고르면 초안이 자동으로 나온다(규칙 검사 통과까지 기다린다)."""
     page.click(f'.vid[data-id="{video_id}"]')
     page.wait_for_function(
         "(id) => { const c = document.getElementById('ctx-transcript');"
         " return c && c.textContent.includes('자막'); }", arg=video_id)
+    page.wait_for_function(DRAFT_TAG.format("검사 통과"), timeout=30000)
+
+
+def _draft_without_disclosure(page) -> None:
+    """표기를 끄고 [다른 댓글 만들기] → 표기 없는 초안."""
+    page.wait_for_function("!document.getElementById('disclose').disabled")
+    page.uncheck("#disclose", force=True)
+    assert not page.input_value("#draft-text").startswith("[광고]")
+    page.click("#another-btn")
+    page.wait_for_function(
+        "(body) => document.getElementById('draft-text').value === body"
+        " && document.getElementById('draft-tag').textContent === '검사 통과'",
+        arg=DRAFT["body"], timeout=30000)
 
 
 def test_disclosure_can_be_turned_off_only_on_own_video(base):
@@ -91,28 +105,17 @@ def test_disclosure_can_be_turned_off_only_on_own_video(base):
             page.click("#search-btn")
             page.wait_for_selector(f'.vid[data-id="{VID}"]')
 
-            # 내 채널 영상: 체크가 풀린다(켜진 채)
+            # 내 채널 영상: 초안은 표기로 시작하고, 체크가 풀린다(켜진 채)
             _pick(page, VID)
             page.wait_for_function("!document.getElementById('disclose').disabled")
             assert page.is_checked("#disclose")
             assert page.input_value("#draft-text").startswith("[광고]")
 
-            # 끄면 글 상자 맨 앞 표기가 빠진다
-            page.uncheck("#disclose", force=True)
-            assert not page.input_value("#draft-text").startswith("[광고]")
-
-            # 표기를 끈 채 초안 만들기 → 표기 없는 초안이 규칙 검사 통과
-            page.click("#transcript-paste > summary")
-            page.fill("#transcript-text", TRANSCRIPT)
-            page.click("#transcript-save")
-            page.wait_for_function(
-                "document.getElementById('ctx-transcript').textContent.includes('붙여 넣은 자막')")
-            page.click("#run-btn")
-            page.wait_for_function(DRAFT_TAG.format("CHECKED"), timeout=30000)
-            assert page.input_value("#draft-text") == DRAFT["body"]
+            # 끄면 글 상자 맨 앞 표기가 빠지고, 그 채로 [다른 댓글 만들기] → 표기 없는 초안이 통과
+            _draft_without_disclosure(page)
             assert not page.is_checked("#disclose")
 
-            # 다른 영상: 켜진 채 잠기고 글 상자는 표기로 시작
+            # 다른 영상: 켜진 채 잠기고 초안은 표기로 시작
             _pick(page, OTHER)
             page.wait_for_function("document.getElementById('disclose').disabled")
             assert page.is_checked("#disclose")
@@ -138,25 +141,17 @@ def test_own_video_youtube_mode_auto_posts_after_approval(base):
             page.click("#search-btn")
             page.wait_for_selector(f'.vid[data-id="{VID}"]')
             _pick(page, VID)
-            page.wait_for_function("!document.getElementById('disclose').disabled")
-            page.uncheck("#disclose", force=True)
-            page.click("#transcript-paste > summary")
-            page.fill("#transcript-text", TRANSCRIPT)
-            page.click("#transcript-save")
-            page.wait_for_function(
-                "document.getElementById('ctx-transcript').textContent.includes('붙여 넣은 자막')")
-            page.click("#run-btn")
-            page.wait_for_function(DRAFT_TAG.format("CHECKED"), timeout=30000)
-            page.click("#approve-btn")
-            page.wait_for_function(DRAFT_TAG.format("APPROVED"))
+            _draft_without_disclosure(page)
 
-            page.check('input[name="mode"][value="youtube"]', force=True)
+            # 연습 모드를 끄면 실제 유튜브: 내 채널 영상이라 자동으로 입력하고 게시한다
+            page.uncheck("#practice-mode", force=True)
             page.wait_for_function(
                 "document.getElementById('job-status').textContent.includes('내 채널 영상')")
-            page.click("#job-primary")
+            page.click("#job-primary")  # [댓글 달기]
             page.wait_for_function(JOB_STATE.format("awaiting_approval"), timeout=45000)
-            assert "게시 승인" in page.text_content("#job-primary")
-            assert "내 채널 영상" in page.text_content("#exec-title")
+            assert page.text_content("#job-primary") == "게시"
+            assert page.text_content("#draft-tag") == "승인됨"
+            assert "유튜브" in page.text_content("#exec-title")
             page.click("#job-primary")
             page.wait_for_function(JOB_STATE.format("posted"), timeout=45000)
             assert "확인됨" in page.text_content("#exec-title")

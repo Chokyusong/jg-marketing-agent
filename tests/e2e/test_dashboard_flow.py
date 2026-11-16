@@ -1,8 +1,10 @@
-"""9단계 e2e: 처음 보는 사람이 대시보드 세 칸을 끝까지 쓰는 흐름(창 없는 크롬, 임시 포트).
+"""9단계 e2e(R1 화면으로 옮김): 처음 보는 사람이 작업 화면 세 칸을 끝까지 쓰는 흐름.
 
-[영상 찾기] → 영상 고르기 → 자막 붙여 넣기 → [분석하고 초안 만들기] → [이 초안 승인]
-→ 테스트 페이지 모드 → [브라우저에서 영상 열기] → [게시 승인] → 게시 완료
-→ 작업 기록·오늘 통계 → SETTINGS·VIEW ALL 열고 Esc로 닫기(초점이 연 단추로 돌아온다).
+창 없는 크롬, 임시 포트.
+
+[영상 불러오기] → 영상 고르기(초안이 자동으로) → 자막 직접 넣기 → 연습 모드 → [댓글 달기]
+→ [게시] → 게시 완료 → 기록·오늘 숫자 → 설정 화면 · 기록 화면(화면 이름에 초점)을 열고
+작업 화면으로.
 
 - 단계마다 금색으로 강조한 요소(.is-next)가 **정확히 하나**이고 그것이 다음 행동인지 본다.
 - 유튜브는 저장해 둔 가짜 응답(httpx.MockTransport), AI는 가짜 LLM. 인터넷·키·Ollama 없이 돈다.
@@ -157,8 +159,8 @@ def expect_next(page, element_id: str) -> None:
         " return n.length === 1 && n[0].id === id; }", arg=element_id, timeout=15000)
     found = page.eval_on_selector_all(".is-next", "(nodes) => nodes.map((n) => n.id)")
     assert found == [element_id], found
-    hint = page.text_content(".progress .step.is-current .step-hint") or ""
-    assert hint.strip(), "흐름 띠에 다음 행동 안내가 없다"
+    hint = page.text_content("#next-hint") or ""
+    assert hint.strip(), "위 줄에 다음 행동 안내가 없다"
 
 
 def job_state(page) -> str:
@@ -168,76 +170,71 @@ def job_state(page) -> str:
 def test_first_user_can_finish_the_whole_flow_with_one_highlight_per_step(dashboard, page):
     base = dashboard["base"]
     page.goto(base + "/")
-    page.wait_for_function("document.getElementById('status-browser').textContent.includes('크롬')")
+    page.wait_for_function("document.getElementById('status-browser').textContent !== '확인 중'")
 
-    # ① 처음: [영상 찾기]
+    # ① 처음: [영상 불러오기]
     expect_next(page, "search-btn")
     page.click("#search-btn")
     page.wait_for_selector(f'.vid[data-id="{VID}"]')
 
-    # ② 목록이 뜨면: 목록에서 고르기
+    # ② 목록이 뜨면: 목록에서 고르기. 고르면 단추 없이 고민 한 줄과 초안이 나온다
     expect_next(page, "video-list")
     page.click(f'.vid[data-id="{VID}"]')
-    page.wait_for_function("document.getElementById('ctx-transcript').textContent.includes('자막')")
+    page.wait_for_function(DRAFT_TAG.format("검사 통과"), timeout=30000)
+    assert page.text_content("#an-concern") == ANALYSIS["concern"]
 
-    # ③ 고르면: [분석하고 초안 만들기]. 그 전에 자막을 붙여 넣는다
-    expect_next(page, "run-btn")
+    # 자막을 직접 넣어도 초안은 그대로(이미 있으면 다시 만들지 않는다)
+    calls = dashboard["llm"].calls
     page.click("#transcript-paste > summary")
     page.fill("#transcript-text", TRANSCRIPT)
     page.click("#transcript-save")
     page.wait_for_function(
         "document.getElementById('ctx-transcript').textContent.includes('붙여 넣은 자막')")
-    expect_next(page, "run-btn")
-    page.click("#run-btn")
+    page.wait_for_function(DRAFT_TAG.format("검사 통과"), timeout=15000)
+    assert dashboard["llm"].calls == calls
 
-    # ④ 초안이 나오면(규칙 검사 통과): [이 초안 승인]
-    page.wait_for_function(DRAFT_TAG.format("CHECKED"), timeout=30000)
-    expect_next(page, "approve-btn")
-    page.click("#approve-btn")
-    page.wait_for_function(DRAFT_TAG.format("APPROVED"))
-
-    # ⑤ 승인 뒤: 테스트 페이지 모드 → [브라우저에서 영상 열기]
-    page.check('input[name="mode"][value="sandbox"]', force=True)
+    # ③ 초안이 규칙 검사를 통과하면: 연습 모드로 [댓글 달기]
+    assert page.is_checked("#practice-mode")
     expect_next(page, "job-primary")
-    assert "브라우저에서 영상 열기" in page.text_content("#job-primary")
+    assert page.text_content("#job-primary") == "댓글 달기"
     page.click("#job-primary")
 
-    # ⑥ 승인 대기: [게시 승인]
+    # ④ 게시 직전: 금색 [게시]
     page.wait_for_function(JOB_STATE.format("awaiting_approval"), timeout=45000)
     expect_next(page, "job-primary")
-    assert "게시 승인" in page.text_content("#job-primary")
+    assert page.text_content("#job-primary") == "게시"
     page.click("#job-primary")
     page.wait_for_function(JOB_STATE.format("posted"), timeout=45000)
     assert job_state(page) == "posted"
 
-    # ⑦ 게시 완료: 다음은 다른 영상 고르기. 기록과 오늘 통계가 바로 바뀐다
+    # ⑤ 게시 완료: 다음은 다른 영상 고르기. 기록과 오늘 숫자가 바로 바뀐다
     expect_next(page, "video-list")
     page.wait_for_function("document.getElementById('stat-posted').textContent.trim() === '1'")
     assert page.text_content("#stat-success").strip().startswith("100")
+    page.wait_for_function("document.querySelectorAll('#records-body td.st').length >= 1")
     rows = page.eval_on_selector_all("#records-body tr", "(rows) => rows.map((r) => r.textContent)")
-    assert 1 <= len(rows) <= 5  # 첫 화면 표는 최근 5줄까지
-    assert "게시 완료" in rows[0]
+    assert 1 <= len(rows) <= 4  # ③ 아래 표는 최근 게시 4줄까지
+    assert "성공" in rows[0]
+    assert page.text_content("#today-count").startswith("1/10")
 
-    # ⑧ SETTINGS: 열면 제목에 초점, Esc로 닫으면 연 단추로 초점
-    page.click("#settings-open")
+    # ⑥ 설정 화면: 열면 화면 이름에 초점. 키 값은 보이지 않는다
+    page.click("#nav-settings")
     page.wait_for_function("document.getElementById('settings-body').querySelector('.set-group')")
-    assert page.evaluate("document.getElementById('settings-panel').open")
-    assert page.evaluate("document.activeElement.id") == "settings-title"
+    assert page.evaluate("document.activeElement.id") == "screen-title"
+    assert page.text_content("#screen-title") == "설정"
     settings_text = page.text_content("#settings-body")
     assert "운명원" in settings_text and "[광고]" in settings_text and "fake-model" in settings_text
-    assert "AIza" not in settings_text  # 키 값은 보이지 않는다
-    page.keyboard.press("Escape")
-    page.wait_for_function("!document.getElementById('settings-panel').open")
-    assert page.evaluate("document.activeElement.id") == "settings-open"
+    assert "AIza" not in settings_text
+    page.click("#nav-work")
+    assert page.is_visible("#screen-work") and not page.is_visible("#screen-settings")
 
-    # ⑨ VIEW ALL: 전체 기록(실패 사유 칸 포함), Esc로 닫기
+    # ⑦ 기록 전체: 전체 기록(실패 이유 칸 포함)
     page.click("#records-all")
     page.wait_for_function("document.querySelectorAll('#records-all-body tr').length >= 4")
-    assert page.evaluate("document.activeElement.id") == "records-title"
+    assert page.evaluate("document.activeElement.id") == "screen-title"
     assert "전체" in page.text_content("#records-all-meta")
-    page.keyboard.press("Escape")
-    page.wait_for_function("!document.getElementById('records-panel').open")
-    assert page.evaluate("document.activeElement.id") == "records-all"
+    page.click("#nav-work")
+    expect_next(page, "video-list")
 
     # 강조는 끝까지 하나, 실제 유튜브는 열지 않았고 모델 미리 불러오기는 부르지 않았다
     assert page.eval_on_selector_all(".is-next", "(n) => n.length") == 1

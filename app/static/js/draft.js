@@ -1,4 +1,4 @@
-// 02 댓글 초안(6단계): 사람이 직접 쓰는 글 상자. 입력이 0.4초 멈추면 POST /api/validate로 V1~V12을
+// ② 댓글 초안(6단계): 사람이 고칠 수 있는 글 상자. 입력이 0.4초 멈추면 POST /api/validate로 V1~V12을
 // 검사해 글자 수·통과 요약·실패 목록을 그린다. AI 초안(5단계, loadDraft)은 서버가 검사한 결과를
 // 그대로 보이고, 사람이 고치면 같은 검사를 다시 한다.
 // 높이를 아끼려고 통과한 항목은 한 줄 요약으로 접고, 실패한 항목만 문구와 함께 펼친다.
@@ -19,7 +19,7 @@ let waitingForContext = false; // 맥락을 모으는 중이라 검사를 미뤘
 const box = () => $('draft-box');
 const disclosure = () => box().dataset.disclosure || '[광고]';
 
-// 「홍보 표기」 체크(내 채널 영상에서만 끌 수 있다 — 맥락 응답의 own_video). 그 밖의 영상은 늘 켬.
+// 「광고 표기 붙이기」 체크(내 채널 영상에서만 끌 수 있다 — 맥락 응답의 own_video). 그 밖의 영상은 늘 켬.
 export function discloseOn() {
   const c = $('disclose');
   return !c || c.checked;
@@ -133,7 +133,7 @@ function checksView(state) {
   const text = $('draft-text').value;
   const v = resultFor(state);
   if (!state.selectedId) {
-    return [el('p', { class: 'checks-idle', text: '영상을 고르고 초안을 쓰면 규칙 검사(V1~V12)를 합니다.' })];
+    return [el('p', { class: 'checks-idle', text: '영상을 고르면 초안을 만들고 규칙 검사를 합니다.' })];
   }
   if (state.validationError) {
     return [
@@ -142,7 +142,7 @@ function checksView(state) {
     ];
   }
   if (!hasDraft(text)) {
-    return [el('p', { class: 'checks-idle', text: '초안을 쓰고 입력을 멈추면 규칙 검사(V1~V12)를 합니다.' })];
+    return [el('p', { class: 'checks-idle', text: '초안이 나오면(또는 직접 쓰고 입력을 멈추면) 규칙 검사를 합니다.' })];
   }
   if (!v) return [el('p', { class: 'checks-idle', text: '규칙 검사 중…' })];
 
@@ -173,20 +173,20 @@ export function isApproved(state) {
 
 function render(state) {
   const input = $('draft-text');
-  input.disabled = !state.selectedId || Boolean(state.run && state.run.videoId === state.selectedId && !['done', 'error'].includes(state.run.phase));
+  const job = state.job;
+  const posting = Boolean(job && !job.finished) || state.jobBusy; // 게시 중에는 글을 바꾸지 않는다
+  input.disabled = !state.selectedId || posting
+    || Boolean(state.run && state.run.videoId === state.selectedId && !['done', 'error'].includes(state.run.phase));
   const v = resultFor(state);
   const fresh = v && v.text === input.value;
   const checked = Boolean(fresh && v.result.passed);
   const approved = isApproved(state);
   const tag = $('draft-tag');
-  tag.textContent = approved ? 'APPROVED' : checked ? 'CHECKED' : 'DRAFT · REVIEW REQUIRED';
+  tag.textContent = approved ? '승인됨' : checked ? '검사 통과' : '검토 필요';
   tag.classList.toggle('is-ok', checked || approved);
-  // 9단계: 한글 이름표를 영문 앞에(영문은 작게 남긴다)
-  const ko = $('draft-tag-ko');
-  ko.textContent = approved ? '승인됨' : checked ? '검사 통과' : '검토 필요';
-  ko.classList.toggle('is-ok', checked || approved);
   const d = state.draft && state.draft.video_id === state.selectedId ? state.draft : null;
   $('draft-tone').textContent = d && d.tone_label ? `말투 · ${d.tone_label}` : '';
+  $('draft-tone').hidden = !(d && d.tone_label);
   const toggle = $('disclose');
   const own = ownVideo(state);
   toggle.disabled = !own || input.disabled;
@@ -195,8 +195,8 @@ function render(state) {
     applyDisclosure(true);
   }
   $('disclose-toggle').title = own
-    ? '내 채널 영상 · 홍보 표기를 끄면 표기 없이 초안을 만듭니다'
-    : '내 채널 영상(config.yaml own_video_ids)에서만 끌 수 있습니다';
+    ? '내 채널 영상 · 끄면 광고 표기 없이 초안을 만듭니다'
+    : '내 채널 영상에서만 끌 수 있습니다(다른 영상에는 늘 붙입니다)';
 
   const checks = $('draft-checks');
   checks.replaceChildren(...checksView(state).filter(Boolean));
