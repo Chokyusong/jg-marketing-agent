@@ -110,6 +110,19 @@ def test_analysis_prompt_wraps_video_material_and_warns_about_instructions():
     assert "버린 것: '지어낸 말'" in again
 
 
+def test_analysis_prompt_counts_love_lecture_videos_as_love_concern():
+    """과제 PDF 예(남자심리 분석 영상): 사연이 없어도 연애를 다루면 멈추지 않는다."""
+    system, user = P.analysis_messages("[제목] 테스트")
+    assert "누군가의 사연이 없어도 영상이 연애를 다루면" in system
+    assert "연애 심리 분석" in system and "연애 강의" in system
+    assert "사연이 없는 연애 심리·강의·팁 영상도 true" in user
+    # 멈추는 경우는 광고·협찬뿐이거나 연애와 관계없는 자료
+    assert "연애와 관계없으면" in system
+    assert "광고·협찬·상품·이벤트 글만 있거나 연애와 관계없는 영상이면 false" in user
+    # 예전의 엄격한 기준(고민 사연이 실제로 있어야 함)은 없다
+    assert "연애 고민이 실제로 있으면" not in user
+
+
 def test_schemas_accept_expected_shapes():
     # 실제 데이터 보정: has_love_concern·reason을 더했다(스키마가 요구한다)
     good = {"has_love_concern": True, "reason": "r", "topic": "t", "concern": "c", "tone": "t",
