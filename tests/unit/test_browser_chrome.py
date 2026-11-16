@@ -189,7 +189,8 @@ def test_only_the_sandbox_driver_uses_playwright():
         for p in APP.rglob("*.py")
         if any(n.startswith("playwright") for n in _imports(p))
     )
-    assert users == ["browser/sandbox_driver.py"]
+    # 테스트 페이지 실행기와, 그것을 이어 쓰는 내 채널 영상 자동 게시 실행기뿐
+    assert users == ["browser/sandbox_driver.py", "browser/youtube_driver.py"]
 
 
 def test_no_code_touches_real_youtube_pages():
@@ -197,6 +198,8 @@ def test_no_code_touches_real_youtube_pages():
 
     Playwright를 쓰는 모듈에는 유튜브 주소가 없고,
     유튜브 주소를 쓰는 모듈은 Playwright를 쓰지 않는다.
+    예외는 내 채널 영상 자동 게시 전용 `youtube_driver.py` 하나뿐이다
+    (own_video_ids 영상 주소만 연다 — tests/unit/test_youtube_driver.py).
     """
     driver_src = (APP / "browser" / "sandbox_driver.py").read_text(encoding="utf-8")
     code_lines = [
@@ -204,7 +207,10 @@ def test_no_code_touches_real_youtube_pages():
         if not line.strip().startswith(("#", "-", '"', "'")) and "youtube" in line.lower()
     ]
     assert code_lines == []
+    own_video_driver = APP / "browser" / "youtube_driver.py"
     for path in APP.rglob("*.py"):
+        if path == own_video_driver:
+            continue
         src = path.read_text(encoding="utf-8")
         if "youtube.com" in src:
             assert not any(n.startswith("playwright") for n in _imports(path)), path

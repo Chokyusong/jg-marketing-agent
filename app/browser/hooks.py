@@ -17,6 +17,8 @@ from typing import Any
 class BrowserHooks:
     chrome_finder: Callable[[], Path | None] | None = None
     driver_factory: Callable[[Any], Any] | None = None  # BrowserSettings -> BrowserDriver
+    # 내 채널 영상 자동 게시: (BrowserSettings, 영상 ID) -> BrowserDriver
+    youtube_driver_factory: Callable[[Any, str], Any] | None = None
     launcher: Callable[[Any], Any] | None = None  # 인자 목록 -> 프로세스
     playwright_ready: Callable[[], bool] | None = None
     verify_comment: Callable[[str, str], bool | None] | None = None

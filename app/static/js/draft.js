@@ -25,7 +25,7 @@ export function discloseOn() {
   return !c || c.checked;
 }
 
-function ownVideo(state) {
+export function ownVideo(state) {
   const ctx = state.context && state.context.video_id === state.selectedId ? state.context : null;
   return Boolean(ctx && ctx.own_video);
 }

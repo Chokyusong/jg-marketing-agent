@@ -170,6 +170,8 @@ def build_jobs(services: Services, *, clock: Clock = utc_now) -> JobService:
     extra = {}
     if hooks.driver_factory is not None:
         extra["driver_factory"] = hooks.driver_factory
+    if hooks.youtube_driver_factory is not None:
+        extra["youtube_driver_factory"] = hooks.youtube_driver_factory
     if hooks.launcher is not None:
         extra["launcher"] = hooks.launcher
     if hooks.playwright_ready is not None:
@@ -187,6 +189,7 @@ def build_jobs(services: Services, *, clock: Clock = utc_now) -> JobService:
         verify_comment=hooks.verify_comment or verify_comment,
         clock=clock,
         screens=services.monitors,
+        own_video=settings.is_own_video,
         **extra,
     )
 

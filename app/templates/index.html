@@ -229,7 +229,7 @@
             <select id="profile"><option value="" selected>자동 배정</option>{% for p in profiles %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></div>
           <div class="setrow"><span class="label" id="mode-label">작업 방식</span>
             <div class="radios" role="radiogroup" aria-labelledby="mode-label">
-              <label class="radio" title="실제 유튜브: 프로필과 영상을 열어 주고, 붙여넣기와 게시는 사람이 직접 합니다"><input type="radio" name="mode" value="youtube"{% if default_target == "youtube" %} checked{% endif %} /><i></i>수동 승인 후 게시 (권장)</label>
+              <label class="radio" title="실제 유튜브: 프로필과 영상을 열어 주고, 붙여넣기와 게시는 사람이 직접 합니다. 내 채널 영상(own_video_ids)은 자동으로 입력하고 [게시 승인]을 누르면 게시합니다"><input type="radio" name="mode" value="youtube"{% if default_target == "youtube" %} checked{% endif %} /><i></i>수동 승인 후 게시 (권장)</label>
               <label class="radio" title="통제된 테스트 페이지에서만 자동으로 입력·게시합니다(실제 유튜브가 아님)"><input type="radio" name="mode" value="sandbox"{% if default_target == "sandbox" %} checked{% endif %} /><i></i>테스트 페이지 자동 실행</label>
             </div></div>
           <div class="setrow"><label for="limit">일일 제한</label>

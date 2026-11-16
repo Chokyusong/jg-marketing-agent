@@ -463,7 +463,8 @@ class JobIn(BaseModel):
     video_id: str
     draft_id: int
     profile: str = ""  # 비우면 자동 배정
-    target: Literal["sandbox", "assist", "youtube"] = "sandbox"  # assist와 youtube는 같은 것
+    # assist와 youtube는 같은 것. youtube_auto는 내 채널 영상 자동 게시(own_video_ids만)
+    target: Literal["sandbox", "assist", "youtube", "youtube_auto"] = "sandbox"
     daily_limit: int | None = Field(default=None, ge=0, le=1000)  # 화면에서 낮춘 상한
     fail: Literal["", "hide_button", "slow", "reject"] = ""  # 테스트 페이지 실패 스위치(시험용)
 
@@ -485,7 +486,7 @@ class JobOut(BaseModel):
     """
 
     id: str
-    mode: Literal["sandbox", "assist"]
+    mode: Literal["sandbox", "assist", "auto"]
     target: Literal["sandbox", "youtube"]
     target_label: str
     state: str

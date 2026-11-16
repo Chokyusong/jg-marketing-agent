@@ -21,11 +21,15 @@ assist는 대기 → 프로필 실행 → 사람 게시 대기(awaiting_confirm)
 - 상태가 바뀔 때마다 `job_events`에 한 줄. 끝나면 `rules.mark_posted` / `mark_failed`가
   상태를 바꾸는 같은 거래 안에서 작업 기록(`runs`)에 결과 한 줄을 남긴다
   (그래서 `Ledger.record`를 따로 부르지 않는다 — 부르면 같은 결과가 두 줄 생긴다).
-- 실패하면 `error_screenshots/<작업ID>.png`(sandbox만. assist는 실제 유튜브 화면을 찍지 않는다).
+- 실패하면 `error_screenshots/<작업ID>.png`(sandbox·auto만. assist는 화면을 찍지 않는다).
 - **sandbox**: 이 앱의 `/sandbox/watch` 주소만 연다(`sandbox_driver.require_sandbox_url`).
 - **assist**: 크롬을 프로필 폴더와 영상 주소로 실행만 한다(`chrome.assist_args`, 셸 없이).
   실제 유튜브 화면은 건드리지 않는다. 사람이 [게시했어요]를 누르면
   YouTube 키가 있을 때만 Data API로 찾아본다.
+- **auto(내 채널 영상 자동 게시)**: `own_video_ids`에 넣은 영상만(`own_video`가 참일 때만 시작).
+  `youtube_driver.PlaywrightYouTubeDriver`로 그 영상 페이지를 열어 sandbox와 같은 순서
+  (입력 → 승인 대기 → 「댓글」 → 확인)로 돈다. 「댓글」을 누른 뒤에는 페이지·Data API로 못 찾아도
+  실패로 되돌리지 않고 「게시됨(확인 못 함)」으로 남긴다(다시 시도해 같은 댓글이 두 번 달리지 않게).
 - **창 위치(9단계).** 창이 보이는 실행(assist, 또는 headless가 아닌 sandbox)은 띄우기 전에
   `browser.window_position`이 실제 모니터 안인지 본다(`screens.check_window_position`). 밖이면
   주 모니터의 안전한 위치로 바꿔 띄우고 작업 기록(job_events)에 그렇게 했다고 남긴다.
@@ -110,7 +114,7 @@ STEP_INDEX = {
     "verifying": 5,
     "posted": 6,
 }
-MODES = ("sandbox", "assist")
+MODES = ("sandbox", "assist", "auto")
 APPROVAL_TIMEOUT_SECONDS = 5 * 60  # sandbox: 승인 대기 5분
 CONFIRM_TIMEOUT_SECONDS = 10 * 60  # assist: 사람 게시 대기 10분
 STALE_AFTER = timedelta(minutes=15)  # 이보다 오래 예약으로 남은 게시는 꺼진 작업의 흔적으로 본다
@@ -132,7 +136,9 @@ def mode_of(target: str) -> tuple[str, str]:
         return "sandbox", "sandbox"
     if t in ("assist", "youtube"):
         return "assist", "youtube"
-    raise ValueError(f"알 수 없는 대상: {target!r} (sandbox | assist)")
+    if t == "youtube_auto":  # 내 채널 영상 자동 게시
+        return "auto", "youtube"
+    raise ValueError(f"알 수 없는 대상: {target!r} (sandbox | assist | youtube_auto)")
 
 
 def new_job_id(clock: Clock) -> str:
@@ -177,7 +183,7 @@ class JobEvent:
 @dataclass
 class Job:
     id: str
-    mode: str  # sandbox | assist
+    mode: str  # sandbox | assist | auto
     target: str  # sandbox | youtube (게시 기록의 대상)
     video_id: str
     draft_id: int
@@ -202,7 +208,7 @@ class Job:
     confirm_posted: bool | None = None
     cancel_flag: threading.Event = field(default_factory=threading.Event)
     proc: Any = None  # assist: 실행한 크롬 프로세스
-    driver: Any = None  # sandbox: 아직 닫지 않은 실행기(닫으면 None)
+    driver: Any = None  # sandbox·auto: 아직 닫지 않은 실행기(닫으면 None)
     chrome: Path | None = None  # chrome.exe 위치
     profile_path: Path | None = None  # 프로필 폴더(API에는 싣지 않는다)
     window_position: tuple[int, int] | None = None  # 실제로 띄운 창 위치(화면 밖이면 바꾼 값)
@@ -244,12 +250,26 @@ VerifyComment = Callable[
     [str, str], bool | None
 ]  # (video_id, text) -> 찾음/못 찾음/확인 불가(None)
 DriverFactory = Callable[[BrowserSettings], BrowserDriver]
+# (브라우저 설정, 내 채널 영상 ID) -> 그 영상만 여는 실행기
+YouTubeDriverFactory = Callable[[BrowserSettings, str], BrowserDriver]
 
 
 def default_driver_factory(settings: BrowserSettings) -> BrowserDriver:
     return PlaywrightSandboxDriver(
         headless=settings.headless, window_position=settings.window_position
     )
+
+
+def default_youtube_driver_factory(settings: BrowserSettings, video_id: str) -> BrowserDriver:
+    from app.browser.youtube_driver import PlaywrightYouTubeDriver
+
+    return PlaywrightYouTubeDriver(
+        video_id=video_id, headless=settings.headless, window_position=settings.window_position
+    )
+
+
+def _no_own_videos(_video_id: str) -> bool:
+    return False
 
 
 def playwright_installed() -> bool:
@@ -274,8 +294,13 @@ class JobService:
         confirm_timeout: float = CONFIRM_TIMEOUT_SECONDS,
         rng: random.Random | None = None,
         screens: Callable[[], Sequence[Monitor]] | None = None,
+        youtube_driver_factory: YouTubeDriverFactory = default_youtube_driver_factory,
+        own_video: Callable[[str], bool] = _no_own_videos,
     ) -> None:
         self.db_path = db_path
+        # 내 채널 영상 자동 게시: 실행기 만들기와 「내 채널 영상인지」(config.yaml own_video_ids)
+        self.youtube_driver_factory = youtube_driver_factory
+        self.own_video = own_video
         # 모니터 목록을 읽는 함수(9단계). None이면 확인하지 않고 설정값 그대로 띄운다
         self.screens = screens
         self.rules = rules
@@ -324,7 +349,9 @@ class JobService:
                     extra={"job_id": self._active.id},
                 )
             self.recover_stale()
-            if mode == "sandbox" and not self.playwright_ready():
+            if mode == "auto" and not self.own_video(video_id):
+                raise AppError(ErrorKind.AUTO_POST_OWN_ONLY, detail=video_id)
+            if mode in ("sandbox", "auto") and not self.playwright_ready():
                 raise AppError(ErrorKind.PLAYWRIGHT_MISSING)
             chrome = self.chrome_finder()
             if chrome is None:
@@ -564,12 +591,16 @@ class JobService:
         try:
             if job.cancel_flag.is_set():
                 raise JobCancelled
-            if job.mode == "sandbox":
+            if job.mode in ("sandbox", "auto"):
                 browser = self.browser
                 if not browser.headless:  # 창이 보일 때만 위치를 확인한다
                     browser = replace(browser, window_position=self._place_window(job))
-                driver = job.driver = self.driver_factory(browser)
-                self._run_sandbox(job, driver)
+                if job.mode == "sandbox":
+                    driver = job.driver = self.driver_factory(browser)
+                    self._run_sandbox(job, driver)
+                else:
+                    driver = job.driver = self.youtube_driver_factory(browser, job.video_id)
+                    self._run_auto(job, driver)
             else:
                 self._run_assist(job)
         except JobCancelled:
@@ -665,6 +696,63 @@ class JobService:
             job, verified=True, note="", message="테스트 페이지에 댓글이 달린 것을 확인했습니다"
         )
 
+    def _run_auto(self, job: Job, driver: BrowserDriver) -> None:
+        """내 채널 영상: 실제 YouTube 페이지에서 입력 → 승인 대기 → 「댓글」 → 확인."""
+        where = f"{job.profile}({job.folder})"
+        self._event(job, "launching", f"{where} 프로필로 크롬에서 내 채널 영상을 여는 중")
+        try:
+            driver.open(job.profile_path, job.open_url)  # type: ignore[arg-type]
+        except DriverError as exc:
+            raise JobFailed(exc.reason, screenshot=exc.screenshot) from None
+        self._check_cancel(job)
+        self._event(job, "typing", "YouTube 댓글 상자에 한 글자씩 입력하는 중")
+        try:
+            driver.type_comment(
+                job.comment_text, self.browser.typing_delay_ms, job.cancel_flag.is_set
+            )
+        except Stopped:
+            raise JobCancelled from None
+        except DriverError as exc:
+            raise JobFailed(exc.reason, screenshot=exc.screenshot) from None
+        self._check_cancel(job)
+        self._event(
+            job,
+            "awaiting_approval",
+            "입력을 마쳤습니다. 크롬 창의 글을 보고 대시보드에서 [게시 승인]을 눌러 주세요",
+        )
+        self._wait_for(job, job.approve_flag, self.approval_timeout, REASON_APPROVAL_TIMEOUT)
+        self._event(job, "posting", "승인을 받아 YouTube 「댓글」 단추를 누르는 중")
+        try:
+            driver.click_post()
+        except DriverError as exc:
+            raise JobFailed(exc.reason, screenshot=exc.screenshot) from None
+        # 여기부터는 이미 눌렀다. 못 찾아도 실패로 되돌리지 않는다(다시 달면 두 번 달린다)
+        self._event(job, "verifying", "YouTube 페이지에서 내 댓글을 찾는 중")
+        found: bool | None
+        try:
+            driver.verify_posted(job.comment_text)
+            found = True
+        except DriverError:
+            found = None
+            if self.verify_comment is not None:
+                try:
+                    found = self.verify_comment(job.video_id, job.comment_text)
+                except Exception:  # Data API 확인을 못 해도 게시는 이미 했다
+                    found = None
+        self._close_driver(job)
+        if found:
+            self._finish_posted(
+                job, verified=True, note="", message="YouTube에 내 댓글이 달린 것을 확인했습니다"
+            )
+        else:
+            self._finish_posted(
+                job,
+                verified=False,
+                note=NOTE_UNVERIFIED,
+                message="게시됨(확인 못 함) — 「댓글」을 눌렀지만 페이지·Data API에서 "
+                "내 댓글을 찾지 못했습니다. [댓글 보기]로 확인해 주세요",
+            )
+
     def _run_assist(self, job: Job) -> None:
         self._event(
             job, "launching", f"{job.profile}({job.folder}) 프로필로 크롬에서 영상을 여는 중"
@@ -721,7 +809,7 @@ class JobService:
         self, job: Job, reason: str, *, driver: BrowserDriver | None, screenshot: bool = True
     ) -> None:
         shot: Path | None = None
-        if driver is not None and screenshot and job.mode == "sandbox":
+        if driver is not None and screenshot and job.mode in ("sandbox", "auto"):
             path = Path(self.browser.screenshot_dir) / f"{job.id}.png"
             if driver.screenshot(path):
                 shot = path

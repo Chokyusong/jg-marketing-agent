@@ -2,11 +2,13 @@
 // - 큰 버튼은 승인한 초안 + 그 대상에서 댓글 안 단 영상 + 오늘 남은 횟수가 있을 때만 켠다.
 // - 작업 방식이 「테스트 페이지 자동 실행」(sandbox)이면 통제된 테스트 페이지에서만 자동 입력·게시한다.
 //   「수동 승인 후 게시」(실제 유튜브, assist)는 크롬을 프로필과 영상 주소로 열기만 한다. 붙여넣기와 게시는 사람.
+//   단, 내 채널 영상(config.yaml own_video_ids)이면 youtube_auto: 그 영상 페이지에 한 글자씩 입력한 뒤
+//   [게시 승인]을 눌러야 「댓글」을 누른다.
 // - 진행 중에는 GET /api/jobs/{id}를 0.5초마다 물어 온다. 끝나면 오늘 통계·작업 기록·01칸 「댓글 단 영상」을 바로 고친다.
 // - 큰 버튼 하나가 상태에 따라 [브라우저에서 영상 열기] → [게시 승인](sandbox) / [게시했어요](assist)로 바뀐다
 //   (단추를 늘려 03칸이 길어지지 않게). 바깥 글은 textContent로만 넣는다.
 import { api } from './api.js';
-import { isApproved } from './draft.js';
+import { isApproved, ownVideo } from './draft.js';
 import { refreshOps } from './ops.js';
 import { getState, selectedVideo, setState, subscribe } from './state.js';
 import { refreshStatus } from './topbar.js';
@@ -20,11 +22,17 @@ let timer = null;
 let lastFinishedId = null;
 
 const running = (job) => Boolean(job && !job.finished);
-const apiTarget = (target) => (target === 'youtube' ? 'assist' : 'sandbox');
+// 화면의 작업 방식 → API 대상. 실제 유튜브 + 내 채널 영상이면 자동 게시(youtube_auto)
+const autoPost = (state, target) => target === 'youtube' && ownVideo(state);
+const apiTarget = (state, target) => {
+  if (target !== 'youtube') return 'sandbox';
+  return autoPost(state, target) ? 'youtube_auto' : 'assist';
+};
 
-function modeNote(target) {
-  return target === 'sandbox'
-    ? '통제된 테스트 페이지에서 실행 · 실제 유튜브가 아닙니다'
+function modeNote(target, auto = false) {
+  if (target === 'sandbox') return '통제된 테스트 페이지에서 실행 · 실제 유튜브가 아닙니다';
+  return auto
+    ? '내 채널 영상 · 자동으로 입력하고 [게시 승인]을 눌러야 게시합니다'
     : '실제 유튜브는 크롬으로 열기만 합니다 · 붙여넣기와 게시는 직접';
 }
 
@@ -41,6 +49,7 @@ export function startBlocker(state) {
   const b = state.browser;
   if (b && !b.chrome_found) return '크롬을 찾지 못했습니다. 크롬을 설치하거나 config.yaml의 browser.chrome_path를 적어 주세요.';
   if (b && target === 'sandbox' && !b.playwright_ready) return 'Playwright가 없어 테스트 페이지 자동 실행을 못 합니다.';
+  if (b && autoPost(state, target) && !b.playwright_ready) return 'Playwright가 없어 내 채널 영상 자동 게시를 못 합니다.';
   return null;
 }
 
@@ -106,7 +115,7 @@ function start() {
     videoId: state.selectedId,
     draftId: state.draft.id,
     profile: ops.profile,
-    target: apiTarget(ops.target),
+    target: apiTarget(state, ops.target),
     dailyLimit: ops.dailyLimit,
   }));
 }
@@ -208,7 +217,7 @@ function paint(state) {
 
   // 제목·설명(승인 전 단계의 문구는 flow.js가 쓴다)
   if (job) {
-    const where = job.mode === 'sandbox' ? '테스트 페이지' : '실제 유튜브';
+    const where = { sandbox: '테스트 페이지', auto: '내 채널 영상' }[job.mode] || '실제 유튜브';
     const left = job.seconds_left !== null && job.seconds_left !== undefined ? ` (남은 시간 ${Math.ceil(job.seconds_left / 60)}분)` : '';
     title.textContent = job.state === 'posted'
       ? (job.verified ? '게시 완료 · 확인됨' : '게시됨 · 확인 못 함')
@@ -224,10 +233,10 @@ function paint(state) {
   const dot = $('job-dot');
   dot.classList.remove('is-ok', 'is-bad', 'is-wait', 'is-off');
   let tone = 'is-ok';
-  let line = modeNote(target);
+  let line = modeNote(target, autoPost(state, target));
   if (job && job.state === 'failed') { tone = 'is-bad'; line = `${job.target_label} · 실패`; }
   else if (job && job.state === 'posted') line = `${job.target_label} · 게시 완료${job.verified ? '' : '(확인 못 함)'}`;
-  else if (running(job)) { tone = 'is-wait'; line = modeNote(job.mode === 'sandbox' ? 'sandbox' : 'youtube'); }
+  else if (running(job)) { tone = 'is-wait'; line = modeNote(job.mode === 'sandbox' ? 'sandbox' : 'youtube', job.mode === 'auto'); }
   else if (!state.browser) tone = 'is-wait';
   else if (!state.browser.chrome_found) tone = 'is-bad';
   dot.classList.add(tone);

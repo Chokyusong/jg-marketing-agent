@@ -53,6 +53,7 @@ class ErrorKind(StrEnum):
     JOB_WRONG_STATE = "job_wrong_state"  # 지금 단계에서 할 수 없는 일(예: 입력 중에 게시 승인)
     CHROME_NOT_FOUND = "chrome_not_found"
     PLAYWRIGHT_MISSING = "playwright_missing"
+    AUTO_POST_OWN_ONLY = "auto_post_own_only"  # 실제 유튜브 자동 게시는 내 채널 영상만
     PROFILE_IN_USE = "profile_in_use"  # 같은 프로필 폴더를 다른 크롬이 쓰고 있다
     SCREENSHOT_NOT_FOUND = "screenshot_not_found"
 
@@ -229,6 +230,12 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
         "저장소 폴더에서 .venv\\Scripts\\python.exe -m pip install -r requirements.txt를 "
         "실행한 뒤 프로그램을 다시 켜 주세요.",
         503,
+    ),
+    ErrorKind.AUTO_POST_OWN_ONLY: ErrorText(
+        "실제 유튜브 자동 게시는 내 채널 영상에서만 할 수 있습니다.",
+        "다른 영상은 「수동 승인 후 게시」로 크롬을 열어 직접 게시해 주세요. 내 채널 영상이면 "
+        "config.yaml의 own_video_ids에 영상 ID를 넣고 프로그램을 다시 켜 주세요.",
+        422,
     ),
     ErrorKind.PROFILE_IN_USE: ErrorText(
         "그 프로필의 크롬 창이 이미 열려 있어 새로 열 수 없습니다.",

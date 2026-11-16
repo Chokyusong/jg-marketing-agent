@@ -96,6 +96,8 @@ class BrowserDriver(Protocol):
 class PlaywrightSandboxDriver:
     """설치된 크롬을 프로필 폴더로 열어 테스트 페이지에서 입력·게시·확인한다."""
 
+    guard_requests = True  # 바깥 주소 요청을 모두 막는다(`_guard`)
+
     def __init__(
         self,
         *,
@@ -123,6 +125,17 @@ class PlaywrightSandboxDriver:
     def open(self, user_data_dir: Path, url: str) -> None:
         require_sandbox_url(url)  # 실제 유튜브 주소는 여기서 끝난다
         from playwright.sync_api import Error as PlaywrightError
+
+        self._launch(user_data_dir)
+        try:
+            self._page.goto(url, wait_until="domcontentloaded")
+            self._page.wait_for_selector("#comment-input", state="visible")
+        except PlaywrightError:
+            raise DriverError("테스트 페이지를 열지 못했습니다(댓글 상자가 보이지 않음).") from None
+
+    def _launch(self, user_data_dir: Path) -> None:
+        """프로필 폴더로 크롬을 열고 주소 가로채기(`_guard`)와 방문 기록을 건다."""
+        from playwright.sync_api import Error as PlaywrightError
         from playwright.sync_api import sync_playwright
 
         if profile_in_use(user_data_dir):
@@ -143,14 +156,10 @@ class PlaywrightSandboxDriver:
             first = str(exc).strip().splitlines()[0][:160] if str(exc).strip() else "알 수 없음"
             raise DriverError(f"크롬을 열지 못했습니다: {first}", screenshot=False) from None
         self._ctx.set_default_timeout(STEP_TIMEOUT_MS)
-        self._ctx.route("**/*", self._guard)
+        if self.guard_requests:
+            self._ctx.route("**/*", self._guard)
         self._page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
         self._page.on("framenavigated", self._on_navigated)
-        try:
-            self._page.goto(url, wait_until="domcontentloaded")
-            self._page.wait_for_selector("#comment-input", state="visible")
-        except PlaywrightError:
-            raise DriverError("테스트 페이지를 열지 못했습니다(댓글 상자가 보이지 않음).") from None
 
     def _guard(self, route: Any) -> None:
         url = route.request.url

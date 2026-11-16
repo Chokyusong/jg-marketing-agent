@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>가짜 영상 페이지(자동 테스트용)</title>
+<!--
+  자동 테스트용 가짜 페이지. 실제 YouTube가 아니다. 내용은 모두 지어낸 것이다.
+  app/browser/youtube_driver.py의 SELECTORS와 같은 요소 이름만 흉내 낸다.
+  테스트가 https://www.youtube.com/watch 요청을 가로채 이 글을 돌려주고, 다른 요청은 모두 막는다.
+  body의 data-mode: signed_in(기본) | signed_out | comments_off | no_post
+-->
+<style>
+  ytd-masthead, ytd-comments, ytd-commentbox, ytd-comment-thread-renderer { display: block; }
+  #spacer { height: 2400px; }
+  #contenteditable-root { min-height: 20px; border: 1px solid #999; }
+</style>
+</head>
+<body data-mode="__MODE__">
+<ytd-masthead id="masthead"><div id="buttons"></div></ytd-masthead>
+<div id="spacer">영상 자리</div>
+<div id="below"></div>
+<script>
+  const mode = document.body.dataset.mode;
+  const buttons = document.getElementById('buttons');
+  if (mode === 'signed_out') {
+    const a = document.createElement('a');
+    a.href = 'https://accounts.google.com/ServiceLogin?continue=x';
+    a.textContent = '로그인';
+    buttons.append(a);
+  } else {
+    const b = document.createElement('button');
+    b.id = 'avatar-btn';
+    b.textContent = '내 사진';
+    buttons.append(b);
+  }
+
+  let loaded = false;
+  function loadComments() {
+    if (loaded) return;
+    loaded = true;
+    const box = document.createElement('ytd-comments');
+    box.id = 'comments';
+    if (mode === 'comments_off') {
+      const msg = document.createElement('ytd-message-renderer');
+      msg.textContent = '댓글이 사용 중지되었습니다.';
+      box.append(msg);
+    } else {
+      box.innerHTML =
+        '<div id="simplebox-placeholder" tabindex="0">댓글 추가...</div>' +
+        '<ytd-commentbox hidden>' +
+        '<div id="contenteditable-root" contenteditable="true"></div>' +
+        '<ytd-button-renderer id="submit-button"><button type="button">댓글</button></ytd-button-renderer>' +
+        '</ytd-commentbox>' +
+        '<div id="contents"></div>';
+    }
+    document.getElementById('below').append(box);
+    if (mode === 'comments_off') return;
+    const placeholder = box.querySelector('#simplebox-placeholder');
+    const commentbox = box.querySelector('ytd-commentbox');
+    const editor = box.querySelector('#contenteditable-root');
+    placeholder.addEventListener('click', () => {
+      placeholder.hidden = true;
+      commentbox.hidden = false;
+      editor.focus();
+    });
+    box.querySelector('#submit-button').addEventListener('click', () => {
+      if (mode === 'no_post') return;
+      const thread = document.createElement('ytd-comment-thread-renderer');
+      const text = document.createElement('span');
+      text.id = 'content-text';
+      text.textContent = editor.innerText;
+      thread.append(text);
+      box.querySelector('#contents').prepend(thread);
+      editor.textContent = '';
+    });
+  }
+  // 실제 페이지처럼 아래로 내려야 댓글을 불러온다
+  window.addEventListener('scroll', () => setTimeout(loadComments, 150));
+  window.addEventListener('wheel', () => setTimeout(loadComments, 150));
+</script>
+</body>
+</html>
