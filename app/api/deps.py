@@ -36,6 +36,7 @@ from app.transcript.auto import AutoTranscriptProvider
 from app.user_settings import UserStore, default_user_dir
 from app.youtube.client import YouTubeClient
 from app.youtube.quota import Clock, QuotaTracker, SearchCache, utc_now
+from app.youtube.rising import RisingService
 from app.youtube.service import VideoService
 
 
@@ -60,6 +61,8 @@ class Services:
     hooks: BrowserHooks = field(default_factory=BrowserHooks)
     # R2: 프로필 로그인 창 열기와 로그인 확인
     accounts: ProfileAccounts = field(default=None)  # type: ignore[assignment]
+    # R4: 뜨기 직전 영상(초안까지만)
+    rising: RisingService = field(default=None)  # type: ignore[assignment]
 
     def find_chrome(self):
         if self.hooks.chrome_finder is not None:
@@ -142,6 +145,7 @@ def build_services(
         llm=llm,
         llm_error=llm_error,
     )
+    services.rising = RisingService(videos, rule=settings.rising, clock=clock)
     services.ledger = Ledger(
         settings.db_path, daily_limit=settings.daily_max_comments, clock=clock
     )

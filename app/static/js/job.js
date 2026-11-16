@@ -82,12 +82,16 @@ function checkFor(state) {
 }
 
 // [댓글 달기]를 누를 수 있는지와, 못 누르면 그 이유(쉬운 말로)
+export const RISING_ONLY = '뜨기 직전 영상은 초안까지만 만듭니다. 댓글을 달려면 같은 영상을 [영상 불러오기]나 링크로 다시 불러오세요.';
+
 export function startBlocker(state) {
   const video = selectedVideo();
   const ops = state.ops;
   const target = ops ? ops.target : 'sandbox';
   if (running(state.job)) return '다른 댓글을 다는 중입니다.';
   if (!video) return '①에서 영상을 고르면 초안이 나옵니다.';
+  // R4: 뜨기 직전 목록에서 고른 영상은 초안까지만(서버도 거절한다)
+  if (video.source === 'rising') return RISING_ONLY;
   if (isRunning(state)) return '②에서 댓글 초안을 만드는 중입니다.';
   const d = state.draft && state.draft.video_id === state.selectedId ? state.draft : null;
   if (!d) return '②에서 댓글 초안이 나와야 달 수 있습니다.';

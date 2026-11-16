@@ -118,6 +118,28 @@ class VideoService:
             ).fetchall()
         return {row["video_id"]: _row_to_stored(row) for row in rows}
 
+    # R4: 뜨기 직전 영상(rising.py)이 쓰는 공개 도우미
+    def save_videos(self, videos: list[Video], *, source: str) -> list[StoredVideo]:
+        return self._save(videos, source) if videos else []
+
+    def load(self, video_ids: list[str]) -> dict[str, StoredVideo]:
+        return self._load(video_ids)
+
+    def mark_source(self, video_ids: list[str], source: str) -> None:
+        """영상의 출처만 바꾼다(마지막으로 불러온 목록이 출처가 된다).
+
+        뜨기 직전 목록에서 고른 영상은 초안까지만 되고(rising), 같은 영상을 [영상 불러오기]나
+        링크로 다시 불러오면 search·link로 바뀌어 평소처럼 게시할 수 있다.
+        """
+        if not video_ids:
+            return
+        marks = ", ".join("?" * len(video_ids))
+        with db.session(self.db_path) as conn:
+            conn.execute(
+                f"UPDATE videos SET source = ? WHERE video_id IN ({marks})",
+                [source, *video_ids],
+            )
+
     def _is_fresh(self, stored: StoredVideo) -> bool:
         return self.clock() - datetime.fromisoformat(stored.fetched_at) < CACHE_TTL
 
@@ -150,7 +172,10 @@ class VideoService:
             cached_ids, excluded = entry
             stored = self._load(cached_ids)
             if all(i in stored for i in cached_ids):
-                videos = [stored[i] for i in cached_ids]
+                self.mark_source(cached_ids, "search")  # R4: 뜨기 직전 목록에서 온 출처를 되돌린다
+                videos = [
+                    StoredVideo(stored[i].video, "search", stored[i].fetched_at) for i in cached_ids
+                ]
                 return SearchResult(
                     query, order, period, max_results, True, videos, exclude_shorts, excluded
                 )
@@ -194,4 +219,13 @@ class VideoService:
         return self._load([video_id]).get(video_id)
 
     def resolve(self, url: str) -> StoredVideo:
-        return self.get(parse_video_id(url), source="link")
+        """링크로 불러오기. R4: 앞서 뜨기 직전 목록에서 불러온 영상이어도 출처를 link로 바꾼다."""
+        stored = self.get(parse_video_id(url), source="link")
+        if stored.source != "link":
+            self.mark_source([stored.video.video_id], "link")
+            stored = StoredVideo(stored.video, "link", stored.fetched_at)
+        return stored
+
+    def source_of(self, video_id: str) -> str | None:
+        stored = self.stored(video_id)
+        return stored.source if stored is not None else None

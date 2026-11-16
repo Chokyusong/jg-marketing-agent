@@ -15,6 +15,7 @@ from app.ops.ledger import Run, TodayStats
 from app.ops.profiles import Profile
 from app.transcript.auto import source_label
 from app.transcript.manual import MAX_TRANSCRIPT_CHARS
+from app.youtube.rising import RisingResult
 from app.youtube.service import SearchResult, StoredVideo
 from app.youtube.url_parser import watch_url
 
@@ -42,6 +43,9 @@ class VideoOut(BaseModel):
     source: Literal["search", "link", "rising"]
     fetched_at: str
     commented: CommentedOut = Field(default_factory=CommentedOut)  # 7단계(필드 추가)
+    # R4: 뜨기 직전 목록에서 온 영상만(시간당 조회수, 「뜨기 직전」 표시). 초안까지만 된다
+    views_per_hour: float | None = None
+    rising: bool = False
 
     @classmethod
     def from_stored(cls, stored: StoredVideo) -> VideoOut:
@@ -52,6 +56,16 @@ class VideoOut(BaseModel):
 class QuotaOut(BaseModel):
     used_today: int
     daily_limit: int
+
+
+class RisingRuleOut(BaseModel):
+    """뜨기 직전 영상 조건(설정값). 화면의 "조회수 1,000~5,000 · 시간당 150회 이상" 문구."""
+
+    query: str
+    min_views: int
+    max_views: int
+    min_views_per_hour: int
+    window_hours: int
 
 
 class VideoListOut(BaseModel):
@@ -65,6 +79,30 @@ class VideoListOut(BaseModel):
     # 실제 데이터 보정(필드 추가): 쇼츠(61초 미만·길이 없음)를 뺐는지와 뺀 수
     exclude_shorts: bool = False
     shorts_excluded: int = 0
+    # R4: 'search'(검색) | 'rising'(뜨기 직전 영상). rising이면 조건과 조건을 본 영상 수
+    mode: Literal["search", "rising"] = "search"
+    rising: RisingRuleOut | None = None
+    checked: int = 0
+
+    @classmethod
+    def from_rising(cls, result: RisingResult, quota: dict[str, int]) -> VideoListOut:
+        items = []
+        for item in result.items:
+            out = VideoOut.from_stored(item.stored)
+            out.views_per_hour = round(item.views_per_hour, 1)
+            out.rising = True
+            items.append(out)
+        rule = result.rule
+        return cls(
+            query=result.query, order="date", period="34h", max_results=len(items),
+            cached=result.cached, items=items, quota=QuotaOut(**quota),
+            exclude_shorts=result.exclude_shorts, shorts_excluded=result.shorts_excluded,
+            mode="rising", checked=result.checked,
+            rising=RisingRuleOut(
+                query=rule.query, min_views=rule.min_views, max_views=rule.max_views,
+                min_views_per_hour=rule.min_views_per_hour, window_hours=34,
+            ),
+        )
 
     @classmethod
     def from_result(cls, result: SearchResult, quota: dict[str, int]) -> VideoListOut:

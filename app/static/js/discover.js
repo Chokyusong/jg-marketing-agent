@@ -2,6 +2,8 @@
 // - 검색어 칸에 유튜브 주소를 넣고 [영상 불러오기]를 눌러도 그 영상 하나를 불러온다.
 // - 링크로 불러온 영상은 목록 맨 위에 넣고 바로 고른다(고르면 ②가 자동으로 초안을 만든다).
 // - 목록 한 줄: 썸네일 · 제목(끝의 #태그는 흐리게) · 채널 · 올린 날짜(11.17 · 7시간 전) · 조회수, 「댓글 달았음」.
+// - R4 [뜨기 직전 영상]: 올린 지 34시간 안에 조회수가 빨리 오르는 영상(설정의 조건). 줄마다 「시간당 n회」와
+//   「뜨기 직전」 표시. 이 목록에서 고른 영상은 초안까지만 만든다(③ [댓글 달기]가 막힌다).
 import { api } from './api.js';
 import { el, formatAgo, formatDay, formatViews, thumbnail, titleNode } from './format.js';
 import { getState, setState, subscribe } from './state.js';
@@ -39,6 +41,40 @@ async function runSearch() {
   } catch (error) {
     setState({ loading: false, error });
   }
+}
+
+export function risingRuleText(rule) {
+  if (!rule) return '';
+  const n = (v) => Number(v).toLocaleString('ko-KR');
+  return `조회수 ${n(rule.min_views)}~${n(rule.max_views)} · 시간당 ${n(rule.min_views_per_hour)}회 이상`;
+}
+
+async function runRising() {
+  setState({ loading: true, loadMode: 'rising', error: null });
+  try {
+    const data = await api.risingVideos({
+      excludeShorts: $('exclude-shorts') ? $('exclude-shorts').checked : undefined,
+    });
+    const keep = data.items.some((v) => v.video_id === getState().selectedId);
+    setState({
+      loading: false,
+      videos: data.items,
+      quota: data.quota,
+      selectedId: keep ? getState().selectedId : null,
+      meta: {
+        mode: 'rising', query: data.query, cached: data.cached, count: data.items.length,
+        rule: data.rising, checked: data.checked,
+        shortsExcluded: data.exclude_shorts ? data.shorts_excluded || 0 : null,
+      },
+    });
+  } catch (error) {
+    setState({ loading: false, error });
+  }
+}
+
+export function perHourText(value) {
+  if (value === null || value === undefined) return '';
+  return `시간당 ${Math.round(value).toLocaleString('ko-KR')}회`;
 }
 
 async function runResolve(given) {
@@ -87,6 +123,10 @@ function videoRow(video, selected) {
       day ? el('b', { class: 'vid-day', text: day }) : null,
       [ago, formatViews(video.view_count)].filter(Boolean).map((t) => ` · ${t}`).join(''),
     ]),
+    video.rising ? el('span', { class: 'rising-line' }, [
+      el('span', { class: 'rising-tag', text: '뜨기 직전' }),
+      el('span', { class: 'rising-rate', text: perHourText(video.views_per_hour) }),
+    ]) : null,
     done ? el('span', { class: 'commented', text: done }) : null,
   ]);
   return el(
@@ -101,17 +141,22 @@ function renderList(state) {
   list.setAttribute('aria-busy', String(state.loading));
   $('search-btn').disabled = state.loading;
   $('resolve-btn').disabled = state.loading;
+  $('rising-btn').disabled = state.loading;
+  $('rising-btn').textContent = state.loading && state.loadMode === 'rising' ? '찾는 중…' : '뜨기 직전 영상';
   $('search-btn').textContent = state.loading && state.loadMode === 'search' ? '불러오는 중…' : '영상 불러오기';
   $('resolve-btn').textContent = state.loading && state.loadMode === 'link' ? '불러오는 중…' : '불러오기';
 
   const focusedId = document.activeElement?.dataset?.id;
   list.replaceChildren();
   if (!state.videos.length) {
+    const rising = state.meta && state.meta.mode === 'rising';
     const text = state.loading
       ? '영상을 불러오는 중입니다… 보통 1~2초 걸립니다.'
-      : state.meta
-        ? '조건에 맞는 영상이 없습니다. 기간을 넓히거나 검색어를 바꿔 [영상 불러오기]를 다시 눌러 보세요.'
-        : null;
+      : rising
+        ? `지금 조건에 맞는 영상이 없습니다(${risingRuleText(state.meta.rule)})`
+        : state.meta
+          ? '조건에 맞는 영상이 없습니다. 기간을 넓히거나 검색어를 바꿔 [영상 불러오기]를 다시 눌러 보세요.'
+          : null;
     list.append(text ? el('p', { class: 'empty', text }) : el('p', { class: 'empty' }, [
       '기본 검색어가 들어 있습니다. ', el('b', { text: '[영상 불러오기]' }), '를 누르면 최신 영상이 뜹니다.',
     ]));
@@ -135,6 +180,12 @@ function renderMeta(state) {
     }
     if (state.meta.cached) {
       meta.append(el('span', { class: 'shorts-note', title: '같은 검색은 10분 동안 앞서 불러온 결과를 다시 씁니다', text: '10분 안에 불러온 결과' }));
+    }
+  } else if (state.meta.mode === 'rising') {
+    meta.append(`뜨기 직전 영상 ${state.meta.count}개`);
+    meta.append(el('span', { class: 'shorts-note', title: `‘${state.meta.query}’ · 올린 지 34시간 안 · ${risingRuleText(state.meta.rule)}`, text: '초안까지만' }));
+    if (state.meta.cached) {
+      meta.append(el('span', { class: 'shorts-note', title: '같은 요청은 10분 동안 앞서 불러온 결과를 다시 씁니다', text: '10분 안에 불러온 결과' }));
     }
   } else {
     meta.append('링크로 불러온 영상');
@@ -185,6 +236,7 @@ export function initDiscover() {
     event.preventDefault();
     runResolve();
   });
+  $('rising-btn').addEventListener('click', () => runRising());
   subscribe((state) => {
     renderList(state);
     renderMeta(state);

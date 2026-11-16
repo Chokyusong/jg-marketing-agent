@@ -58,6 +58,21 @@ def list_videos(
     return out
 
 
+@router.get("/rising", response_model=VideoListOut)
+def rising_videos(services: ServicesDep, exclude_shorts: bool | None = None) -> VideoListOut:
+    """뜨기 직전 영상(R4, 가점). 조건은 설정 `rising.*`. 같은 요청은 10분 저장(검색 1회 100단위).
+
+    이 목록의 영상은 초안까지만 된다(게시 작업 시작을 거절한다).
+    """
+    discover = services.settings.discover
+    result = services.rising.find(
+        exclude_shorts=discover.exclude_shorts if exclude_shorts is None else exclude_shorts
+    )
+    out = VideoListOut.from_rising(result, services.quota.summary())
+    _mark_commented(out.items, services)
+    return out
+
+
 @router.post("/resolve", response_model=VideoItemOut)
 def resolve_video(body: ResolveIn, services: ServicesDep) -> VideoItemOut:
     stored = services.videos.resolve(body.url)

@@ -200,6 +200,9 @@ select { padding-right: 6px; cursor: pointer; }
 .video-meta { display: block; color: var(--sub); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .video-meta b { color: var(--text); font-weight: 500; }
 .commented { display: inline-flex; align-items: center; align-self: flex-start; padding: 0 6px; border-radius: 4px; background: rgba(143, 191, 143, 0.14); color: var(--ok); font-size: 12px; }
+.rising-line { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.rising-tag { padding: 0 6px; border-radius: 4px; background: var(--gold-soft); color: var(--gold); }
+.rising-rate { color: var(--sub); }
 
 /* ② 영상 선택 */
 .midinfo { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; align-items: center; }
