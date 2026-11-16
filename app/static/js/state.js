@@ -25,6 +25,8 @@ const state = {
   run: null,             // { videoId, phase: 'context'|'analysis'|'draft'|'check'|'done'|'error', startedAt, endedAt, note }
   runError: null,        // { kind, message, action }
   approving: false,
+  // 7단계: 오늘 통계·작업 기록·03칸 설정(ops.js). target은 작업 방식(sandbox | youtube)
+  ops: null,             // { target, profile, dailyLimit, stats, records, total, error }
 };
 
 const listeners = new Set();

@@ -113,3 +113,82 @@ def test_video_context_constraints(tmp_db_path):
     for sql in bad_rows:
         with pytest.raises(sqlite3.IntegrityError), db.session(tmp_db_path) as conn:
             conn.execute(sql)
+
+
+# ---------------------------------------------------------------- 7단계: posts · runs · job_events
+
+
+def test_stage7_tables_and_upgrade_from_stage5_keeps_data(tmp_db_path):
+    import sqlite3
+
+    conn = sqlite3.connect(tmp_db_path)
+    for i in range(3):  # 5단계까지의 DB(버전 3)
+        conn.executescript("BEGIN;" + db.MIGRATIONS[i] + f"PRAGMA user_version = {i + 1};COMMIT;")
+    conn.execute("INSERT INTO quota_usage(day, units) VALUES ('2026-11-16', 7)")
+    conn.commit()
+    conn.close()
+    assert db.init_db(tmp_db_path) == db.SCHEMA_VERSION == 4
+    assert {"posts", "runs", "job_events"} <= _tables(tmp_db_path)
+    with db.session(tmp_db_path) as conn:
+        assert conn.execute("SELECT units FROM quota_usage").fetchone()["units"] == 7
+
+
+def test_posts_constraints(tmp_db_path):
+    import sqlite3
+
+    import pytest
+
+    db.init_db(tmp_db_path)
+    cols = "target, video_id, profile, draft_id, status, day, created_at, updated_at"
+    good = (
+        f"INSERT INTO posts({cols}) "
+        "VALUES ('sandbox', 'AAAAAAAAAA1', '유튜브1', 1, 'reserved', 'd', 'n', 'n')"
+    )
+    with db.session(tmp_db_path) as conn:
+        conn.execute(good)
+        # 같은 영상도 대상이 다르면 넣을 수 있다
+        conn.execute(good.replace("'sandbox'", "'youtube'"))
+    bad_rows = [
+        good,  # UNIQUE(target, video_id)
+        good.replace("'sandbox'", "'assist'").replace("AAAAAAAAAA1", "BBBBBBBBBB2"),
+        good.replace("'reserved'", "'done'").replace("AAAAAAAAAA1", "CCCCCCCCCC3"),
+    ]
+    for sql in bad_rows:
+        with pytest.raises(sqlite3.IntegrityError), db.session(tmp_db_path) as conn:
+            conn.execute(sql)
+
+
+def test_runs_are_append_only(tmp_db_path):
+    import sqlite3
+
+    import pytest
+
+    db.init_db(tmp_db_path)
+    with db.session(tmp_db_path) as conn:
+        conn.execute(
+            "INSERT INTO runs(at, day, action, result) VALUES ('n', 'd', 'post', 'success')"
+        )
+    with pytest.raises(sqlite3.DatabaseError), db.session(tmp_db_path) as conn:
+        conn.execute("DELETE FROM runs")
+    for sql in (
+        "INSERT INTO runs(at, day, action, result) VALUES ('n', 'd', 'type', 'info')",
+        "INSERT INTO runs(at, day, action, result) VALUES ('n', 'd', 'post', 'maybe')",
+    ):
+        with pytest.raises(sqlite3.IntegrityError), db.session(tmp_db_path) as conn:
+            conn.execute(sql)
+    with db.session(tmp_db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 1
+
+
+def test_immediate_rolls_back_on_error(tmp_db_path):
+    import pytest
+
+    db.init_db(tmp_db_path)
+    with pytest.raises(RuntimeError), db.immediate(tmp_db_path) as conn:
+        conn.execute("INSERT INTO quota_usage(day, units) VALUES ('2026-11-16', 1)")
+        raise RuntimeError("중간 실패")
+    with db.immediate(tmp_db_path) as conn:
+        conn.execute("INSERT INTO quota_usage(day, units) VALUES ('2026-11-17', 2)")
+    with db.session(tmp_db_path) as conn:
+        rows = conn.execute("SELECT day FROM quota_usage").fetchall()
+    assert [r["day"] for r in rows] == ["2026-11-17"]

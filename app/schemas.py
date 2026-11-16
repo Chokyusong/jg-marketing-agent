@@ -11,9 +11,18 @@ from app.analysis.context import VideoContext
 from app.analysis.drafter import Draft
 from app.analysis.validator import Validation, ValidatorRules
 from app.llm.prompts import SOURCE_LABELS
+from app.ops.ledger import Run, TodayStats
+from app.ops.profiles import Profile
 from app.transcript.manual import MAX_TRANSCRIPT_CHARS
 from app.youtube.service import SearchResult, StoredVideo
 from app.youtube.url_parser import watch_url
+
+
+class CommentedOut(BaseModel):
+    """7단계: 그 대상에 댓글을 단(게시 완료) 영상인지. 01칸 「댓글 단 영상」 표시."""
+
+    sandbox: bool = False
+    youtube: bool = False
 
 
 class VideoOut(BaseModel):
@@ -31,6 +40,7 @@ class VideoOut(BaseModel):
     comment_count: int | None
     source: Literal["search", "link", "rising"]
     fetched_at: str
+    commented: CommentedOut = Field(default_factory=CommentedOut)  # 7단계(필드 추가)
 
     @classmethod
     def from_stored(cls, stored: StoredVideo) -> VideoOut:
@@ -296,3 +306,113 @@ class DraftOut(BaseModel):
 class DraftListOut(BaseModel):
     video_id: str
     items: list[DraftOut]  # 최신이 위
+
+
+# ---------------------------------------------------------------- 7단계: 운영 규칙과 기록
+
+TARGET_LABELS = {"sandbox": "테스트 페이지", "youtube": "유튜브", "": ""}
+ACTION_LABELS = {
+    "analyze": "AI 분석",
+    "draft": "초안 생성",
+    "approve": "초안 승인",
+    "post": "댓글 게시",
+}
+
+
+def status_label(action: str, result: str) -> str:
+    if action == "post":
+        return {"success": "게시 완료", "failure": "게시 실패"}.get(result, "진행")
+    return {"failure": "실패"}.get(result, "완료")
+
+
+class ProfileOut(BaseModel):
+    name: str  # 화면 이름(유튜브1)
+    folder: str  # 폴더 이름(profile-1). PC의 전체 경로는 싣지 않는다
+    last_used_at: str | None  # 그 대상에서 마지막으로 예약한 시각(없으면 null)
+
+    @classmethod
+    def from_profile(cls, p: Profile, last_used: dict[str, str]) -> ProfileOut:
+        return cls(name=p.name, folder=p.folder, last_used_at=last_used.get(p.name))
+
+
+class ProfilesOut(BaseModel):
+    target: Literal["sandbox", "youtube"]
+    items: list[ProfileOut]
+    auto: str  # 「자동 배정」이면 지금 고를 프로필(가장 오래 안 쓴 것)
+
+
+class RunOut(BaseModel):
+    """작업 기록 한 줄(UI_SPEC 2.7). 화면 캡처는 있는지만 알린다(경로는 싣지 않는다)."""
+
+    id: int
+    at: str
+    day: str
+    action: Literal["analyze", "draft", "approve", "post"]
+    action_label: str
+    video_id: str
+    video_title: str
+    video_url: str
+    profile: str
+    comment_text: str
+    target: Literal["", "sandbox", "youtube"]
+    target_label: str
+    result: Literal["success", "failure", "info"]
+    status_label: str
+    reason: str
+    has_screenshot: bool
+    job_id: str
+
+    @classmethod
+    def from_run(cls, r: Run) -> RunOut:
+        return cls(
+            id=r.id,
+            at=r.at,
+            day=r.day,
+            action=r.action,  # type: ignore[arg-type]
+            action_label=ACTION_LABELS.get(r.action, r.action),
+            video_id=r.video_id,
+            video_title=r.video_title,
+            video_url=watch_url(r.video_id) if r.video_id else "",
+            profile=r.profile,
+            comment_text=r.comment_text,
+            target=r.target,  # type: ignore[arg-type]
+            target_label=TARGET_LABELS.get(r.target, r.target),
+            result=r.result,  # type: ignore[arg-type]
+            status_label=status_label(r.action, r.result),
+            reason=r.reason,
+            has_screenshot=bool(r.screenshot_path),
+            job_id=r.job_id,
+        )
+
+
+class RecordsOut(BaseModel):
+    items: list[RunOut]  # 최신이 위
+    total: int  # 전체 기록 수(화면은 최근 몇 줄만 보인다)
+
+
+class TodayStatsOut(BaseModel):
+    target: Literal["sandbox", "youtube"]
+    target_label: str
+    day: str  # 한국 날짜
+    videos: int  # 오늘 처리한 영상(예약 + 게시, 상한에 세는 수)
+    daily_limit: int
+    remaining: int
+    drafts: int
+    posted: int
+    failed: int
+    success_rate: float | None  # 0~1. 오늘 게시 시도가 없으면 null(화면은 –)
+
+    @classmethod
+    def from_stats(cls, t: TodayStats) -> TodayStatsOut:
+        return cls(
+            target=t.target,  # type: ignore[arg-type]
+            target_label=TARGET_LABELS[t.target],
+            day=t.day,
+            videos=t.videos,
+            daily_limit=t.daily_limit,
+            remaining=t.remaining,
+            drafts=t.drafts,
+            posted=t.posted,
+            failed=t.failed,
+            success_rate=t.success_rate,
+        )

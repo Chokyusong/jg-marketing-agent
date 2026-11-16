@@ -39,6 +39,11 @@ class ErrorKind(StrEnum):
     DRAFT_NOT_FOUND = "draft_not_found"
     DRAFT_NOT_PASSED = "draft_not_passed"  # 규칙 검사에 걸린 초안은 승인하지 않는다(409)
     DRAFT_SUPERSEDED = "draft_superseded"  # 새 초안이나 다른 승인으로 밀려난 초안
+    # 7단계: 운영 규칙(영상당 1개 · 하루 상한 · 승인한 초안만)
+    ALREADY_COMMENTED = "already_commented"
+    DAILY_LIMIT_REACHED = "daily_limit_reached"
+    DRAFT_NOT_APPROVED = "draft_not_approved"
+    PROFILE_UNKNOWN = "profile_unknown"  # config.yaml의 profiles에 없는 이름
 
 
 @dataclass(frozen=True)
@@ -153,6 +158,28 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
         "더 새 초안이 있어 이 초안은 고치거나 승인할 수 없습니다.",
         "화면을 새로 고치고 지금 보이는 초안으로 진행해 주세요.",
         409,
+    ),
+    ErrorKind.ALREADY_COMMENTED: ErrorText(
+        "이미 댓글을 단 영상입니다. 영상 하나에는 댓글을 하나만 답니다.",
+        "01에서 다른 영상을 골라 주세요. 게시가 실패한 영상만 다시 시도할 수 있습니다.",
+        409,
+    ),
+    ErrorKind.DAILY_LIMIT_REACHED: ErrorText(
+        "오늘 달 수 있는 댓글 수(하루 상한)를 다 썼습니다.",
+        "한국 시각 자정이 지나면 다시 달 수 있습니다. 실패한 게시는 상한에 세지 않습니다. "
+        "상한은 config.yaml의 limits.daily_max_comments입니다.",
+        429,
+    ),
+    ErrorKind.DRAFT_NOT_APPROVED: ErrorText(
+        "승인하지 않은 초안으로는 게시할 수 없습니다.",
+        "02에서 규칙 검사를 통과한 초안을 [이 초안 승인]으로 승인한 뒤 다시 시도해 주세요.",
+        409,
+    ),
+    ErrorKind.PROFILE_UNKNOWN: ErrorText(
+        "설정에 없는 프로필입니다.",
+        "03의 사용 프로필에서 고르거나 「자동 배정」을 써 주세요. 프로필 이름은 config.yaml의 "
+        "profiles에 있습니다.",
+        422,
     ),
 }
 

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from app.analysis.context import VideoContext
 from app.api.deps import Services, get_services
 from app.schemas import (
+    CommentedOut,
     ContextOut,
     ResolveIn,
     TranscriptIn,
@@ -20,6 +21,13 @@ from app.schemas import (
 router = APIRouter(prefix="/api/videos", tags=["videos"])
 
 ServicesDep = Annotated[Services, Depends(get_services)]
+
+
+def _mark_commented(items: list[VideoOut], services: Services) -> None:
+    """7단계: 영상마다 댓글을 단(게시 완료) 대상을 붙인다. 기존 필드는 그대로."""
+    marks = services.rules.commented_map(v.video_id for v in items)
+    for item in items:
+        item.commented = CommentedOut(**marks.get(item.video_id, {}))
 
 
 @router.get("", response_model=VideoListOut)
@@ -36,19 +44,25 @@ def list_videos(
     result = services.videos.search(
         query, order=order, period=period, max_results=max_results or discover.max_results
     )
-    return VideoListOut.from_result(result, services.quota.summary())
+    out = VideoListOut.from_result(result, services.quota.summary())
+    _mark_commented(out.items, services)
+    return out
 
 
 @router.post("/resolve", response_model=VideoItemOut)
 def resolve_video(body: ResolveIn, services: ServicesDep) -> VideoItemOut:
     stored = services.videos.resolve(body.url)
-    return VideoItemOut(item=VideoOut.from_stored(stored), quota=services.quota.summary())
+    item = VideoOut.from_stored(stored)
+    _mark_commented([item], services)
+    return VideoItemOut(item=item, quota=services.quota.summary())
 
 
 @router.get("/{video_id}", response_model=VideoItemOut)
 def get_video(video_id: str, services: ServicesDep) -> VideoItemOut:
     stored = services.videos.get(video_id)
-    return VideoItemOut(item=VideoOut.from_stored(stored), quota=services.quota.summary())
+    item = VideoOut.from_stored(stored)
+    _mark_commented([item], services)
+    return VideoItemOut(item=item, quota=services.quota.summary())
 
 
 # ---------------------------------------------------------------- 3단계: 영상 맥락

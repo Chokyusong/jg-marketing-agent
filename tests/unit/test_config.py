@@ -91,3 +91,26 @@ def test_extra_patterns_read_and_checked(make_config):
     bad_facts = make_config({"brand": {"facts": "한 줄"}})
     with pytest.raises(ValueError, match="brand.facts"):
         load_settings(bad_facts, env_path=None, environ={})
+
+
+def test_profiles_and_default_target(make_config):
+    settings = load_settings(make_config(), env_path=None, environ={})
+    assert settings.profiles == ("유튜브1", "유튜브2", "유튜브3")
+    assert settings.default_target == "sandbox"
+    path = make_config({"browser": {"default_target": "assist"}})
+    assert load_settings(path, env_path=None, environ={}).default_target == "youtube"
+
+
+@pytest.mark.parametrize(
+    "overrides, match",
+    [
+        ({"profiles": []}, "profiles"),
+        ({"profiles": "유튜브1"}, "profiles"),
+        ({"profiles": ["유튜브1", " "]}, "빈 이름"),
+        ({"profiles": ["유튜브1", "유튜브1"]}, "같은 이름"),
+        ({"browser": {"default_target": "real"}}, "default_target"),
+    ],
+)
+def test_bad_profiles_or_target_are_clear_errors(make_config, overrides, match):
+    with pytest.raises(ValueError, match=match):
+        load_settings(make_config(overrides), env_path=None, environ={})

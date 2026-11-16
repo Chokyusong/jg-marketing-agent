@@ -42,14 +42,15 @@
       <p class="desc">탐색부터 맥락 분석, 초안 검토와 실행 관리까지. 모든 댓글은 <span class="gold">{{ disclosure }}</span>로 시작하고 사람이 최종 검토합니다.</p>
     </div>
     <div class="hero-right">
-      <dl class="today is-off" aria-label="오늘 통계 (7단계에서 연결)">
-        <div><dt>TODAY · VIDEOS</dt><dd>–<span class="slash">/</span>{{ daily_max_comments }}</dd></div>
-        <div><dt>DRAFTS</dt><dd>–</dd></div>
-        <div><dt>POSTED</dt><dd>–</dd></div>
-        <div><dt>SUCCESS</dt><dd>–<small>%</small></dd></div>
+      <!-- 오늘 통계(7단계): GET /api/stats/today. 03칸에서 고른 작업 방식의 대상 기준 -->
+      <dl class="today" id="today-stats" aria-label="오늘 통계" aria-live="polite">
+        <div title="오늘 처리한 영상(예약 + 게시) / 하루 상한. 실패는 세지 않습니다"><dt>TODAY · VIDEOS</dt><dd id="stat-videos">–</dd></div>
+        <div title="오늘 만든 댓글 초안"><dt>DRAFTS</dt><dd id="stat-drafts">–</dd></div>
+        <div title="오늘 게시 완료"><dt>POSTED</dt><dd id="stat-posted">–</dd></div>
+        <div title="오늘 게시 성공률(게시 완료 ÷ 게시 시도). 시도가 없으면 –"><dt>SUCCESS</dt><dd id="stat-success">–</dd></div>
       </dl>
       <div class="record">
-        <p class="off-note">오늘 통계 · 7단계에서 연결</p>
+        <p class="off-note" id="today-note">오늘 통계 불러오는 중</p>
         <b>V {{ version }} — LOCAL · {{ stage }}단계</b>
       </div>
     </div>
@@ -211,25 +212,25 @@
       <p class="note">영상의 구체적 장면은 실제 자막 등 검증 가능한 근거가 있을 때만 반영합니다.</p>
     </div>
 
-    <!-- 03 실행 및 관리 (7·8단계에서 연결) -->
+    <!-- 03 실행 및 관리 (7단계: 설정 4줄, 8단계: 큰 버튼과 진행 단계) -->
     <div class="column" id="col-execute">
       <div class="colhead"><h2>실행 및 관리</h2><span class="number">03 / 03</span></div>
 
-      <div class="is-off">
-        <div class="section-mini">브라우저 환경 <span>LOCAL CONTROL · 7·8단계에서 연결</span></div>
-        <fieldset class="settings" disabled>
+      <div class="exec-settings" data-target="{{ default_target }}" data-limit="{{ daily_max_comments }}">
+        <div class="section-mini">브라우저 환경 <span>LOCAL CONTROL</span></div>
+        <fieldset class="settings" id="exec-settings">
           <legend class="sr-only">게시 설정</legend>
           <div class="setrow"><label for="profile">사용 프로필</label>
-            <select id="profile"><option>자동 배정</option>{% for p in profiles %}<option>{{ p }}</option>{% endfor %}</select></div>
-          <div class="setrow"><span class="label">작업 방식</span>
-            <div class="radios">
-              <label class="radio"><input type="radio" name="mode" checked /><i></i>수동 승인 후 게시 (권장)</label>
-              <label class="radio"><input type="radio" name="mode" /><i></i>테스트 페이지 자동 실행</label>
+            <select id="profile"><option value="" selected>자동 배정</option>{% for p in profiles %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></div>
+          <div class="setrow"><span class="label" id="mode-label">작업 방식</span>
+            <div class="radios" role="radiogroup" aria-labelledby="mode-label">
+              <label class="radio" title="실제 유튜브: 프로필과 영상을 열어 주고, 붙여넣기와 게시는 사람이 직접 합니다"><input type="radio" name="mode" value="youtube"{% if default_target == "youtube" %} checked{% endif %} /><i></i>수동 승인 후 게시 (권장)</label>
+              <label class="radio" title="통제된 테스트 페이지에서만 자동으로 입력·게시합니다(실제 유튜브가 아님)"><input type="radio" name="mode" value="sandbox"{% if default_target == "sandbox" %} checked{% endif %} /><i></i>테스트 페이지 자동 실행</label>
             </div></div>
           <div class="setrow"><label for="limit">일일 제한</label>
-            <select id="limit"><option>최대 {{ daily_max_comments }}건</option></select></div>
+            <select id="limit">{% for n in daily_limit_options %}<option value="{{ n }}"{% if n == daily_max_comments %} selected{% endif %}>최대 {{ n }}건</option>{% endfor %}</select></div>
           <div class="setrow"><span class="label">오늘 작업</span>
-            <div class="count">–<span class="slash">/</span>{{ daily_max_comments }} <small>건</small></div></div>
+            <div class="count" id="today-count" aria-live="polite">–<span class="slash">/</span>{{ daily_max_comments }} <small>건</small></div></div>
         </fieldset>
       </div>
 
@@ -247,13 +248,14 @@
     </div>
   </section>
 
-  <!-- 작업 기록 (7단계에서 연결) -->
+  <!-- 작업 기록 (7단계): GET /api/records. 최신이 위, 최근 5줄(전체 보기는 9단계 VIEW ALL) -->
   <section class="history" id="activity">
-    <div class="history-top"><h2>작업 기록</h2><small>ACTIVITY ARCHIVE &nbsp;/&nbsp; 7단계에서 연결</small></div>
+    <div class="history-top"><h2>작업 기록</h2><small id="records-meta">ACTIVITY ARCHIVE &nbsp;/&nbsp; 최근 5줄</small></div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>TIME</th><th>VIDEO</th><th>ACTION</th><th>COMMENT</th><th>STATUS</th><th>PROFILE</th><th><span class="sr-only">댓글 보기</span></th></tr></thead>
-        <tbody><tr><td colspan="7" class="empty-row">기록은 7단계(운영 규칙과 기록)에서 연결합니다.</td></tr></tbody>
+        <colgroup><col class="c-time" /><col class="c-video" /><col class="c-action" /><col class="c-comment" /><col class="c-status" /><col class="c-profile" /><col class="c-link" /></colgroup>
+        <thead><tr><th>TIME</th><th>VIDEO</th><th>ACTION</th><th>COMMENT</th><th>STATUS</th><th>PROFILE</th><th><span class="sr-only">영상 보기</span></th></tr></thead>
+        <tbody id="records-body"><tr><td colspan="7" class="empty-row">아직 기록이 없습니다. 분석 · 초안 생성 · 승인 · 게시가 여기에 시간순(최신이 위)으로 남습니다.</td></tr></tbody>
       </table>
     </div>
   </section>

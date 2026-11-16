@@ -13,6 +13,9 @@
 `superseded`가 된다(영상당 승인 초안 하나).
 
 LLM은 `LLMClient` 규격만 쓴다(`llm` 인자는 그때그때 공급자를 돌려주는 함수).
+
+7단계: 분석·초안 생성·승인을 작업 기록(`runs`)에 남긴다(`ledger`를 넣었을 때). 해낸 것은 info,
+오류로 멈춘 것은 failure와 사유. V11의 이전 글에는 게시한 댓글(다른 영상)도 들어간다.
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ from app.analysis.validator import Validation, normalize
 from app.errors import AppError, ErrorKind
 from app.llm import prompts
 from app.llm.base import LLMClient
+from app.ops.ledger import Ledger
 from app.youtube.quota import Clock
 from app.youtube.url_parser import is_video_id
 
@@ -104,6 +108,7 @@ class DraftService:
         clock: Clock,
         brand_facts: Sequence[str] = (),
         max_attempts: int = MAX_ATTEMPTS,
+        ledger: Ledger | None = None,
     ) -> None:
         self.context = context
         self.checks = checks
@@ -112,6 +117,7 @@ class DraftService:
         self.clock = clock
         self.brand_facts = tuple(brand_facts)
         self.max_attempts = max_attempts
+        self.ledger = ledger
 
     @property
     def rules(self):
@@ -122,6 +128,16 @@ class DraftService:
     def analyze(self, video_id: str) -> Analysis:
         """맥락이 없으면 만들고(3단계) 분석해 저장한다. 같은 영상은 마지막 분석 하나만 남긴다."""
         self._check_id(video_id)
+        try:
+            result = self._analyze(video_id)
+        except AppError as exc:
+            self._record("analyze", "failure", video_id=video_id, reason=exc.message)
+            raise
+        reason = f"핵심 고민 · {result.concern}" if result.concern else "분석 완료"
+        self._record("analyze", "info", video_id=video_id, reason=reason)
+        return result
+
+    def _analyze(self, video_id: str) -> Analysis:
         context = self.context.current(video_id)
         llm = self._llm()
         result = analyzer.analyze(
@@ -178,6 +194,22 @@ class DraftService:
     def generate(self, video_id: str, *, avoid_quotes: Sequence[str] = ()) -> Draft:
         """초안 하나를 만들어 저장한다. 같은 영상의 이전 'draft' 초안은 'superseded'가 된다."""
         self._check_id(video_id)
+        try:
+            draft = self._generate(video_id, avoid_quotes)
+        except AppError as exc:
+            self._record("draft", "failure", video_id=video_id, reason=exc.message)
+            raise
+        if draft.passed:
+            reason = f"규칙 검사 통과 · {draft.attempts}번째 시도"
+        else:
+            reason = f"규칙 검사 {len(draft.validation.failures)}개 걸림 · {draft.attempts}번 시도"
+        self._record(
+            "draft", "info", video_id=video_id, comment_text=draft.body, reason=reason,
+            draft_id=draft.id,
+        )
+        return draft
+
+    def _generate(self, video_id: str, avoid_quotes: Sequence[str]) -> Draft:
         analysis = self.stored_analysis(video_id) or self.analyze(video_id)
         evidence = analyzer.pick_evidence(analysis.evidence, avoid_quotes)
         llm = self._llm()
@@ -324,6 +356,26 @@ class DraftService:
     def approve(self, draft_id: int) -> Draft:
         """지금 글을 다시 검사해 통과한 것만 승인한다. 아니면 409와 걸린 항목."""
         draft = self.get(draft_id)
+        try:
+            approved = self._approve(draft)
+        except AppError as exc:
+            reason = exc.message
+            if exc.kind == ErrorKind.DRAFT_NOT_PASSED:
+                reason = f"규칙 검사 {len(exc.extra.get('failures', []))}개 걸림 · 승인 안 됨"
+            self._record(
+                "approve", "failure", video_id=draft.video_id, comment_text=draft.body,
+                reason=reason, draft_id=draft.id,
+            )
+            raise
+        self._record(
+            "approve", "info", video_id=approved.video_id, comment_text=approved.body,
+            reason="사람이 승인" + (" · 고친 글" if approved.edited_by_human else ""),
+            draft_id=approved.id,
+        )
+        return approved
+
+    def _approve(self, draft: Draft) -> Draft:
+        draft_id = draft.id
         if draft.status == "superseded":
             raise AppError(ErrorKind.DRAFT_SUPERSEDED, detail=f"초안 {draft_id}")
         quote = None if draft.edited_by_human else draft.evidence_quote
@@ -352,16 +404,26 @@ class DraftService:
         return self.get(draft_id)
 
     def previous_texts(self, video_id: str | None = None) -> list[str]:
-        """V11 비교 대상: 승인한 초안(다른 영상 것). 최근 것부터 50개."""
+        """V11 비교 대상: 승인한 초안과 게시한 댓글(다른 영상 것). 최근 50개씩, 겹치면 하나."""
         with db.session(self.db_path) as conn:
             rows = conn.execute(
                 "SELECT body FROM drafts WHERE status='approved' AND video_id IS NOT ? "
                 "ORDER BY approved_at DESC, id DESC LIMIT 50",
                 (video_id,),
             ).fetchall()
-        return [r["body"] for r in rows]
+            posted = conn.execute(
+                "SELECT comment_text FROM runs WHERE action='post' AND result='success' "
+                "AND video_id IS NOT ? AND comment_text <> '' ORDER BY at DESC, id DESC LIMIT 50",
+                (video_id,),
+            ).fetchall()
+        texts = [r["body"] for r in rows] + [r["comment_text"] for r in posted]
+        return list(dict.fromkeys(texts))
 
     # ------------------------------------------------------------ 내부
+
+    def _record(self, action: str, result: str, **fields: Any) -> None:
+        if self.ledger is not None:
+            self.ledger.record(action, result, **fields)
 
     def _recheck(self, video_id: str, text: str, quote: str | None) -> Validation:
         return self.checks.check(

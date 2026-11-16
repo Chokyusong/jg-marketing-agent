@@ -5,6 +5,7 @@
 // [다른 초안 생성]은 이미 쓴 근거를 피해 초안만 다시, [이 초안 승인]은 고친 글을 먼저 저장(PATCH)하고 승인.
 import { api } from './api.js';
 import { draftText, isApproved, loadDraft } from './draft.js';
+import { refreshOps } from './ops.js';
 import { getState, setState, subscribe } from './state.js';
 
 const $ = (id) => document.getElementById(id);
@@ -78,6 +79,7 @@ async function run(videoId, { another = false } = {}) {
     setState({ runError: error });
   } finally {
     stopTicker();
+    refreshOps(); // 분석·초안(성공이든 실패든)이 작업 기록과 오늘 통계에 남는다(7단계)
   }
 }
 
@@ -102,6 +104,8 @@ async function approve() {
   } catch (error) {
     if (!mine(videoId)) return;
     setState({ approving: false, runError: error });
+  } finally {
+    refreshOps(); // 승인(거절도)이 작업 기록에 남는다(7단계)
   }
 }
 

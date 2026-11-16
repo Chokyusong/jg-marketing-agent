@@ -5,7 +5,7 @@ import re
 import pytest
 
 JS_FILES = ["app.js", "api.js", "state.js", "format.js", "discover.js", "analysis.js", "flow.js",
-            "topbar.js", "context.js", "draft.js", "report.js"]
+            "topbar.js", "context.js", "draft.js", "report.js", "ops.js"]
 
 
 @pytest.fixture
@@ -52,15 +52,15 @@ def test_discover_column_is_wired(page):
 
 
 def test_unconnected_parts_are_off_and_labelled(page):
-    for label in ("7단계에서 연결", "8단계에서 연결"):
-        assert label in page
+    assert "8단계에서 연결" in page
     assert "3단계에서 연결" not in page  # 3단계에서 켠 요소는 문구도 지운다
     assert "5단계에서 연결" not in page  # 5단계에서 켠 분석·AI 초안·다른 초안·승인도
     assert "6단계에서 연결" not in page  # 6단계에서 켠 요소(초안 글 상자·규칙 검사)도
     assert "4단계에서 연결" not in page  # 4단계에서 켠 위 줄 AI 상태도
-    assert '<dl class="today is-off"' in page
-    assert '<fieldset class="settings" disabled>' in page
-    assert '<button type="button" class="primary" disabled>' in page
+    assert "7단계에서 연결" not in page  # 7단계에서 켠 오늘 통계·03칸 설정·작업 기록도
+    assert '<dl class="today is-off"' not in page and '<dl class="today"' in page
+    assert '<fieldset class="settings" disabled>' not in page
+    assert '<button type="button" class="primary" disabled>' in page  # 큰 버튼은 8단계
     assert '<button type="button" disabled title="9단계에서 연결">SETTINGS</button>' in page
 
 
@@ -182,9 +182,9 @@ def test_context_js_wires_the_three_apis(make_client):
 
 
 def test_version_shows_current_stage(page):
-    # 버전은 단계가 끝날 때마다 하나씩 올린다(실행 순서 3 → P → 6 → 4 → 5: 0.3.0 … 0.6.0)
-    assert "V 0.6.0 — LOCAL · 5단계" in page
-    assert "STAGE 5" in page
+    # 버전은 단계가 끝날 때마다 하나씩 올린다(실행 순서 3 → P → 6 → 4 → 5 → 7: 0.3.0 … 0.7.0)
+    assert "V 0.7.0 — LOCAL · 7단계" in page
+    assert "STAGE 7" in page
 
 
 # ---------------------------------------------------------------- 6단계: 02칸 댓글 초안·규칙 검사
@@ -294,3 +294,81 @@ def test_report_lines_are_clipped_to_one_line(make_client):
     for token in ("white-space: nowrap", "overflow: hidden", "text-overflow: ellipsis"):
         assert token in rule
     assert ".run-steps li.is-current" in css and ".line-btn.approve-btn" in css
+
+
+# ---------------------------------------------------------------- 7단계: 오늘 통계·설정·기록
+
+
+def test_today_stats_are_on_and_start_empty(page):
+    today = _section(page, '<dl class="today"', "</dl>")
+    for dd_id, label in (("stat-videos", "TODAY · VIDEOS"), ("stat-drafts", "DRAFTS"),
+                         ("stat-posted", "POSTED"), ("stat-success", "SUCCESS")):
+        assert f'<dt>{label}</dt><dd id="{dd_id}">–</dd>' in today  # 값은 화면이 API로 채운다
+    assert 'id="today-note"' in page
+    assert "오늘 통계 · 7단계에서 연결" not in page
+
+
+def test_execute_settings_are_on(page):
+    execute = _section(page, 'id="col-execute"', 'id="activity"')
+    settings = _section(execute, '<div class="exec-settings"', '<div class="asidebox">')
+    assert 'class="is-off"' not in settings
+    assert 'data-target="sandbox"' in settings and 'data-limit="10"' in settings
+    assert "LOCAL CONTROL</span>" in settings and "7·8단계에서 연결" not in settings
+    assert '<option value="" selected>자동 배정</option>' in settings
+    for name in ("유튜브1", "유튜브2", "유튜브3"):
+        assert f'<option value="{name}">{name}</option>' in settings
+    # 작업 방식 두 가지: 기본은 config.yaml browser.default_target(sandbox)
+    assert re.search(r'name="mode" value="youtube" />.*수동 승인 후 게시 \(권장\)', settings)
+    assert re.search(r'name="mode" value="sandbox" checked />.*테스트 페이지 자동 실행', settings)
+    assert "통제된 테스트 페이지에서만" in settings
+    # 일일 제한은 설정값 이하로만 고른다
+    assert re.findall(r'<option value="(\d+)"[^>]*>최대 \d+건', settings) == ["10", "5", "3", "1"]
+    assert '<option value="10" selected>최대 10건</option>' in settings
+    assert 'id="today-count"' in settings
+    # 큰 실행 버튼과 진행 단계 표시는 8단계까지 꺼 둔다
+    assert '<ol class="job-steps" aria-label="진행 단계 (8단계에서 연결)">' in execute
+
+
+def test_daily_limit_options_follow_config(make_client):
+    page = make_client(key=None, overrides={"limits": {"daily_max_comments": 3},
+                                            "browser": {"default_target": "assist"}}).get("/").text
+    settings = _section(page, '<div class="exec-settings"', '<div class="asidebox">')
+    assert re.findall(r'<option value="(\d+)"[^>]*>최대 \d+건', settings) == ["3", "1"]
+    assert 'name="mode" value="youtube" checked />' in settings  # assist → 실제 유튜브
+
+
+def test_records_table_is_on(page):
+    history = _section(page, 'id="activity"', "</section>")
+    assert "7단계에서 연결" not in history
+    assert 'id="records-meta">ACTIVITY ARCHIVE &nbsp;/&nbsp; 최근 5줄<' in history
+    for th in ("TIME", "VIDEO", "ACTION", "COMMENT", "STATUS", "PROFILE"):
+        assert f"<th>{th}</th>" in history
+    assert '<tbody id="records-body">' in history
+    assert "아직 기록이 없습니다." in history
+    assert '<col class="c-comment" />' in history
+
+
+def test_ops_js_wires_the_three_apis(make_client):
+    client = make_client(key=None)
+    api = client.get("/static/js/api.js").text
+    for snippet in ("`/api/profiles?target=", "`/api/records?limit=", "`/api/stats/today?"):
+        assert snippet in api, snippet
+    js = client.get("/static/js/ops.js").text
+    for text in ("api.todayStats(ops.target, ops.dailyLimit)", "api.records(RECENT_ROWS)",
+                 "const RECENT_ROWS = 5;", "timeZone: 'Asia/Seoul'", "'–'",
+                 "setInterval(refreshOps", "export async function refreshOps()"):
+        assert text in js, text
+    assert "initOps" in client.get("/static/js/app.js").text
+    report = client.get("/static/js/report.js").text
+    assert report.count("refreshOps();") == 2  # 분석·초안이 끝날 때, 승인이 끝날 때
+    discover = client.get("/static/js/discover.js").text
+    assert "댓글 단 영상 · " in discover and "video.commented" in discover
+
+
+def test_records_and_commented_styles(make_client):
+    css = make_client(key=None).get("/static/css/style.css").text
+    assert ".video-meta .commented {" in css and "var(--gold)" in css.split(
+        ".video-meta .commented {", 1)[1].split("}", 1)[0]
+    assert "table-layout: fixed" in css
+    for tone in (".history td.st.is-ok b", ".history td.st.is-bad b"):
+        assert tone in css

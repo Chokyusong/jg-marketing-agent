@@ -17,6 +17,9 @@ from app.config import Settings, load_settings
 from app.errors import AppError
 from app.llm.base import LLMClient, LLMHealth
 from app.llm.registry import build_llm
+from app.ops.ledger import Ledger
+from app.ops.profiles import ProfileService
+from app.ops.rules import PostRules
 from app.youtube.client import YouTubeClient
 from app.youtube.quota import Clock, QuotaTracker, SearchCache, utc_now
 from app.youtube.service import VideoService
@@ -34,6 +37,10 @@ class Services:
     llm_error: AppError | None = None
     # 5단계: 분석과 초안. LLM은 그때그때 `require_llm()`으로 받는다(테스트가 바꿔 끼울 수 있게)
     drafts: DraftService = field(default=None)  # type: ignore[assignment]
+    # 7단계: 운영 규칙(영상당 1개·하루 상한), 프로필, 작업 기록
+    rules: PostRules = field(default=None)  # type: ignore[assignment]
+    profiles: ProfileService = field(default=None)  # type: ignore[assignment]
+    ledger: Ledger = field(default=None)  # type: ignore[assignment]
 
     def require_llm(self) -> LLMClient:
         if self.llm is None:
@@ -96,6 +103,16 @@ def build_services(
         llm=llm,
         llm_error=llm_error,
     )
+    services.ledger = Ledger(
+        settings.db_path, daily_limit=settings.daily_max_comments, clock=clock
+    )
+    services.rules = PostRules(
+        settings.db_path,
+        daily_limit=settings.daily_max_comments,
+        profiles=settings.profiles,
+        clock=clock,
+    )
+    services.profiles = ProfileService(settings.profiles, db_path=settings.db_path)
     services.drafts = DraftService(
         context,
         checks,
@@ -103,6 +120,7 @@ def build_services(
         db_path=settings.db_path,
         clock=clock,
         brand_facts=settings.brand_facts,
+        ledger=services.ledger,
     )
     return services
 

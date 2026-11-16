@@ -152,6 +152,9 @@ select { background: var(--panel); color: #cfcac3; border: 1px solid var(--line)
 .video-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; line-height: 1.45; font-weight: 500; color: #e6e2dc; }
 .video-meta { display: block; font-size: 11.5px; color: var(--dim); margin-top: 4px; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick { width: 13px; height: 13px; border: 1px solid #888; border-radius: 50%; }
+/* 7단계: 이미 댓글을 단 영상(작은 금색 글씨, 메타 줄 맨 앞 — 줄 수를 늘리지 않는다) */
+.video-meta .commented { color: var(--gold); font-size: 11px; letter-spacing: 0.03em; margin-right: 6px; }
+.video-meta .commented::after { content: "·"; margin-left: 6px; color: var(--dim); }
 .note { color: #b4a58e; font-size: 11.5px; line-height: 1.6; margin-top: 10px; }
 .note b { font-weight: 400; color: var(--text); }
 
@@ -264,6 +267,8 @@ select { background: var(--panel); color: #cfcac3; border: 1px solid var(--line)
 .radio i { width: 12px; height: 12px; border: 1px solid #7e766c; border-radius: 50%; display: inline-block; flex: none; }
 .radio input:checked + i::before { content: ""; display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); margin: 2px; }
 .count { color: var(--gold); font: 18px var(--latin); }
+.count .slash { font-size: 15px; }
+.settings select:focus { border-color: var(--gold); outline: none; }
 .count small { font: 11px var(--sans); color: var(--dim); }
 .asidebox { border: 1px solid var(--line); padding: 15px; margin-top: 16px; }
 .aside-title { font-family: var(--serif); font-size: 16px; }
@@ -287,6 +292,23 @@ select { background: var(--panel); color: #cfcac3; border: 1px solid var(--line)
 .history table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
 .history th { color: var(--dim); font-size: 11px; font-weight: 400; border-bottom: 1px solid var(--line); padding: 10px 8px; letter-spacing: 0.08em; }
 .history td { padding: 12px 8px; border-bottom: 1px solid var(--line-soft); color: #c8c6c2; }
+/* 7단계 작업 기록: 열 너비를 고정하고 긴 제목·댓글은 한 줄 말줄임(전체는 마우스를 올리면) */
+.history table { table-layout: fixed; }
+.history col.c-time { width: 96px; }
+.history col.c-video { width: 21%; }
+.history col.c-action { width: 92px; }
+.history col.c-status { width: 23%; }
+.history col.c-profile { width: 150px; }
+.history col.c-link { width: 34px; }
+.history td.clip, .history td.st { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history td.nowrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history td.st b { font-weight: 400; }
+.history td.st.is-ok b { color: var(--text); }
+.history td.st.is-bad b, .history td.st.is-bad .st-reason { color: var(--bad); }
+.history td.st.is-info b { color: var(--sub); }  /* 분석·초안·승인 기록: 완료(밝은 글씨). 금색은 진행 중(8단계) */
+.history td.st .st-reason { color: var(--dim); font-size: 11.5px; }
+.history td.link { text-align: center; }
+.history td.link a { color: var(--gold); text-decoration: none; }
 .empty-row { color: var(--dim) !important; text-align: left; }
 .bottom { display: flex; justify-content: space-between; gap: 12px; color: var(--dim); font: 11px var(--latin); letter-spacing: 0.11em; padding-top: 18px; }
 

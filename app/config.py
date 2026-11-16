@@ -35,6 +35,9 @@ DEFAULT_OLLAMA_MODEL = "qwen3.8:27b"
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # D4 기본값(PLAYBOOK 2절): 대표가 정하지 않으면 이 한 줄만 운명원에 대한 사실로 쓴다
 DEFAULT_BRAND_FACTS = ("운명원은 연애 사주 상담을 하는 곳이다",)
+# 7단계: 과제 설정 예시의 프로필 이름(화면 이름. 폴더 이름은 profile-1… — app/ops/profiles.py)
+DEFAULT_PROFILES = ("유튜브1", "유튜브2", "유튜브3")
+POST_TARGETS = ("sandbox", "youtube")  # 게시 대상: 통제된 테스트 페이지 / 실제 유튜브(사람이 게시)
 
 
 @dataclass(frozen=True)
@@ -91,6 +94,9 @@ class Settings:
     llm: LLMSettings = field(default_factory=LLMSettings)
     # providers.*.api_key_env로 이름이 적힌 환경 변수의 값(가리기 전용, 12단계 전까지 쓰지 않음)
     llm_secret_values: tuple[str, ...] = field(default=(), repr=False)
+    # 7단계: 프로필 이름(순서가 곧 폴더 번호)과 기본 게시 대상(default_target: assist → youtube)
+    profiles: tuple[str, ...] = DEFAULT_PROFILES
+    default_target: str = "sandbox"
 
     @property
     def youtube_key_configured(self) -> bool:
@@ -143,6 +149,29 @@ def _brand_facts(brand: Any) -> tuple[str, ...]:
     if not isinstance(raw, list):
         raise ValueError("brand.facts는 문장 목록이어야 합니다.")
     return tuple(str(f).strip() for f in raw if str(f).strip())
+
+
+def _profiles(raw: Any) -> tuple[str, ...]:
+    """`profiles`(이름 목록). 없으면 과제 예시 세 개. 빈 이름·같은 이름은 켤 때 알린다."""
+    if raw is None:
+        return DEFAULT_PROFILES
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("profiles는 이름 목록이어야 합니다(예: [유튜브1, 유튜브2, 유튜브3]).")
+    names = tuple(str(n).strip() for n in raw)
+    if any(not n for n in names):
+        raise ValueError("profiles에 빈 이름이 있습니다.")
+    if len(set(names)) != len(names):
+        raise ValueError("profiles에 같은 이름이 두 번 있습니다.")
+    return names
+
+
+def _default_target(browser: Any) -> str:
+    """`browser.default_target`: sandbox | assist(실제 유튜브, 게시 기록의 대상 이름은 youtube)."""
+    raw = str((browser or {}).get("default_target") or "sandbox").strip().lower()
+    target = {"assist": "youtube"}.get(raw, raw)
+    if target not in POST_TARGETS:
+        raise ValueError("browser.default_target은 sandbox 또는 assist여야 합니다.")
+    return target
 
 
 def _llm_settings(raw: Any, env: dict[str, str]) -> LLMSettings:
@@ -228,4 +257,6 @@ def load_settings(
         youtube_api_key=_clean(env.get("YOUTUBE_API_KEY")),
         llm=llm_settings,
         llm_secret_values=llm_secrets,
+        profiles=_profiles(rules.get("profiles")),
+        default_target=_default_target(rules.get("browser")),
     )

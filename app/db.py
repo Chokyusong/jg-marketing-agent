@@ -94,6 +94,63 @@ MIGRATIONS: list[str] = [
     CREATE INDEX drafts_video ON drafts(video_id, id);
     CREATE INDEX drafts_status ON drafts(status);
     """,
+    # 7단계: 운영 규칙과 기록(DESIGN 4절 · PLAYBOOK 7단계)
+    # - posts: 영상당 1개는 UNIQUE(target, video_id)가 막는다. 하루 상한은 `day`(한국 날짜)로 센다.
+    #   실패(failed)는 상한에 세지 않고, 같은 영상을 다시 시도하면 그 행을 reserved로 되돌린다.
+    #   video_id에 외래 키를 걸지 않는다(영상 행이 지워져도 "이미 단 영상" 기록은 남아야 한다).
+    # - runs: 지우지 않는 기록(트리거가 DELETE를 막는다). `day`는 통계용 한국 날짜.
+    # - job_events: 작업 진행 상태(8단계 작업 서비스가 쓴다).
+    """
+    CREATE TABLE posts (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        target      TEXT NOT NULL CHECK (target IN ('sandbox', 'youtube')),
+        video_id    TEXT NOT NULL,
+        profile     TEXT NOT NULL,
+        draft_id    INTEGER NOT NULL,
+        status      TEXT NOT NULL DEFAULT 'reserved'
+                    CHECK (status IN ('reserved', 'posted', 'failed')),
+        day         TEXT NOT NULL,                 -- 예약한 한국 날짜 YYYY-MM-DD
+        attempts    INTEGER NOT NULL DEFAULT 1,    -- 실패 뒤 다시 예약할 때마다 하나씩
+        reason      TEXT NOT NULL DEFAULT '',      -- 마지막 실패 사유
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        posted_at   TEXT,
+        UNIQUE (target, video_id)
+    );
+    CREATE INDEX posts_day ON posts(target, day, status);
+    CREATE INDEX posts_profile ON posts(target, profile, updated_at);
+    CREATE TABLE runs (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        at               TEXT NOT NULL,
+        day              TEXT NOT NULL,            -- 한국 날짜(오늘 통계)
+        action           TEXT NOT NULL CHECK (action IN ('analyze', 'draft', 'approve', 'post')),
+        video_id         TEXT NOT NULL DEFAULT '',
+        video_title      TEXT NOT NULL DEFAULT '',
+        profile          TEXT NOT NULL DEFAULT '',
+        comment_text     TEXT NOT NULL DEFAULT '',
+        target           TEXT NOT NULL DEFAULT '' CHECK (target IN ('', 'sandbox', 'youtube')),
+        result           TEXT NOT NULL CHECK (result IN ('success', 'failure', 'info')),
+        reason           TEXT NOT NULL DEFAULT '',
+        screenshot_path  TEXT NOT NULL DEFAULT '',
+        job_id           TEXT NOT NULL DEFAULT '',
+        draft_id         INTEGER,
+        post_id          INTEGER
+    );
+    CREATE INDEX runs_at ON runs(at, id);
+    CREATE INDEX runs_day ON runs(day, action, target);
+    CREATE TRIGGER runs_keep BEFORE DELETE ON runs
+    BEGIN
+        SELECT RAISE(ABORT, 'runs는 지우지 않는 기록입니다');
+    END;
+    CREATE TABLE job_events (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id   TEXT NOT NULL,
+        at       TEXT NOT NULL,
+        state    TEXT NOT NULL,
+        message  TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX job_events_job ON job_events(job_id, id);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)
@@ -128,5 +185,26 @@ def session(path: Path) -> Iterator[sqlite3.Connection]:
     try:
         with conn:
             yield conn
+    finally:
+        conn.close()
+
+
+@contextmanager
+def immediate(path: Path) -> Iterator[sqlite3.Connection]:
+    """`BEGIN IMMEDIATE` 거래(7단계 운영 규칙). 시작할 때 쓰기 잠금을 잡는다.
+
+    두 요청이 동시에 와도 한쪽은 다른 쪽이 commit할 때까지 기다린다(연결 timeout 10초).
+    그래서 "세기 → 확인 → 넣기"가 끼어들기 없이 한 번에 된다. 예외면 rollback.
+    """
+    conn = connect(path)
+    conn.isolation_level = None  # 거래를 직접 연다(파이썬의 자동 BEGIN을 끈다)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield conn
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+        conn.execute("COMMIT")
     finally:
         conn.close()

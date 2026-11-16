@@ -78,11 +78,22 @@ async function runResolve() {
   }
 }
 
+// 7단계: 댓글을 단(게시 완료) 대상. 없으면 null
+export function commentedText(commented) {
+  if (!commented) return null;
+  const where = [commented.sandbox ? '테스트 페이지' : null, commented.youtube ? '유튜브' : null].filter(Boolean);
+  return where.length ? `댓글 단 영상 · ${where.join('·')}` : null;
+}
+
 function videoRow(video, selected) {
   const meta = [video.channel_title, formatViews(video.view_count), formatAgo(video.published_at)].filter(Boolean);
+  const done = commentedText(video.commented);
   const body = el('span', {}, [
     el('span', { class: 'video-title', text: video.title }),
-    el('span', { class: 'video-meta', text: meta.join(' · ') }),
+    el('span', { class: 'video-meta' }, [
+      done ? el('span', { class: 'commented', text: done }) : null,
+      meta.join(' · '),
+    ]),
   ]);
   return el(
     'button',

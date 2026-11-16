@@ -69,4 +69,12 @@ export const api = {
   listDrafts: (videoId) => request(`/api/drafts?video_id=${encodeURIComponent(videoId)}`),
   updateDraft: (id, body) => request(`/api/drafts/${id}`, { method: 'PATCH', body: JSON.stringify({ body }) }),
   approveDraft: (id) => request(`/api/drafts/${id}/approve`, { method: 'POST' }),
+  // 7단계: 운영 규칙과 기록
+  profiles: (target) => request(`/api/profiles?target=${encodeURIComponent(target)}`),
+  records: (limit) => request(`/api/records?limit=${encodeURIComponent(limit)}`),
+  todayStats: (target, dailyLimit) => {
+    const params = new URLSearchParams({ target });
+    if (dailyLimit) params.set('daily_limit', String(dailyLimit));
+    return request(`/api/stats/today?${params}`);
+  },
 };
