@@ -18,7 +18,7 @@ ServicesDep = Annotated[Services, Depends(get_services)]
 def list_videos(
     services: ServicesDep,
     q: Annotated[str | None, Query(max_length=100)] = None,
-    order: Literal["date", "viewCount"] = "date",
+    order: Literal["date", "relevance", "viewCount"] = "date",
     period: Literal["day", "week", "month", "any"] = "week",
     max_results: Annotated[int | None, Query(ge=1, le=50)] = None,
 ) -> VideoListOut:

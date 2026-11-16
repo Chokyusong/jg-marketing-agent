@@ -3,247 +3,214 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>유튜브 마케팅 AI 에이전트 | JG Marketing AI Agent</title>
+  <title>JG Marketing AI Agent — 유튜브 마케팅 에이전트</title>
   <link rel="stylesheet" href="/static/css/style.css" />
   <script type="module" src="/static/js/app.js"></script>
 </head>
 <body>
-  <!-- 아이콘(인라인 SVG, 외부 글꼴·CDN 없음) -->
-  <svg class="sprite" aria-hidden="true" focusable="false">
-    <symbol id="i-logo" viewBox="0 0 24 24"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m10 9 5 3-5 3z"/></symbol>
-    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/></symbol>
-    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></symbol>
-    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/></symbol>
-    <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m10 8.5 5.5 3.5-5.5 3.5z"/></symbol>
-    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></symbol>
-    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></symbol>
-    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></symbol>
-    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
-    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
-    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
-    <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/></symbol>
-    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></symbol>
-  </svg>
+<main class="shell" id="top">
 
-  <div class="shell" id="top">
-    <aside class="sidebar" id="sidebar" aria-label="사이드바">
-      <div class="brand">
-        <svg class="ico brand-ico"><use href="#i-logo"/></svg>
-        <div class="brand-text"><strong>JG Marketing</strong><span>AI Agent</span></div>
+  <!-- 위 줄: 로고 · 메뉴 · 시스템 상태 (UI_SPEC 2.1) -->
+  <header class="top">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">JG</div>
+      <div class="brand-copy">MARKETING<br />AI AGENT</div>
+      <span class="sr-only">JG Marketing AI Agent</span>
+    </div>
+    <button type="button" class="menu-toggle" id="menu-toggle" aria-controls="nav" aria-expanded="false">MENU</button>
+    <nav class="nav" id="nav" aria-label="메뉴">
+      <a href="#top" data-target="top" class="on" aria-current="true">DASHBOARD</a>
+      <a href="#col-discover" data-target="col-discover">DISCOVER</a>
+      <a href="#col-analyze" data-target="col-analyze">ANALYZE</a>
+      <a href="#col-execute" data-target="col-execute">EXECUTE</a>
+      <a href="#activity" data-target="activity">ACTIVITY</a>
+      <button type="button" disabled title="9단계에서 연결">SETTINGS</button>
+    </nav>
+    <ul class="system" aria-label="시스템 상태">
+      <li><i class="dot is-off" aria-hidden="true"></i><span class="sys-name">AI</span><span class="sys-text">4단계에서 연결</span></li>
+      <li><i class="dot is-wait" id="status-youtube-dot" aria-hidden="true"></i><span class="sys-name">YOUTUBE</span><span class="sys-text" id="status-youtube">확인 중</span></li>
+      <li><i class="dot is-off" aria-hidden="true"></i><span class="sys-name">BROWSER</span><span class="sys-text">8단계에서 연결</span></li>
+    </ul>
+  </header>
+
+  <!-- 제목 영역 + 오늘 통계 4개 (UI_SPEC 2.2, 3절 A2) -->
+  <section class="hero">
+    <div class="hero-copy">
+      <p class="eyebrow">INTELLIGENT CONTENT WORKFLOW</p>
+      <h1>영상을 이해하고, 다음 행동을 설계합니다.</h1>
+      <p class="desc">탐색부터 맥락 분석, 초안 검토와 실행 관리까지. 모든 댓글은 <span class="gold">{{ disclosure }}</span>로 시작하고 사람이 최종 검토합니다.</p>
+    </div>
+    <div class="hero-right">
+      <dl class="today is-off" aria-label="오늘 통계 (7단계에서 연결)">
+        <div><dt>TODAY · VIDEOS</dt><dd>–<span class="slash">/</span>{{ daily_max_comments }}</dd></div>
+        <div><dt>DRAFTS</dt><dd>–</dd></div>
+        <div><dt>POSTED</dt><dd>–</dd></div>
+        <div><dt>SUCCESS</dt><dd>–<small>%</small></dd></div>
+      </dl>
+      <div class="record">
+        <p class="off-note">오늘 통계 · 7단계에서 연결</p>
+        <b>V {{ version }} — LOCAL · {{ stage }}단계</b>
+      </div>
+    </div>
+  </section>
+
+  <!-- 흐름 띠 (UI_SPEC 2.3) -->
+  <section class="progress" aria-label="작업 흐름">
+    <div class="step is-current" data-step="1">
+      <div class="focus-icon"><div class="corners"></div><span>01</span></div>
+      <div class="text"><div class="phase">DISCOVER</div><b>영상 탐색</b><p>영상의 맥락을 발견합니다.</p></div>
+    </div>
+    <div class="step" data-step="2">
+      <div class="focus-icon"><div class="corners"></div><span>02</span></div>
+      <div class="text"><div class="phase">UNDERSTAND</div><b>AI 분석 · 초안</b><p>콘텐츠의 고민을 읽습니다.</p></div>
+    </div>
+    <div class="step" data-step="3">
+      <div class="focus-icon"><div class="corners"></div><span>03</span></div>
+      <div class="text"><div class="phase">EXECUTE</div><b>실행 · 관리</b><p>검토 후 작업을 완료합니다.</p></div>
+    </div>
+  </section>
+
+  <section class="workspace" aria-label="세 단계 작업 화면">
+
+    <!-- 01 영상 탐색 (2단계에서 연결) -->
+    <div class="column" id="col-discover">
+      <div class="colhead"><h2>영상 탐색</h2><span class="number">01 / 03</span></div>
+
+      <div class="tabs" role="tablist" aria-label="영상 불러오는 방법">
+        <button type="button" class="tab" role="tab" id="tab-keyword" aria-controls="pane-keyword" aria-selected="true">키워드 검색</button>
+        <button type="button" class="tab" role="tab" id="tab-url" aria-controls="pane-url" aria-selected="false" tabindex="-1">URL 직접 입력</button>
       </div>
 
-      <nav class="menu" aria-label="메뉴">
-        <a class="menu-item is-active" href="#top" data-target="top" aria-current="page">
-          <svg class="ico"><use href="#i-home"/></svg><span class="menu-label">대시보드</span></a>
-        <a class="menu-item" href="#col-discover" data-target="col-discover">
-          <svg class="ico"><use href="#i-search"/></svg><span class="menu-label">영상 탐색</span></a>
-        <a class="menu-item" href="#col-analysis" data-target="col-analysis">
-          <svg class="ico"><use href="#i-spark"/></svg><span class="menu-label">AI 분석·생성</span></a>
-        <a class="menu-item" href="#col-run" data-target="col-run">
-          <svg class="ico"><use href="#i-play"/></svg><span class="menu-label">실행 관리</span></a>
-        <button type="button" class="menu-item" disabled title="7단계에서 연결">
-          <svg class="ico"><use href="#i-list"/></svg><span class="menu-label">작업 기록</span><span class="soon">7단계</span></button>
-        <button type="button" class="menu-item" disabled title="9단계에서 연결">
-          <svg class="ico"><use href="#i-user"/></svg><span class="menu-label">계정 관리</span><span class="soon">9단계</span></button>
-        <button type="button" class="menu-item" disabled title="9단계에서 연결">
-          <svg class="ico"><use href="#i-gear"/></svg><span class="menu-label">설정</span><span class="soon">9단계</span></button>
-      </nav>
-
-      <section class="sys" aria-label="시스템 상태">
-        <h2 class="sys-title">시스템 상태</h2>
-        <ul class="sys-list">
-          <li><span class="dot is-off" aria-hidden="true"></span><span class="sys-name">AI (Ollama)</span><span class="sys-text">4단계에서 연결</span></li>
-          <li><span class="dot is-wait" id="status-youtube-dot" aria-hidden="true"></span><span class="sys-name">YouTube API</span><span class="sys-text" id="status-youtube">확인 중…</span></li>
-          <li><span class="dot is-off" aria-hidden="true"></span><span class="sys-name">브라우저</span><span class="sys-text">8단계에서 연결</span></li>
-        </ul>
-      </section>
-
-      <p class="version">v{{ version }} · {{ stage }}단계</p>
-    </aside>
-    <div class="scrim" id="scrim" hidden></div>
-
-    <div class="main">
-      <header class="topbar">
-        <button type="button" class="menu-toggle" id="menu-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="메뉴 열기">
-          <svg class="ico"><use href="#i-menu"/></svg>
-        </button>
-        <div class="heading">
-          <h1>유튜브 마케팅 AI 에이전트</h1>
-          <span class="tag">TRACK 2 · 제이지그룹 과제</span>
-        </div>
-        <p class="quota" id="quota" title="YouTube Data API 하루 할당량(한국 날짜 기준 사용량)">
-          YouTube 할당량 <strong id="quota-used">–</strong> / <span id="quota-limit">10,000</span>
-        </p>
-      </header>
-
-      <section class="stats" aria-label="오늘 통계 (7단계에서 연결)">
-        <article class="stat is-off">
-          <p class="stat-label">오늘 처리한 영상</p>
-          <p class="stat-value">– <small>/ {{ daily_max_comments }}</small></p>
-          <div class="bar" aria-hidden="true"><span style="width:0"></span></div>
-          <p class="stat-note">7단계에서 연결</p>
-        </article>
-        <article class="stat is-off">
-          <p class="stat-label">생성한 댓글 초안</p>
-          <p class="stat-value">– <small>개</small></p>
-          <p class="stat-note">5단계에서 연결</p>
-        </article>
-        <article class="stat is-off">
-          <p class="stat-label">게시 완료</p>
-          <p class="stat-value">– <small>개</small></p>
-          <p class="stat-note">7단계에서 연결</p>
-        </article>
-        <article class="stat is-off">
-          <p class="stat-label">성공률</p>
-          <p class="stat-value">– <small>%</small></p>
-          <p class="stat-note">7단계에서 연결</p>
-        </article>
-      </section>
-
-      <section class="columns" aria-label="세 단계 작업 화면">
-        <!-- ① 영상 탐색 (2단계에서 연결) -->
-        <article class="panel" id="col-discover" aria-labelledby="h-discover">
-          <header class="panel-head">
-            <h2 id="h-discover"><span class="num">①</span> 영상 탐색</h2>
-          </header>
-
-          <div class="tabs" role="tablist" aria-label="영상 불러오는 방법">
-            <button type="button" role="tab" id="tab-keyword" aria-controls="pane-keyword" aria-selected="true">키워드 검색</button>
-            <button type="button" role="tab" id="tab-url" aria-controls="pane-url" aria-selected="false" tabindex="-1">URL 직접 입력</button>
+      <div role="tabpanel" id="pane-keyword" aria-labelledby="tab-keyword">
+        <form id="search-form">
+          <div class="search">
+            <input class="field" id="q" name="q" type="search" value="{{ default_query }}" maxlength="100" autocomplete="off" aria-label="유튜브 검색어" placeholder="검색 키워드를 입력하세요" />
+            <button type="submit" id="search-btn">영상 찾기 ↗</button>
           </div>
-
-          <div role="tabpanel" id="pane-keyword" aria-labelledby="tab-keyword">
-            <form class="search" id="search-form">
-              <label class="sr-only" for="q">검색어</label>
-              <div class="search-row">
-                <div class="input-ico">
-                  <svg class="ico"><use href="#i-search"/></svg>
-                  <input id="q" name="q" type="search" value="{{ default_query }}" maxlength="100" autocomplete="off" />
-                </div>
-                <button type="submit" class="btn btn-primary" id="search-btn">영상 불러오기</button>
-              </div>
-              <div class="filters">
-                <label>업로드 기간
-                  <select name="period" id="period">
-                    <option value="day">최근 1일</option>
-                    <option value="week" selected>최근 1주</option>
-                    <option value="month">최근 1개월</option>
-                    <option value="any">전체</option>
-                  </select>
-                </label>
-                <label>정렬
-                  <select name="order" id="order">
-                    <option value="date" selected>최신순</option>
-                    <option value="viewCount">조회수순</option>
-                  </select>
-                </label>
-                <label>결과 수
-                  <select name="max_results" id="max-results">
-                    {% for n in max_results_options %}
-                    <option value="{{ n }}"{% if n == default_max_results %} selected{% endif %}>{{ n }}개</option>
-                    {% endfor %}
-                  </select>
-                </label>
-              </div>
-            </form>
-          </div>
-
-          <div role="tabpanel" id="pane-url" aria-labelledby="tab-url" hidden>
-            <form class="search" id="resolve-form">
-              <label class="sr-only" for="video-url">유튜브 영상 주소</label>
-              <div class="search-row">
-                <div class="input-ico">
-                  <svg class="ico"><use href="#i-link"/></svg>
-                  <input id="video-url" name="url" type="text" placeholder="https://www.youtube.com/watch?v=…" autocomplete="off" />
-                </div>
-                <button type="submit" class="btn btn-primary" id="resolve-btn">불러오기</button>
-              </div>
-              <p class="hint">watch·youtu.be·shorts·live 주소와 영상 ID(11자)를 받습니다.</p>
-            </form>
-          </div>
-
-          <div class="alert" id="discover-error" role="alert" hidden>
-            <svg class="ico"><use href="#i-alert"/></svg>
-            <div><p class="alert-msg" id="discover-error-msg"></p><p class="alert-action" id="discover-error-action"></p></div>
-          </div>
-
-          <p class="result-meta" id="result-meta" aria-live="polite"></p>
-          <div class="video-list" id="video-list" aria-label="영상 목록" aria-busy="false">
-            <p class="empty" id="video-empty">검색어가 미리 들어 있습니다. <strong>[영상 불러오기]</strong>를 누르면 최신 영상이 뜹니다.</p>
-          </div>
-        </article>
-
-        <!-- ② AI 분석 · 댓글 생성 (3·5·6단계에서 연결) -->
-        <article class="panel is-off" id="col-analysis" aria-labelledby="h-analysis">
-          <header class="panel-head">
-            <h2 id="h-analysis"><span class="num">②</span> AI 분석 · 댓글 생성</h2>
-            <span class="pill pill-off">5단계에서 연결</span>
-          </header>
-
-          <div class="selected" id="selected-summary">
-            <p class="empty-sm">①에서 영상을 고르면 여기에 표시됩니다.</p>
-          </div>
-
-          <div class="tabs" role="tablist" aria-label="분석 보기">
-            <button type="button" role="tab" aria-selected="true" disabled>분석 결과</button>
-            <button type="button" role="tab" aria-selected="false" disabled>댓글 초안</button>
-          </div>
-
-          <dl class="kv">
-            <div><dt>주요 주제</dt><dd class="muted">5단계에서 연결</dd></div>
-            <div><dt>핵심 고민</dt><dd class="muted">5단계에서 연결</dd></div>
-            <div><dt>영상 톤</dt><dd class="muted">5단계에서 연결</dd></div>
-            <div><dt>시청자 니즈</dt><dd class="muted">5단계에서 연결</dd></div>
-            <div><dt>자막 출처</dt><dd class="muted">3단계에서 연결</dd></div>
-          </dl>
-
-          <div class="draft">
-            <p class="draft-label">댓글 초안</p>
-            <p class="draft-body"><span class="disclosure">{{ disclosure }}</span> <span class="muted">초안 생성은 5단계, 규칙 검사는 6단계에서 연결</span></p>
-            <p class="draft-count">– / 120자</p>
-          </div>
-          <button type="button" class="btn btn-ghost" disabled>다른 초안 생성</button>
-        </article>
-
-        <!-- ③ 실행 관리 (7·8단계에서 연결) -->
-        <article class="panel is-off" id="col-run" aria-labelledby="h-run">
-          <header class="panel-head">
-            <h2 id="h-run"><span class="num">③</span> 실행 관리</h2>
-            <span class="pill pill-off">7·8단계에서 연결</span>
-          </header>
-
-          <fieldset class="settings" disabled>
-            <legend>게시 설정</legend>
-            <label>사용 프로필
-              <select>
-                <option>자동 배정</option>
-                {% for p in profiles %}<option>{{ p }}</option>{% endfor %}
+          <div class="filters">
+            <label><small>업로드 기간</small>
+              <select id="period" name="period">
+                <option value="day">최근 1일</option>
+                <option value="week" selected>최근 1주</option>
+                <option value="month">최근 1개월</option>
+                <option value="any">전체 기간</option>
               </select>
             </label>
-            <div class="radio-group" role="radiogroup" aria-label="게시 방식">
-              <label class="radio"><input type="radio" name="mode" checked /> 수동 승인 후 게시 (권장)</label>
-              <label class="radio"><input type="radio" name="mode" /> 자동 게시 (테스트 페이지)</label>
-            </div>
-            <p class="limit">일일 게시 한도 <strong>{{ daily_max_comments }}개</strong> <span class="muted">(오늘 – / {{ daily_max_comments }})</span></p>
-          </fieldset>
-
-          <button type="button" class="btn btn-big" disabled>
-            <svg class="ico"><use href="#i-lock"/></svg> 브라우저로 영상 열기 (댓글 게시)
-          </button>
-
-          <ol class="steps" aria-label="진행 상태 (8단계에서 연결)">
-            <li>프로필 여는 중</li><li>입력 중</li><li>승인 대기</li><li>게시 완료</li>
-          </ol>
-
-          <div class="records">
-            <p class="records-title">최근 작업 기록</p>
-            <p class="empty-sm">7단계에서 연결</p>
+            <label><small>정렬 방식</small>
+              <select id="order" name="order">
+                <option value="date" selected>최신순</option>
+                <option value="relevance">관련성순</option>
+                <option value="viewCount">조회수순</option>
+              </select>
+            </label>
+            <label><small>표시 개수</small>
+              <select id="max-results" name="max_results">
+                {% for n in max_results_options %}<option value="{{ n }}"{% if n == default_max_results %} selected{% endif %}>{{ n }}개</option>{% endfor %}
+              </select>
+            </label>
           </div>
-        </article>
-      </section>
+        </form>
+      </div>
 
-      <footer class="foot">JG Marketing AI Agent — 모든 댓글은 {{ disclosure }}로 시작하고 사람이 최종 검토합니다. 실제 유튜브 화면은 자동으로 조작하지 않습니다.</footer>
+      <div role="tabpanel" id="pane-url" aria-labelledby="tab-url" hidden>
+        <form id="resolve-form">
+          <div class="search">
+            <input class="field" id="video-url" name="url" type="text" autocomplete="off" aria-label="유튜브 영상 주소" placeholder="유튜브 영상 URL을 입력하세요" />
+            <button type="submit" id="resolve-btn">불러오기 ↗</button>
+          </div>
+          <p class="caption">watch · youtu.be · shorts · live 주소와 영상 ID(11자)를 받습니다.</p>
+        </form>
+      </div>
+
+      <div class="alert" id="discover-error" role="alert" hidden>
+        <p class="alert-msg" id="discover-error-msg"></p>
+        <p class="alert-action" id="discover-error-action"></p>
+      </div>
+
+      <p class="result-meta" id="result-meta" aria-live="polite"></p>
+      <div class="video-list" id="video-list" aria-label="영상 목록" aria-busy="false">
+        <p class="empty">기본 검색어가 들어 있습니다. <b>[영상 찾기]</b>를 누르면 최신 영상이 뜹니다.</p>
+      </div>
+      <p class="note" id="quota-note">YouTube 할당량 오늘 <b id="quota-used">–</b> / <span id="quota-limit">10,000</span> 단위 · 검색 1회 100단위 · 같은 검색은 10분 동안 저장한 결과를 씁니다.</p>
     </div>
-  </div>
+
+    <!-- 02 AI 분석과 댓글 초안 (3·5·6단계에서 연결) -->
+    <div class="column" id="col-analyze">
+      <div class="colhead"><h2>AI 분석과 댓글 초안</h2><span class="number">02 / 03</span></div>
+
+      <div class="midinfo" id="selected-summary">
+        <p class="empty-sm">01에서 영상을 고르면 여기에 표시됩니다.</p>
+      </div>
+
+      <div class="is-off">
+        <div class="section-mini">영상 맥락 분석 <span>CONTEXT REPORT · 5단계에서 연결</span></div>
+        <dl class="analysis">
+          <dt>주요 주제</dt><dd>5단계에서 연결</dd>
+          <dt>핵심 고민</dt><dd>5단계에서 연결</dd>
+          <dt>영상 톤</dt><dd>5단계에서 연결</dd>
+          <dt>시청자 니즈</dt><dd>5단계에서 연결</dd>
+          <dt>분석 근거</dt><dd>근거 문장과 출처 · 5단계에서 연결</dd>
+          <dt>자막 출처</dt><dd>3단계에서 연결</dd>
+        </dl>
+
+        <div class="section-mini">댓글 초안 <span>– / 120자</span></div>
+        <div class="comment" aria-disabled="true"><span class="disclosure">{{ disclosure }}</span> 초안 생성은 5단계, 규칙 검사는 6단계에서 연결합니다.</div>
+        <div class="draftfooter">
+          <span class="tag">DRAFT · 5단계에서 연결</span>
+          <button type="button" class="line-btn" disabled>다른 초안 생성 ↗</button>
+        </div>
+      </div>
+      <p class="note">영상의 구체적 장면은 실제 자막 등 검증 가능한 근거가 있을 때만 반영합니다.</p>
+    </div>
+
+    <!-- 03 실행 및 관리 (7·8단계에서 연결) -->
+    <div class="column" id="col-execute">
+      <div class="colhead"><h2>실행 및 관리</h2><span class="number">03 / 03</span></div>
+
+      <div class="is-off">
+        <div class="section-mini">브라우저 환경 <span>LOCAL CONTROL · 7·8단계에서 연결</span></div>
+        <fieldset class="settings" disabled>
+          <legend class="sr-only">게시 설정</legend>
+          <div class="setrow"><label for="profile">사용 프로필</label>
+            <select id="profile"><option>자동 배정</option>{% for p in profiles %}<option>{{ p }}</option>{% endfor %}</select></div>
+          <div class="setrow"><span class="label">작업 방식</span>
+            <div class="radios">
+              <label class="radio"><input type="radio" name="mode" checked /><i></i>수동 승인 후 게시 (권장)</label>
+              <label class="radio"><input type="radio" name="mode" /><i></i>테스트 페이지 자동 실행</label>
+            </div></div>
+          <div class="setrow"><label for="limit">일일 제한</label>
+            <select id="limit"><option>최대 {{ daily_max_comments }}건</option></select></div>
+          <div class="setrow"><span class="label">오늘 작업</span>
+            <div class="count">–<span class="slash">/</span>{{ daily_max_comments }} <small>건</small></div></div>
+        </fieldset>
+      </div>
+
+      <div class="asidebox">
+        <div class="aside-title" id="exec-title">영상 선택 대기</div>
+        <p id="exec-desc">01에서 영상을 고르세요. 게시 여부는 로그인된 사용자 본인이 결정합니다.</p>
+        <button type="button" class="primary" disabled>브라우저에서 영상 열기 ↗</button>
+        <ol class="job-steps" aria-label="진행 단계 (8단계에서 연결)">
+          <li>대기</li><li>프로필 실행</li><li>댓글 입력</li><li>승인 대기</li><li>게시 완료</li><li>확인</li>
+        </ol>
+        <div class="taskstatus"><i class="dot is-off" aria-hidden="true"></i><span>작업 실행은 8단계에서 연결</span></div>
+      </div>
+
+      <div class="hint"><b>OPERATION NOTE</b><br />중복 작업 방지 · 활동 이력 기록 · 공개적 홍보 관계 표시<br />정책을 준수하는 사용자 승인 방식으로 설계</div>
+    </div>
+  </section>
+
+  <!-- 작업 기록 (7단계에서 연결) -->
+  <section class="history" id="activity">
+    <div class="history-top"><h2>작업 기록</h2><small>ACTIVITY ARCHIVE &nbsp;/&nbsp; 7단계에서 연결</small></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>TIME</th><th>VIDEO</th><th>ACTION</th><th>COMMENT</th><th>STATUS</th><th>PROFILE</th><th><span class="sr-only">댓글 보기</span></th></tr></thead>
+        <tbody><tr><td colspan="7" class="empty-row">기록은 7단계(운영 규칙과 기록)에서 연결합니다.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="bottom"><span>JG MARKETING AGENT</span><span>V {{ version }} · STAGE {{ stage }}</span></footer>
+</main>
 </body>
 </html>

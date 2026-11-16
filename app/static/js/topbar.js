@@ -1,35 +1,32 @@
-// 사이드바: 메뉴 이동(해당 칸 강조), 좁은 화면 접기, 시스템 상태와 할당량 표시.
+// 위 줄: 메뉴 이동(해당 칸 잠깐 강조), 좁은 화면 메뉴 단추, 시스템 상태, 할당량 표시.
 import { api } from './api.js';
 import { setState, subscribe } from './state.js';
 
 const $ = (id) => document.getElementById(id);
 
 function setupMenu() {
-  const sidebar = $('sidebar');
+  const nav = $('nav');
   const toggle = $('menu-toggle');
-  const scrim = $('scrim');
   const setOpen = (open) => {
-    sidebar.classList.toggle('is-open', open);
+    nav.classList.toggle('is-open', open);
     toggle.setAttribute('aria-expanded', String(open));
-    scrim.hidden = !open;
   };
-  toggle.addEventListener('click', () => setOpen(!sidebar.classList.contains('is-open')));
-  scrim.addEventListener('click', () => setOpen(false));
+  toggle.addEventListener('click', () => setOpen(!nav.classList.contains('is-open')));
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') setOpen(false);
   });
 
-  for (const link of sidebar.querySelectorAll('a.menu-item')) {
+  for (const link of nav.querySelectorAll('a')) {
     link.addEventListener('click', (event) => {
       event.preventDefault();
-      for (const other of sidebar.querySelectorAll('.menu-item')) {
-        other.classList.toggle('is-active', other === link);
-        if (other === link) other.setAttribute('aria-current', 'page');
+      for (const other of nav.querySelectorAll('a')) {
+        other.classList.toggle('on', other === link);
+        if (other === link) other.setAttribute('aria-current', 'true');
         else other.removeAttribute('aria-current');
       }
       const target = $(link.dataset.target);
       target?.scrollIntoView({ block: 'start' });
-      if (target?.classList.contains('panel')) {
+      if (target?.classList.contains('column')) {
         target.classList.add('is-focus');
         setTimeout(() => target.classList.remove('is-focus'), 1200);
       }
@@ -67,7 +64,7 @@ function renderStatus(state) {
   }
 }
 
-export function initSidebar() {
+export function initTopbar() {
   setupMenu();
   subscribe(renderStatus);
   loadStatus();

@@ -22,7 +22,7 @@ PERIODS: dict[str, timedelta | None] = {
     "month": timedelta(days=30),
     "any": None,
 }
-ORDERS = ("date", "viewCount")
+ORDERS = ("date", "relevance", "viewCount")
 
 
 @dataclass(frozen=True)

@@ -179,3 +179,11 @@ def test_status_reports_key_presence_only(make_client, fake_key, clean_env):
     }
     off = make_client(key=None).get("/api/status").json()
     assert off["youtube"]["key_configured"] is False
+
+
+def test_list_accepts_relevance_order(mock_http, fixture_json, fake_key, make_client):
+    mock = mock_http()
+    add_search_and_videos(mock, fixture_json)
+    res = make_client(mock, key=fake_key).get("/api/videos", params={"order": "relevance"})
+    assert res.status_code == 200
+    assert mock.requests[0].url.params["order"] == "relevance"

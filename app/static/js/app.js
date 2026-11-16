@@ -1,8 +1,10 @@
-// 대시보드 시작점. 2단계: 사이드바 상태와 ①칸만 연결한다. ②는 선택한 영상만 따라 바뀐다.
+// 대시보드 시작점. 2단계: 위 줄 상태와 01칸만 연결한다. 02·03은 선택한 영상만 따라 바뀐다.
 import { initAnalysis } from './analysis.js';
 import { initDiscover } from './discover.js';
-import { initSidebar } from './sidebar.js';
+import { initFlow } from './flow.js';
+import { initTopbar } from './topbar.js';
 
-initSidebar();
+initTopbar();
 initDiscover();
 initAnalysis();
+initFlow();

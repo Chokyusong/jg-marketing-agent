@@ -57,13 +57,11 @@ export function el(tag, attrs = {}, children = []) {
   return node;
 }
 
-export function icon(name, cls = 'ico') {
-  const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('class', cls);
-  svg.setAttribute('aria-hidden', 'true');
-  const use = document.createElementNS(ns, 'use');
-  use.setAttribute('href', `#i-${name}`);
-  svg.append(use);
-  return svg;
+// 썸네일 + 길이 표시. 바깥 글은 textContent로만 넣는다.
+export function thumbnail(video) {
+  const duration = formatDuration(video.duration_seconds);
+  return el('span', { class: 'thumb' }, [
+    video.thumbnail_url ? el('img', { src: video.thumbnail_url, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : null,
+    duration ? el('span', { class: 'duration', text: duration }) : null,
+  ]);
 }

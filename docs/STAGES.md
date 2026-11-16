@@ -50,7 +50,8 @@ FastAPI 앱, 읽기 전용 3열 화면, `/api/health`, 테스트 2개.
 - [x] 저장해 둔 응답(`tests/fixtures/youtube/`)으로 검색·상세·댓글·오류 6종 (`tests/integration/test_youtube_client.py`, `test_videos_api.py`)
 - [x] 오류 문구·로그·응답·`GET /api/status`·화면에 키가 없다는 테스트 (`tests/integration/test_secret_leak.py`)
 - [ ] `live` 테스트 1개(`tests/integration/test_live_youtube.py`) — 대표 PC에서 `.env`에 키를 넣고 `RUN_LIVE=1`로 확인
-- [ ] 화면에서 [영상 불러오기] 한 번으로 목록이 뜬다 — 대표 확인. (가짜 응답 서버 + 창 없는 크롬으로 검색·선택·오류·링크 입력·좁은 화면은 개발 중에 눌러 봤다)
+- [ ] 화면에서 [영상 찾기] 한 번으로 목록이 뜬다 — 대표 확인. (가짜 응답 서버 + 창 없는 크롬으로 검색·선택·10분 저장·오류·링크 입력·화살표 키·1920/1100/1000/390px 배치는 개발 중에 눌러 봤다)
+- 화면은 작업 중에 바뀐 UI_SPEC 세 번째 판(검정·금색 에디토리얼 목업)을 따랐다. 명조 글꼴 파일은 넣지 않았다(대표 결정 대기, PC의 Batang 등으로 보임).
 - 설계와 다르게 둔 것: 같은 검색 10분 저장을 위해 `search_cache` 표를 더했다. 서비스 묶음은 `app/youtube/service.py`, 라우터 공용 준비는 `app/api/deps.py`에 두었다(DESIGN 3.1·4절에는 아직 없음).
 
 ### [ ] 3단계 — 영상 맥락 수집

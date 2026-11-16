@@ -1,6 +1,6 @@
 // ① 영상 탐색: 탭, 검색창과 거르기, 영상 목록, 선택, 오류 문구.
 import { api } from './api.js';
-import { el, formatAgo, formatDuration, formatViews, icon } from './format.js';
+import { el, formatAgo, formatViews, thumbnail } from './format.js';
 import { getState, setState, subscribe } from './state.js';
 
 const $ = (id) => document.getElementById(id);
@@ -78,23 +78,17 @@ async function runResolve() {
   }
 }
 
-function videoCard(video, selected) {
-  const duration = formatDuration(video.duration_seconds);
-  const thumb = el('span', { class: 'thumb' }, [
-    video.thumbnail_url ? el('img', { src: video.thumbnail_url, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : null,
-    duration ? el('span', { class: 'duration', text: duration }) : null,
-  ]);
-  const body = el('span', { class: 'video-body' }, [
+function videoRow(video, selected) {
+  const meta = [video.channel_title, formatViews(video.view_count), formatAgo(video.published_at)].filter(Boolean);
+  const body = el('span', {}, [
     el('span', { class: 'video-title', text: video.title }),
-    el('span', { class: 'video-meta', text: video.channel_title }),
-    el('span', { class: 'video-meta', text: `${formatViews(video.view_count)} · ${formatAgo(video.published_at)}` }),
+    el('span', { class: 'video-meta', text: meta.join(' · ') }),
   ]);
-  const button = el(
+  return el(
     'button',
-    { type: 'button', class: 'video', 'aria-pressed': String(selected), 'data-id': video.video_id, title: video.title },
-    [thumb, body, icon('check', 'ico check')],
+    { type: 'button', class: 'vid', 'aria-pressed': String(selected), 'data-id': video.video_id, title: video.title },
+    [thumbnail(video), body, el('i', { class: 'pick', 'aria-hidden': 'true' })],
   );
-  return button;
 }
 
 function renderList(state) {
@@ -102,8 +96,8 @@ function renderList(state) {
   list.setAttribute('aria-busy', String(state.loading));
   $('search-btn').disabled = state.loading;
   $('resolve-btn').disabled = state.loading;
-  $('search-btn').textContent = state.loading && state.tab === 'keyword' ? '불러오는 중…' : '영상 불러오기';
-  $('resolve-btn').textContent = state.loading && state.tab === 'url' ? '불러오는 중…' : '불러오기';
+  $('search-btn').textContent = state.loading && state.tab === 'keyword' ? '찾는 중…' : '영상 찾기 ↗';
+  $('resolve-btn').textContent = state.loading && state.tab === 'url' ? '불러오는 중…' : '불러오기 ↗';
 
   const focusedId = document.activeElement?.dataset?.id;
   list.replaceChildren();
@@ -115,15 +109,15 @@ function renderList(state) {
     return;
   }
   for (const video of state.videos) {
-    list.append(videoCard(video, video.video_id === state.selectedId));
+    list.append(videoRow(video, video.video_id === state.selectedId));
   }
   if (focusedId) list.querySelector(`[data-id="${CSS.escape(focusedId)}"]`)?.focus();
 }
 
 function emptyIntro() {
   return el('p', { class: 'empty' }, [
-    '검색어가 미리 들어 있습니다. ',
-    el('strong', { text: '[영상 불러오기]' }),
+    '기본 검색어가 들어 있습니다. ',
+    el('b', { text: '[영상 찾기]' }),
     '를 누르면 최신 영상이 뜹니다.',
   ]);
 }
@@ -135,12 +129,12 @@ function renderMeta(state) {
   if (state.meta.mode === 'search') {
     meta.append(`‘${state.meta.query}’ 영상 ${state.meta.count}개`);
     if (state.meta.cached) {
-      meta.append(el('span', { class: 'pill pill-accent', title: '같은 검색은 10분 동안 저장한 결과를 씁니다(할당량 절약)', text: '10분 저장 결과' }));
+      meta.append(el('span', { class: 'tag', title: '같은 검색은 10분 동안 저장한 결과를 씁니다(할당량 절약)', text: 'SAVED · 10분 저장 결과' }));
     }
   } else {
     meta.append('링크로 불러온 영상');
   }
-  if (state.selectedId) meta.append(el('span', { class: 'pill pill-ok', text: '1개 선택됨' }));
+  if (state.selectedId) meta.append(el('span', { class: 'tag', text: 'SELECTED · 1개 선택됨' }));
 }
 
 function renderError(state) {
@@ -157,14 +151,14 @@ function renderError(state) {
 function setupList() {
   const list = $('video-list');
   list.addEventListener('click', (event) => {
-    const card = event.target.closest('.video');
+    const card = event.target.closest('.vid');
     if (!card) return;
     const id = card.dataset.id;
     setState({ selectedId: getState().selectedId === id ? null : id });
   });
   list.addEventListener('keydown', (event) => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    const cards = [...list.querySelectorAll('.video')];
+    const cards = [...list.querySelectorAll('.vid')];
     const i = cards.indexOf(document.activeElement);
     if (i < 0) return;
     event.preventDefault();
