@@ -6,7 +6,7 @@
 
 1. 이 파일
 2. [`docs/DESIGN.md`](docs/DESIGN.md) — 구조와 규칙의 기준. 특히 2절(원문과 다르게 만드는 부분), 6.1(브라우저 대상)
-3. [`docs/PLAYBOOK.md`](docs/PLAYBOOK.md) — 완성까지의 실행 계획. 단계마다 만들 파일·함수·API·테스트와 **실행 순서**(2 마무리 → 3 → 6 → 4 → 5 → 7 → 8 → 9 → 10 → 11 → 12)
+3. [`docs/PLAYBOOK.md`](docs/PLAYBOOK.md) — 완성까지의 실행 계획. 단계마다 만들 파일·함수·API·테스트와 **실행 순서**(2 마무리 → 3 → P → 6 → 4 → 5 → 7 → 8 → 9 → 10 → 11 → 12)
 4. [`docs/STAGES.md`](docs/STAGES.md) — 단계별 상태 표기와 완료 기준 요약
 5. [`docs/UI_SPEC.md`](docs/UI_SPEC.md) — 화면 기준. 화면을 건드리는 단계에서 읽는다
 
