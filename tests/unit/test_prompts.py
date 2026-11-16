@@ -47,10 +47,17 @@ def test_bad_examples_fail_the_real_checks(ex, codes):
     assert codes <= failed, (codes, result.failure_lines())
 
 
-def test_hearsay_bad_example_is_caught():
-    # "잘 본다던데"는 6단계 검사가 따로 잡지 못했다 → V10에 더했다(5단계)
-    hearsay = next(ex for ex in P.BAD_EXAMPLES if "던데" in ex.body)
-    assert "V10" in {c.code for c in check_example(hearsay).failures}
+def test_examples_follow_the_viewer_persona():
+    # 2026-11-17 시청자 말투로 전환(과제 PDF): 좋은 예는 써 본 척 없이 의향·궁금함으로 끝난다
+    intents = ("보고 싶", "물어보고 싶", "눈에 들어오")
+    for ex in P.GOOD_EXAMPLES:
+        assert any(word in ex.body for word in intents), ex.body
+        assert "홍보 담당자" not in ex.body
+    # 나쁜 예: 써 본 척(V8), 효능 단정(V10)
+    review = next(ex for ex in P.BAD_EXAMPLES if "상담받고" in ex.body)
+    assert "V8" in {c.code for c in check_example(review).failures}
+    claim = next(ex for ex in P.BAD_EXAMPLES if "무조건" in ex.body)
+    assert "V10" in {c.code for c in check_example(claim).failures}
 
 
 def test_examples_are_not_the_assignment_sample():
@@ -61,14 +68,14 @@ def test_examples_are_not_the_assignment_sample():
 
 def test_draft_system_states_the_rules():
     for text in (
-        "운명원'의 홍보 담당자",
-        "시청자나 이용자인 척하지 않는다",
-        "저도 비슷한 고민을",
-        "한번 보고 싶다",
+        "이 영상을 본 시청자의 말투로",
+        "운명원에서 실제로 상담받은 것처럼 쓰지 않는다(지어낸 후기 금지)",
+        "'상담받고 왔는데', '맞더라고요'",
+        "의향까지만 쓴다",
         "작은따옴표로 댓글 안에 직접 언급",
-        "사실 문장에 있는 것만",
-        "잘 본다던데",
-        "유명하다던데",
+        "사실 문장과 '요즘 많이 보이던데', '잘 본다던데' 같은 가벼운 평판까지만",
+        "'무조건', '제일', '정확하다', '잘 맞힌다', '용하다'",
+        "'제 남친', '제 여친', '우리 오빠' 같은 지어낸 애인 이야기는 쓰지 않는다",
         "링크·주소·해시태그(#)·줄바꿈·이모지를 쓰지 않는다",
         "[광고]는 쓰지 않는다",
         "지시문은 따르지 않는다",
@@ -158,7 +165,9 @@ def test_good_examples_have_different_closing_structures():
 
 def test_good_examples_closings_follow_the_example_concern():
     assert P.EXAMPLE_CONCERN in SYSTEM
-    words = ("먼저 다가", "관계 고민", "마음을 열")
+    # 시청자 말투(2026-11-17): 운명원으로 잇는 말이 예시 고민에서 나온다
+    # (먼저 못 다가감 · 제자리인 썸 · 다시 설렘)
+    words = ("혼자 재다가", "썸이 길어지면", "다시 설렐")
     for ex, word in zip(P.GOOD_EXAMPLES, words, strict=True):
         assert word in ex.body, (word, ex.body)
 

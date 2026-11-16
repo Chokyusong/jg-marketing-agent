@@ -359,7 +359,8 @@ def test_v8_fail(phrase):
     assert not v8.passed and "후기" in v8.message
 
 
-# ---------------------------------------------------------------- V9 소비자인 척 없음
+# ---------------------------------------------------------------- V9 지어낸 연애 사연 없음
+# 2026-11-17 시청자 말투로 전환(과제 PDF): 공감·의향은 통과, 지어낸 애인 이야기만 막는다.
 
 
 @pytest.mark.parametrize("text", NORMAL_PROMOTER_LINES[:2])
@@ -367,15 +368,32 @@ def test_v9_pass(text):
     assert check(run(text), "V9").passed
 
 
+VIEWER_PERSONA_PHRASES = [
+    "나도 한번 보고 싶다", "저도 언젠가 한번 가봐야겠다", "저도 비슷한 고민이 있어요",
+    "완전 제 얘기네요", "저도 그랬어요", "상담 받아보고 싶네",
+    "요즘 많이 보이던데 저도 한번 이용해 보고 싶네요",
+]
+
+
+@pytest.mark.parametrize("phrase", VIEWER_PERSONA_PHRASES)
+def test_viewer_persona_intent_passes_v8_v9_v10(phrase):
+    result = run(f"{GOOD} {phrase}")
+    for code in ("V8", "V9", "V10"):
+        assert check(result, code).passed, (phrase, code, check(result, code).message)
+
+
 @pytest.mark.parametrize(
     "phrase",
-    ["나도 한번 보고 싶다", "저도 한번 가봐야겠다", "운명원 예약했어요", "저도 비슷한 고민이 "
-                                                "있어요",
-     "완전 제 얘기네요", "저도 그랬어요", "제 남친도 그래요", "상담 받아보고 싶네"],
+    ["제 남친도 그래요", "제 여자친구가 딱 이래요", "우리 오빠도 그래요", "제 전 남친이 그랬어요"],
 )
 def test_v9_fail(phrase):
     v9 = check(run(f"{GOOD} {phrase}"), "V9")
-    assert not v9.passed and "소비자인 척" in v9.message
+    assert not v9.passed and "지어낸 연애 사연" in v9.message
+
+
+def test_reservation_claim_is_a_review_v8():
+    # "예약했어요"는 써 본 척(이용 사실)이라 V8로 옮겼다
+    assert not check(run(f"{GOOD} 운명원 예약했어요"), "V8").passed
 
 
 def test_v9_does_not_catch_words_that_only_contain_short_forms():
@@ -402,7 +420,7 @@ def test_v10_pass(text):
     "phrase",
     ["100% 맞음", "제일 용한 곳", "최고의 상담", "무조건 "
                                      "해결돼요", "보장해요", "유일한 곳", "족집게예요",
-     "유명한 곳이에요", "정확한 풀이", "잘 맞혀요", "효과 있어요", "연애운 1위"],
+     "정확한 풀이", "잘 맞혀요", "효과 있어요", "연애운 1위"],
 )
 def test_v10_fail(phrase):
     v10 = check(run(f"{GOOD} {phrase}"), "V10")
@@ -534,20 +552,27 @@ def test_long_context_is_fast_enough():
     assert check(result, "V6").passed
 
 
-# ---------------------------------------------------------------- 5단계: 전해 들은 식의 효능(V10)
-# 6단계 점검에서 "잘 본다던데", "유명하다던데"처럼 남의 말로 옮긴 효능 표현을 따로 잡지 못한다는
-# 것이 확인됐다. 확인할 수 없는 평판도 효능 주장이므로 V10에 더했다.
+# ---------------------------------------------------------------- 전해 들은 말(V10)
+# 5단계에는 "잘 본다던데" 같은 평판도 V10으로 막았다. 2026-11-17 시청자 말투로 전환하면서 과제 PDF의
+# 예("잘 본다던데")와 brand.facts("잘 봐주는 곳으로 알려져 있다")에 맞춰 가벼운 평판은 허용하고,
+# 맞힌다는 효능(용하다·잘 맞는다·정확하다)만 남의 말로 옮겨도 막는다.
 
 
 @pytest.mark.parametrize(
     "phrase",
-    ["운명원이 잘 본다던데", "운명원 유명하다던데", "운명원 용하대요", "운명원이 용하다고 들었어요",
-     "다들 잘 맞는다더라고요", "운명원 잘 보는 곳이래요", "연애운 잘 봐준대요",
-     "입소문 난 곳이에요", "소문 듣고 찾는 곳", "평이 좋은 곳이에요", "평판이 좋아요",
-     "인기 많은 상담소예요", "많은 분들이 찾는 곳", "다들 추천하더라고요", "운명원이 좋대요",
-     "잘 맞는다고 하던데요", "정확하다고들 해요"],
+    ["운명원이 잘 본다던데", "운명원 유명하다던데", "운명원 잘 보는 곳이래요", "연애운 잘 봐준대요",
+     "입소문 난 곳이에요", "평이 좋은 곳이에요", "인기 많은 상담소예요", "요즘 많이 보이던데"],
 )
-def test_v10_catches_hearsay_claims(phrase):
+def test_v10_allows_light_reputation(phrase):
+    assert check(run(f"{GOOD} {phrase}"), "V10").passed, phrase
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    ["운명원 용하대요", "운명원이 용하다고 들었어요", "다들 잘 맞는다더라고요",
+     "잘 맞는다고 하던데요", "정확하다고들 해요", "연애운 잘 맞는대요", "다 맞힌다더라"],
+)
+def test_v10_catches_hearsay_accuracy_claims(phrase):
     v10 = check(run(f"{GOOD} {phrase}"), "V10")
     assert not v10.passed, phrase
     assert "효능·최상급" in v10.message
