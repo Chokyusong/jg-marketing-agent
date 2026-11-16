@@ -79,7 +79,10 @@ def get_video(video_id: str, services: ServicesDep) -> VideoItemOut:
 
 def _context_out(context: VideoContext, services: Services) -> ContextOut:
     return ContextOut.from_context(
-        context, context_chars=services.context.context_chars, quota=services.quota.summary()
+        context,
+        context_chars=services.context.context_chars,
+        quota=services.quota.summary(),
+        own_video=services.checks.is_own_video(context.video_id),
     )
 
 

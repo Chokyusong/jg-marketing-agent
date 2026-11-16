@@ -242,6 +242,9 @@ select { background: var(--panel); color: #cfcac3; border: 1px solid var(--line)
 .draft .section-mini { margin: 6px 0 7px; padding-bottom: 6px; }
 .draft .section-mini label { cursor: text; }
 .draft-count { font-variant-numeric: tabular-nums; }
+/* 「홍보 표기」 켬/끔: 내 채널 영상일 때만 켜진다. 제목 줄 안에 두어 높이를 늘리지 않는다 */
+.draft .section-mini .disclose-toggle { height: auto; padding: 0 7px; margin-left: auto; font-size: 11.5px; cursor: pointer; }
+.draft .section-mini .disclose-toggle:has(input:disabled) { opacity: .45; cursor: not-allowed; }
 .section-mini .draft-count.is-over { color: var(--bad); }
 .draft-edit { position: relative; background: var(--field); }
 .draft-mirror, .draft-input { margin: 0; padding: 9px 12px; border: 1px solid transparent; font: 14px/1.6 var(--sans); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; tab-size: 4; }

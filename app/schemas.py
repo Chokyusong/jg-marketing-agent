@@ -163,12 +163,19 @@ class ContextOut(BaseModel):
     context_chars: int
     built_at: str
     quota: QuotaOut
+    own_video: bool = False  # 내 채널 영상(own_video_ids) — 02칸 「홍보 표기」를 끌 수 있다
 
     @classmethod
     def from_context(
-        cls, context: VideoContext, *, context_chars: int, quota: dict[str, int]
+        cls,
+        context: VideoContext,
+        *,
+        context_chars: int,
+        quota: dict[str, int],
+        own_video: bool = False,
     ) -> ContextOut:
         return cls(
+            own_video=own_video,
             video_id=context.video_id,
             body_source=context.body_source,
             transcript_source=context.transcript_source,
@@ -282,6 +289,8 @@ class DraftCreateIn(BaseModel):
     # [다른 초안 생성]: 이미 쓴 근거 구절. 비우면 서버가 그 영상 초안들의 근거를 피한다(another)
     avoid_quotes: list[str] = Field(default_factory=list, max_length=20)
     another: bool = False
+    # 홍보 표기를 붙일지. 거짓은 내 채널 영상(own_video_ids)에서만 된다(아니면 disclosure_required)
+    disclose: bool = True
 
 
 class DraftPatchIn(BaseModel):
@@ -306,10 +315,12 @@ class DraftOut(BaseModel):
     updated_at: str
     approved_at: str | None
     validation: ValidationOut
+    disclosed: bool = True  # 글이 홍보 표기로 시작하는지(내 채널 영상은 끌 수 있다)
 
     @classmethod
     def from_draft(cls, d: Draft, rules: ValidatorRules) -> DraftOut:
         return cls(
+            disclosed=d.body.startswith(rules.disclosure),
             id=d.id,
             video_id=d.video_id,
             body=d.body,
@@ -536,6 +547,7 @@ class SettingsCommentOut(BaseModel):
     max_chars: int
     disclosure: str  # 홍보 표기([광고])
     brand: str
+    own_video_count: int = 0  # 등록한 내 채널 영상 수(ID는 보이지 않는다)
 
 
 class SettingsProfileOut(BaseModel):

@@ -5,7 +5,7 @@
 // [다른 초안 생성]은 이미 쓴 근거를 피해 초안만 다시, [이 초안 승인]은 고친 글을 먼저 저장(PATCH)하고 승인.
 // 연애 고민이 없는 자료(no_love_concern)면 초안 없이 멈추고 「자막 붙여넣기」를 연다.
 import { api } from './api.js';
-import { draftText, isApproved, loadDraft } from './draft.js';
+import { discloseOn, draftText, isApproved, loadDraft } from './draft.js';
 import { refreshOps } from './ops.js';
 import { getState, setState, subscribe } from './state.js';
 
@@ -77,7 +77,7 @@ async function run(videoId, { another = false } = {}) {
       setState({ analysis });
       setRun({ phase: 'draft' });
     }
-    const draft = await api.createDraft(videoId, { another });
+    const draft = await api.createDraft(videoId, { another, disclose: discloseOn() });
     if (!mine(videoId)) return;
     setRun({ phase: 'check' });
     loadDraft(draft);

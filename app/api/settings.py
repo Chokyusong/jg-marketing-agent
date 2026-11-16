@@ -83,6 +83,7 @@ def settings(request: Request, services: Annotated[Services, Depends(get_service
             max_chars=int(comment.get("max_chars", 120)),
             disclosure=str(comment.get("disclosure", "[광고]")),
             brand=str(comment.get("brand", "운명원")),
+            own_video_count=len(s.own_video_ids),
         ),
         brand_facts=list(s.brand_facts),
         daily_max_comments=s.daily_max_comments,

@@ -19,6 +19,26 @@ let waitingForContext = false; // 맥락을 모으는 중이라 검사를 미뤘
 const box = () => $('draft-box');
 const disclosure = () => box().dataset.disclosure || '[광고]';
 
+// 「홍보 표기」 체크(내 채널 영상에서만 끌 수 있다 — 맥락 응답의 own_video). 그 밖의 영상은 늘 켬.
+export function discloseOn() {
+  const c = $('disclose');
+  return !c || c.checked;
+}
+
+function ownVideo(state) {
+  const ctx = state.context && state.context.video_id === state.selectedId ? state.context : null;
+  return Boolean(ctx && ctx.own_video);
+}
+
+// 체크를 바꾸면 글 상자 맨 앞의 표기를 붙이거나 뗀다(그 뒤 다시 검사).
+function applyDisclosure(on) {
+  const input = $('draft-text');
+  const mark = disclosure();
+  const text = input.value;
+  if (on && !text.startsWith(mark)) input.value = `${mark} ${text.trimStart()}`;
+  if (!on && text.startsWith(mark)) input.value = text.slice(mark.length).trimStart();
+}
+
 // 서버와 같은 셈: NFC로 맞추고 앞뒤 공백을 뺀 코드 포인트 수(표기 포함).
 export function countChars(text) {
   return [...text.normalize('NFC').trim()].length;
@@ -167,6 +187,16 @@ function render(state) {
   ko.classList.toggle('is-ok', checked || approved);
   const d = state.draft && state.draft.video_id === state.selectedId ? state.draft : null;
   $('draft-tone').textContent = d && d.tone_label ? `말투 · ${d.tone_label}` : '';
+  const toggle = $('disclose');
+  const own = ownVideo(state);
+  toggle.disabled = !own || input.disabled;
+  if (!own && !toggle.checked) {
+    toggle.checked = true; // 내 채널 영상이 아니면 늘 붙인다
+    applyDisclosure(true);
+  }
+  $('disclose-toggle').title = own
+    ? '내 채널 영상 · 홍보 표기를 끄면 표기 없이 초안을 만듭니다'
+    : '내 채널 영상(config.yaml own_video_ids)에서만 끌 수 있습니다';
 
   const checks = $('draft-checks');
   checks.replaceChildren(...checksView(state).filter(Boolean));
@@ -177,6 +207,7 @@ function render(state) {
 function resetFor(videoId) {
   clearTimeout(timer);
   seq += 1;
+  $('disclose').checked = true; // 영상을 바꾸면 표기를 켠 상태로 시작한다
   $('draft-text').value = videoId ? `${disclosure()} ` : '';
   paintMirror();
   fitHeight();
@@ -190,6 +221,7 @@ export function loadDraft(draft) {
   seq += 1;
   const input = $('draft-text');
   input.value = draft.body;
+  $('disclose').checked = draft.disclosed !== false;
   paintMirror();
   fitHeight();
   paintCount();
@@ -212,6 +244,14 @@ export function initDraft() {
     fitHeight();
     paintCount();
     render(getState()); // 이름표·흐림을 바로 바꾼다(검사는 입력이 멈추면)
+    schedule();
+  });
+  $('disclose').addEventListener('change', (event) => {
+    applyDisclosure(event.target.checked);
+    paintMirror();
+    fitHeight();
+    paintCount();
+    render(getState());
     schedule();
   });
   paintMirror();

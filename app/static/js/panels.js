@@ -76,6 +76,9 @@ export function settingsView(s) {
     group('댓글 규칙', 'COMMENT', [
       row('글자 수', `${c.min_chars}~${c.max_chars}자 (표기 포함)`),
       row('홍보 표기', el('span', { class: 'gold', text: c.disclosure }), ' 로 시작'),
+      row('내 채널 영상', c.own_video_count
+        ? `${c.own_video_count}개 등록 · 이 영상에서만 홍보 표기를 끌 수 있습니다`
+        : '등록 없음 (config.yaml own_video_ids)'),
       row('브랜드', c.brand),
       row('브랜드 사실', facts),
     ]),

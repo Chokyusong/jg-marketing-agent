@@ -65,8 +65,9 @@ export const api = {
   // 5단계: 분석과 초안
   analyze: (videoId) => request(`/api/analysis/${encodeURIComponent(videoId)}`, { method: 'POST' }),
   storedAnalysis: (videoId) => request(`/api/analysis/${encodeURIComponent(videoId)}`),
-  createDraft: (videoId, { another = false } = {}) =>
-    request('/api/drafts', { method: 'POST', body: JSON.stringify({ video_id: videoId, another }) }),
+  // disclose=false(홍보 표기 끔)는 내 채널 영상에서만 된다
+  createDraft: (videoId, { another = false, disclose = true } = {}) =>
+    request('/api/drafts', { method: 'POST', body: JSON.stringify({ video_id: videoId, another, disclose }) }),
   listDrafts: (videoId) => request(`/api/drafts?video_id=${encodeURIComponent(videoId)}`),
   updateDraft: (id, body) => request(`/api/drafts/${id}`, { method: 'PATCH', body: JSON.stringify({ body }) }),
   approveDraft: (id) => request(`/api/drafts/${id}/approve`, { method: 'POST' }),

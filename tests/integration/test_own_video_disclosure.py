@@ -16,10 +16,15 @@ NOT_OWN = "AAAAAAAAAA1"
 
 
 @pytest.fixture
-def services(mock_http, fixture_json, fake_key, make_client, fake_llm):
-    client = make_client(add_youtube(mock_http(), fixture_json), key=fake_key)
+def client(mock_http, fixture_json, fake_key, make_client):
+    return make_client(
+        add_youtube(mock_http(), fixture_json), key=fake_key, overrides={"own_video_ids": [OWN]}
+    )
+
+
+@pytest.fixture
+def services(client, fake_llm):
     services = client.app.state.services.get()
-    services.drafts.checks.own_video_ids = frozenset({OWN})
 
     def use(responses):
         llm = fake_llm(responses)
@@ -73,3 +78,40 @@ def test_label_in_the_middle_still_fails_on_own_video(services):
     services.drafts.analyze(OWN)
     text = f"{GOOD_BODY} [광고]"
     assert not v4(services.drafts.checks.check(OWN, text)).passed
+
+
+# ---------------------------------------------------------------- API·설정 화면
+
+
+def test_context_says_whether_the_video_is_own(client, services):
+    assert client.post(f"/api/videos/{OWN}/context").json()["own_video"] is True
+    assert client.post(f"/api/videos/{NOT_OWN}/context").json()["own_video"] is False
+
+
+def test_create_draft_api_with_disclose_false(client, services):
+    services.use([ANALYSIS, draft(GOOD_BODY)])
+    client.post(f"/api/analysis/{OWN}")
+    res = client.post("/api/drafts", json={"video_id": OWN, "disclose": False})
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["body"] == GOOD_BODY and data["disclosed"] is False and data["passed"] is True
+    # 기본은 표기를 붙인다(예전 요청 그대로)
+    services.use([draft(GOOD_BODY)])
+    res = client.post("/api/drafts", json={"video_id": OWN})
+    assert res.json()["disclosed"] is True and res.json()["body"].startswith("[광고] ")
+
+
+def test_create_draft_api_refuses_disclose_false_on_other_video(client, services):
+    services.use([ANALYSIS, draft(GOOD_BODY)])
+    res = client.post("/api/drafts", json={"video_id": NOT_OWN, "disclose": False})
+    assert res.status_code == 422
+    err = res.json()["error"]
+    assert err["kind"] == "disclosure_required"
+    assert err["message"] == "이 영상은 홍보 표기를 끌 수 없습니다."
+    assert "own_video_ids" in err["action"]
+
+
+def test_settings_shows_only_the_count_of_own_videos(client):
+    data = client.get("/api/settings").json()
+    assert data["comment"]["own_video_count"] == 1
+    assert OWN not in str(data)  # 영상 ID 자체는 보이지 않는다

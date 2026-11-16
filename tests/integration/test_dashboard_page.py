@@ -213,6 +213,14 @@ def test_draft_box_is_on(page):
     assert "영상의 구체적 장면은 실제 자막 등 검증 가능한 근거가 있을 때만 반영합니다." in analyze
 
 
+def test_disclosure_toggle_starts_on_and_locked(page):
+    # 「홍보 표기」: 켠 채 잠겨 있다가 내 채널 영상(맥락 응답 own_video)일 때만 끌 수 있다
+    draft = _section(page, 'id="draft-box"', 'class="draft-edit"')
+    assert 'id="disclose-toggle"' in draft
+    assert '<input type="checkbox" id="disclose" checked disabled />' in draft
+    assert "own_video_ids" in draft  # 왜 잠겼는지 title로 알린다
+
+
 def test_draft_js_checks_after_pause_and_folds_passed_items(make_client):
     client = make_client(key=None)
     api = client.get("/static/js/api.js").text

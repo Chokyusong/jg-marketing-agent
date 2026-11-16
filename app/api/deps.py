@@ -110,6 +110,7 @@ def build_services(
         context,
         rules=ValidatorRules.from_config(settings.rules, settings.validator_extra_patterns),
         brand_facts=settings.brand_facts,
+        own_video_ids=settings.own_video_ids,
     )
     llm: LLMClient | None = None
     llm_error: AppError | None = None

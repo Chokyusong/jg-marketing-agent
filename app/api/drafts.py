@@ -44,7 +44,7 @@ def create_draft(body: DraftCreateIn, services: ServicesDep) -> DraftOut:
     avoid = list(body.avoid_quotes)
     if body.another:
         avoid += used_quotes(drafts.list(body.video_id))
-    draft = drafts.generate(body.video_id, avoid_quotes=avoid)
+    draft = drafts.generate(body.video_id, avoid_quotes=avoid, disclose=body.disclose)
     return DraftOut.from_draft(draft, services.checks.rules)
 
 

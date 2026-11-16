@@ -198,7 +198,7 @@
 
       <!-- 댓글 초안(6단계): 사람이 고치고, 입력이 멈추면 규칙 검사 V1~V12. AI 초안이 들어온다(5단계) -->
       <div class="draft" id="draft-box" data-disclosure="{{ disclosure }}" data-min="{{ min_chars }}" data-max="{{ max_chars }}">
-        <div class="section-mini"><label for="draft-text">댓글 초안</label> <span class="draft-count" id="draft-count">0 / {{ max_chars }}자</span></div>
+        <div class="section-mini"><label for="draft-text">댓글 초안</label> <label class="check disclose-toggle" id="disclose-toggle" title="내 채널 영상(config.yaml own_video_ids)에서만 끌 수 있습니다"><input type="checkbox" id="disclose" checked disabled /><i aria-hidden="true"></i>홍보 표기</label> <span class="draft-count" id="draft-count">0 / {{ max_chars }}자</span></div>
         <div class="draft-edit" id="draft-edit">
           <div class="draft-mirror" id="draft-mirror" aria-hidden="true"></div>
           <textarea class="draft-input" id="draft-text" rows="2" maxlength="1000" spellcheck="false" placeholder="[분석하고 초안 만들기]를 누르거나 {{ disclosure }}로 시작해 직접 써 보세요." aria-describedby="draft-checks" disabled></textarea>
