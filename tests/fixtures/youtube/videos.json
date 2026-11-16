@@ -1,0 +1,51 @@
+{
+  "kind": "youtube#videoListResponse",
+  "items": [
+    {
+      "kind": "youtube#video",
+      "id": "BBBBBBBBBB2",
+      "snippet": {
+        "publishedAt": "2026-11-15T09:30:00Z",
+        "channelId": "UCtestchannel000000000002",
+        "title": "장거리 연애 1년차, 연락 문제로 자주 싸워요",
+        "description": "시청자 사연: 연락 빈도 때문에 다투는 장거리 커플 이야기.",
+        "thumbnails": {
+          "default": {"url": "https://i.ytimg.com/vi/BBBBBBBBBB2/default.jpg"},
+          "medium": {"url": "https://i.ytimg.com/vi/BBBBBBBBBB2/mqdefault.jpg"}
+        },
+        "channelTitle": "테스트 연애상담 채널"
+      },
+      "contentDetails": {"duration": "PT12M5S"},
+      "statistics": {"viewCount": "15320", "likeCount": "410", "commentCount": "88"}
+    },
+    {
+      "kind": "youtube#video",
+      "id": "AAAAAAAAAA1",
+      "snippet": {
+        "publishedAt": "2026-11-16T01:00:00Z",
+        "channelId": "UCtestchannel000000000001",
+        "title": "썸 타다 끝나는 이유 3가지",
+        "description": "썸에서 연애로 넘어가지 못하는 흔한 이유를 정리했습니다.",
+        "thumbnails": {"high": {"url": "https://i.ytimg.com/vi/AAAAAAAAAA1/hqdefault.jpg"}},
+        "channelTitle": "테스트 관계심리"
+      },
+      "contentDetails": {"duration": "PT1H2M3S"},
+      "statistics": {"viewCount": "980", "commentCount": "12"}
+    },
+    {
+      "kind": "youtube#video",
+      "id": "CCCCCCCCCC3",
+      "snippet": {
+        "publishedAt": "2026-11-14T12:00:00Z",
+        "channelId": "UCtestchannel000000000003",
+        "title": "[쇼츠] 이별 후 연락해도 될까?",
+        "description": "",
+        "thumbnails": {},
+        "channelTitle": "테스트 쇼츠"
+      },
+      "contentDetails": {"duration": "PT45S"},
+      "statistics": {"viewCount": "2400"}
+    }
+  ],
+  "pageInfo": {"totalResults": 3, "resultsPerPage": 3}
+}

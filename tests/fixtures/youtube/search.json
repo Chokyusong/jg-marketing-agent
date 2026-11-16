@@ -1,0 +1,10 @@
+{
+  "kind": "youtube#searchListResponse",
+  "regionCode": "KR",
+  "pageInfo": {"totalResults": 1000000, "resultsPerPage": 3},
+  "items": [
+    {"kind": "youtube#searchResult", "id": {"kind": "youtube#video", "videoId": "AAAAAAAAAA1"}},
+    {"kind": "youtube#searchResult", "id": {"kind": "youtube#video", "videoId": "BBBBBBBBBB2"}},
+    {"kind": "youtube#searchResult", "id": {"kind": "youtube#video", "videoId": "CCCCCCCCCC3"}}
+  ]
+}

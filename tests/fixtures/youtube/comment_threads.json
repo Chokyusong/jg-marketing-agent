@@ -1,0 +1,42 @@
+{
+  "kind": "youtube#commentThreadListResponse",
+  "items": [
+    {
+      "kind": "youtube#commentThread",
+      "id": "thread-1",
+      "snippet": {
+        "videoId": "BBBBBBBBBB2",
+        "topLevelComment": {
+          "kind": "youtube#comment",
+          "id": "thread-1",
+          "snippet": {
+            "authorDisplayName": "@테스트시청자1",
+            "textDisplay": "저도 하루에 한 번 연락으로 싸운 적 있어요",
+            "textOriginal": "저도 하루에 한 번 연락으로 싸운 적 있어요",
+            "likeCount": 152,
+            "publishedAt": "2026-11-15T10:00:00Z"
+          }
+        },
+        "totalReplyCount": 3
+      }
+    },
+    {
+      "kind": "youtube#commentThread",
+      "id": "thread-2",
+      "snippet": {
+        "videoId": "BBBBBBBBBB2",
+        "topLevelComment": {
+          "kind": "youtube#comment",
+          "id": "thread-2",
+          "snippet": {
+            "authorDisplayName": "@테스트시청자2",
+            "textDisplay": "연락 문제는 결국 서로 기대치 차이 같아요",
+            "likeCount": 40,
+            "publishedAt": "2026-11-15T11:00:00Z"
+          }
+        },
+        "totalReplyCount": 0
+      }
+    }
+  ]
+}

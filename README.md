@@ -2,18 +2,22 @@
 
 유튜브 영상을 분석해 홍보 표기(`[광고]`)가 붙은 댓글 초안을 만들고, 사람이 승인하는 로컬 대시보드(FastAPI). 제이지그룹 AI PM 채용 과제 TRACK 2 「마케팅 AI 에이전트 개발」.
 
-## 지금 되는 것 / 아직 안 되는 것 (2026-11-16)
+## 지금 되는 것 / 아직 안 되는 것 (2026-11-16, 2단계)
 
 **되는 것**
-- 1단계 뼈대: FastAPI 앱, 읽기 전용 3열 화면(`/`), 상태 확인 API(`/api/health`)
-- 0단계 하네스: 작업 규칙(`AGENTS.md`), 검증 스크립트(`scripts/verify.ps1`), pytest 설정과 테스트 도우미, 비밀값 검사(`scripts/check_secrets.py` + pre-commit 훅), 설정 파일(`config.yaml`)
+- 대시보드 화면(`/`): 디자인 기준([docs/UI_SPEC.md](docs/UI_SPEC.md))대로 사이드바, 통계 카드 4개, 3열, 좁은 화면 배치
+- ① 영상 탐색 (2단계): [영상 불러오기] 한 번으로 `config.yaml`의 기본 검색어(`discover.query`) 최신 영상 목록(썸네일·길이·제목·채널·조회수·올린 때). 검색어, 업로드 기간·정렬·결과 수 거르기, URL 직접 입력, 영상 선택, 오류마다 문구와 다음 행동
+- YouTube Data API 연동: 검색·영상 상세·인기 댓글, 오류 6종 분류(키 없음·키 거부·할당량 초과·댓글 막힘·영상 없음·네트워크), 같은 검색 10분 저장, 오늘 사용 단위 기록(SQLite `data/app.sqlite3`)
+- 사이드바 시스템 상태: YouTube 키가 있는지 없는지(값은 보이지 않음)와 오늘 할당량 사용량
+- 설정: `config.yaml`(규칙)과 `.env`(비밀값)를 앱이 읽는다. 키가 없어도 화면은 뜨고 불러오기 때 안내가 나온다
+- 0단계 하네스: 작업 규칙(`AGENTS.md`), 검증 스크립트(`scripts/verify.ps1`), pytest 설정과 테스트 도우미, 비밀값 검사(`scripts/check_secrets.py` + pre-commit 훅)
 
-**아직 안 되는 것** (화면의 버튼은 동작하지 않는다)
-- 유튜브 영상 불러오기·링크 입력 (2단계)
-- 자막·맥락 수집, Ollama 연동, 고민 한 줄·댓글 초안 생성, 규칙 검사 (3~6단계)
-- 영상당 1개·하루 상한·기록 (7단계)
-- 브라우저 연결(sandbox 자동 게시, 실제 유튜브는 열기만) (8단계)
-- `config.yaml`은 아직 앱이 읽지 않는다(2단계에서 연결)
+**아직 안 되는 것** (화면에서 꺼진 상태로 "n단계에서 연결"이라고 보인다)
+- ② 자막·맥락 수집, Ollama 연동, 고민 한 줄·댓글 초안 생성, 규칙 검사 (3~6단계)
+- 통계 카드 실제 값, 영상당 1개·하루 상한·기록 (7단계)
+- ③ 브라우저 연결(sandbox 자동 게시, 실제 유튜브는 열기만) (8단계)
+- 사이드바의 작업 기록·계정 관리·설정 패널 (7·9단계)
+- 실제 YouTube 키로 한 번 불러 보는 확인(`live` 테스트)은 아직 하지 않았다
 
 ## 과제 원문과 다르게 만드는 부분
 
@@ -51,12 +55,24 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 - 기본 테스트는 인터넷·API 키·Ollama 없이 돈다.
 - `live`(진짜 YouTube·Ollama 호출)는 `RUN_LIVE=1`일 때만, `e2e`(창 없는 크롬)는 Playwright가 설치돼 있을 때만 돈다.
 
+## API
+
+| 주소 | 내용 |
+|---|---|
+| `GET /api/health` | 서버 확인 (1단계부터 그대로) |
+| `GET /api/status` | 시스템 상태: YouTube 키가 있는지(`key_configured`)와 오늘 할당량. 키 값은 싣지 않는다 |
+| `GET /api/videos` | 최신 영상 목록. 입력 없이 부르면 기본 검색어. 선택 입력 `q`, `period`(day·week·month·any, 기본 week), `order`(date·viewCount), `max_results`(1~50) |
+| `POST /api/videos/resolve` | `{"url": "..."}` 유튜브 링크 → 영상 한 개 |
+| `GET /api/videos/{video_id}` | 영상 상세(10분 안이면 저장된 값) |
+
+오류는 `{"error": {"kind", "message", "action"}}` 모양이다. 검색은 100단위, 상세·댓글은 1단위를 쓴다(하루 10,000단위).
+
 ## 설정
 
 | 파일 | 내용 | 커밋 |
 |---|---|---|
 | `config.yaml` | 프로필, 댓글 글자 수·브랜드·홍보 표기, 하루 상한 등 규칙 ([DESIGN 8절](docs/DESIGN.md#8-설정)) | 함 |
-| `.env` | `YOUTUBE_API_KEY`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL` | 금지 |
+| `.env` | `YOUTUBE_API_KEY`(2단계부터 사용), `OLLAMA_BASE_URL`, `OLLAMA_MODEL`. 선택: `APP_DB_PATH`(기본 `data/app.sqlite3`) | 금지 |
 
 ## 단계
 
@@ -64,7 +80,7 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 |---|---|---|
 | 1 | 뼈대 (GPT 초안) | 완료 |
 | 0 | 하네스 | 완료 |
-| 2 | YouTube API 연동, 화면 골격 | 미시작 |
+| 2 | YouTube API 연동, 화면 골격 | 진행 중 (코드·자동 테스트 완료, 실제 키 확인·화면 확인 남음) |
 | 3 | 영상 맥락 수집 | 미시작 |
 | 4 | Ollama 연동, 모델 비교 | 미시작 |
 | 5 | 분석과 초안 | 미시작 |
