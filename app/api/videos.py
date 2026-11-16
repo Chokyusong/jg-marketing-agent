@@ -82,6 +82,7 @@ def _context_out(context: VideoContext, services: Services) -> ContextOut:
         context,
         context_chars=services.context.context_chars,
         quota=services.quota.summary(),
+        auto_transcript=services.context.auto_enabled,
     )
 
 

@@ -127,8 +127,8 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
     ),
     ErrorKind.TRANSCRIPT_PROVIDER_OFF: ErrorText(
         "설정한 자막 출처를 쓸 수 없습니다. 비공식 자막 조회는 켜져 있지 않습니다.",
-        "config.yaml의 transcript.provider를 manual로 바꾸고 서버를 다시 켜 주세요. "
-        "자막은 02칸 「자막 붙여넣기」로 넣을 수 있습니다.",
+        "config.yaml의 transcript.provider를 auto(자동으로 읽기) 또는 manual(직접 넣기)로 바꾸고 "
+        "프로그램을 다시 켜 주세요. 자막은 ②칸 「자막 직접 넣기」로도 넣을 수 있습니다.",
         503,
     ),
     ErrorKind.LLM_DOWN: ErrorText(

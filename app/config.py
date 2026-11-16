@@ -81,6 +81,16 @@ class DiscoverSettings:
 
 
 @dataclass(frozen=True)
+class RisingSettings:
+    """`rising` 절(R4, 가점): 뜨기 직전 영상. 조회수 범위와 시간당 조회수 하한."""
+
+    query: str = "연애"
+    min_views: int = 1000
+    max_views: int = 5000
+    min_views_per_hour: int = 150
+
+
+@dataclass(frozen=True)
 class ProviderSettings:
     """`llm.providers.<이름>` 한 항목. `options`는 type·api_key_env를 뺀 나머지 원본."""
 
@@ -97,6 +107,10 @@ class LLMSettings:
         default_factory=lambda: {"ollama": ProviderSettings("ollama", "ollama")}
     )
     timeout_seconds: float = 180.0
+    # R4: 모델이 아직 메모리에 없을 때(처음 불러올 때) 그 요청만 기다리는 시간과,
+    # 프로그램을 켤 때 미리 불러 둘지
+    cold_timeout_seconds: float = 420.0
+    warmup_on_start: bool = True
     num_ctx: int = 8192
     keep_alive: str = "30m"
     ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL
@@ -119,7 +133,11 @@ class Settings:
     daily_max_comments: int
     rules: dict[str, Any] = field(repr=False)
     db_path: Path = DEFAULT_DB_PATH
-    transcript_provider: str = "manual"  # manual | unofficial (D1 기본: manual만)
+    # R4: auto(자막 자동으로 읽기, 기본) | manual(직접 넣은 자막만).
+    # 옛 값 unofficial은 오류로 알린다
+    transcript_provider: str = "auto"
+    transcript_timeout_seconds: float = 10.0
+    rising: RisingSettings = field(default_factory=RisingSettings)
     context_chars: int = DEFAULT_CONTEXT_CHARS  # 모델에 넣을 영상 자료 길이 한도
     # 6단계: 규칙 검사. brand.facts에 적힌 문장만 운명원에 대한 사실로 쓴다(DESIGN 5.5)
     brand_facts: tuple[str, ...] = DEFAULT_BRAND_FACTS
@@ -318,6 +336,10 @@ def _llm_settings(raw: Any, env: dict[str, str]) -> LLMSettings:
         active=active,
         providers=providers,
         timeout_seconds=float(raw.get("timeout_seconds") or LLMSettings.timeout_seconds),
+        cold_timeout_seconds=float(
+            raw.get("cold_timeout_seconds") or LLMSettings.cold_timeout_seconds
+        ),
+        warmup_on_start=_flag(raw.get("warmup_on_start", True), "llm.warmup_on_start"),
         num_ctx=int(raw.get("num_ctx") or LLMSettings.num_ctx),
         keep_alive=str(raw.get("keep_alive") or LLMSettings.keep_alive),
         ollama_base_url=_clean(env.get("OLLAMA_BASE_URL")) or DEFAULT_OLLAMA_BASE_URL,
@@ -393,7 +415,9 @@ def load_settings(
         daily_max_comments=int(limits.get("daily_max_comments", 10)),
         rules=rules,
         db_path=db_path,
-        transcript_provider=str(transcript.get("provider") or "manual").strip().lower(),
+        transcript_provider=_transcript_provider(transcript),
+        transcript_timeout_seconds=float(transcript.get("timeout_seconds") or 10.0),
+        rising=_rising_settings(rules.get("rising")),
         context_chars=int(llm.get("context_chars") or DEFAULT_CONTEXT_CHARS),
         brand_facts=_brand_facts(rules.get("brand")),
         validator_extra_patterns=parse_extra_patterns(validator.get("extra_patterns")),
@@ -413,6 +437,33 @@ def load_settings(
         user_values=user_values,
         source=source,
     )
+
+
+def _transcript_provider(raw: Any) -> str:
+    """`transcript.provider`(auto | manual)와 설정 화면의 「자막 자동으로 읽기」(`transcript.auto`).
+
+    켬/끔을 저장했으면 그것이 먼저다(auto ↔ manual). 그 밖의 값(옛 unofficial 등)은 그대로 두어
+    맥락을 만들 때 알기 쉬운 오류로 알린다.
+    """
+    raw = raw if isinstance(raw, dict) else {}
+    provider = str(raw.get("provider") or "auto").strip().lower()
+    flag = raw.get("auto")
+    if isinstance(flag, bool) and provider in ("auto", "manual"):
+        provider = "auto" if flag else "manual"
+    return provider
+
+
+def _rising_settings(raw: Any) -> RisingSettings:
+    raw = raw if isinstance(raw, dict) else {}
+    out = RisingSettings(
+        query=str(raw.get("query") or RisingSettings.query).strip() or RisingSettings.query,
+        min_views=int(raw.get("min_views", RisingSettings.min_views)),
+        max_views=int(raw.get("max_views", RisingSettings.max_views)),
+        min_views_per_hour=int(raw.get("min_views_per_hour", RisingSettings.min_views_per_hour)),
+    )
+    if out.min_views < 0 or out.max_views < out.min_views or out.min_views_per_hour < 0:
+        raise ValueError("rising의 조회수 범위가 잘못됐습니다(0 ≤ min_views ≤ max_views).")
+    return out
 
 
 def _flag(value: Any, name: str) -> bool:

@@ -30,7 +30,7 @@ from app.api.deps import ServiceHolder, Services, get_services
 from app.api.status import _problem
 from app.browser.chrome import profile_dir
 from app.browser.screens import check_window_position, find_choice, screen_choices
-from app.config import Settings, load_settings, reload_settings
+from app.config import DEFAULT_OLLAMA_MODEL, Settings, load_settings, reload_settings
 from app.errors import ERROR_TEXTS, AppError, ErrorKind
 from app.schemas import (
     TARGET_LABELS,
@@ -85,6 +85,9 @@ def llm_settings(services: Services) -> SettingsLLMOut:
         keep_alive=cfg.keep_alive,
         context_chars=services.settings.context_chars,
         error=_problem(services.llm_error) if services.llm_error else None,
+        cold_timeout_seconds=cfg.cold_timeout_seconds,
+        warmup_on_start=cfg.warmup_on_start,
+        recommended_model=DEFAULT_OLLAMA_MODEL,
     )
 
 
@@ -131,6 +134,13 @@ def effective_values(s: Settings) -> dict[str, Any]:
         "discover.max_results": s.discover.max_results,
         "discover.exclude_shorts": s.discover.exclude_shorts,
         "discover.shorts_under_seconds": s.discover.shorts_under_seconds,
+        # R4
+        "transcript.auto": s.transcript_provider == "auto",
+        "llm.warmup_on_start": s.llm.warmup_on_start,
+        "rising.query": s.rising.query,
+        "rising.min_views": s.rising.min_views,
+        "rising.max_views": s.rising.max_views,
+        "rising.min_views_per_hour": s.rising.min_views_per_hour,
     }
 
 

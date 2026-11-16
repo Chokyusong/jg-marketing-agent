@@ -183,6 +183,36 @@ MIGRATIONS: list[str] = [
     UPDATE drafts SET disclosed = CASE WHEN substr(body, 1, 4) = '[광고]' THEN 1 ELSE 0 END;
     ALTER TABLE runs ADD COLUMN disclosed INTEGER CHECK (disclosed IN (0, 1));
     """,
+    # R4: 자막 자동 읽기. video_context의 자막 출처에 'auto'를 더한다(SQLite는 CHECK를 바꿀 수 없어
+    # 표를 새로 만들어 옮긴다. 이 표를 가리키는 다른 표는 없다). 더하는 칸:
+    # - transcript_language: 자동으로 읽은 자막의 언어 코드(ko, en …). 붙여 넣은 자막은 ''
+    # - transcript_generated: 유튜브 자동 생성 자막이면 1, 올린 자막이면 0, 모르면 NULL
+    # - auto_reason · transcript_note: 자동으로 못 읽은 이유 코드와 한국어 한 줄(화면·기록)
+    # - auto_checked_at: 자동으로 읽어 본 때(같은 영상에서 다시 부르지 않게)
+    """
+    CREATE TABLE video_context_r4 (
+        video_id           TEXT PRIMARY KEY REFERENCES videos(video_id) ON DELETE CASCADE,
+        transcript_source  TEXT NOT NULL DEFAULT 'none'
+                           CHECK (transcript_source IN ('manual', 'auto', 'unofficial', 'none')),
+        transcript_text    TEXT NOT NULL DEFAULT '',
+        comments_json      TEXT NOT NULL DEFAULT '[]',
+        comments_disabled  INTEGER NOT NULL DEFAULT 0 CHECK (comments_disabled IN (0, 1)),
+        body_source        TEXT NOT NULL DEFAULT 'title_description'
+                           CHECK (body_source IN ('transcript', 'title_description')),
+        built_at           TEXT,
+        transcript_language  TEXT NOT NULL DEFAULT '',
+        transcript_generated INTEGER CHECK (transcript_generated IN (0, 1)),
+        auto_reason        TEXT NOT NULL DEFAULT '',
+        transcript_note    TEXT NOT NULL DEFAULT '',
+        auto_checked_at    TEXT
+    );
+    INSERT INTO video_context_r4(video_id, transcript_source, transcript_text, comments_json,
+                                 comments_disabled, body_source, built_at)
+        SELECT video_id, transcript_source, transcript_text, comments_json, comments_disabled,
+               body_source, built_at FROM video_context;
+    DROP TABLE video_context;
+    ALTER TABLE video_context_r4 RENAME TO video_context;
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

@@ -239,6 +239,21 @@ FIELDS: dict[str, Field] = {
     "discover.shorts_under_seconds": Field(
         "int", "쇼츠로 볼 길이", ("discover", "shorts_under_seconds"), 10, 3600
     ),
+    # R4: 자막 자동으로 읽기(기본 켬), 시작할 때 AI 모델 미리 불러오기(기본 켬), 뜨기 직전 영상 조건
+    "transcript.auto": Field("bool", "자막 자동으로 읽기", ("transcript", "auto")),
+    "llm.warmup_on_start": Field(
+        "bool", "시작할 때 AI 모델 미리 불러오기", ("llm", "warmup_on_start")
+    ),
+    "rising.query": Field("str", "뜨기 직전 영상 검색어", ("rising", "query"), 1, 100),
+    "rising.min_views": Field(
+        "int", "뜨기 직전 최소 조회수", ("rising", "min_views"), 0, 1_000_000
+    ),
+    "rising.max_views": Field(
+        "int", "뜨기 직전 최대 조회수", ("rising", "max_views"), 1, 10_000_000
+    ),
+    "rising.min_views_per_hour": Field(
+        "int", "뜨기 직전 시간당 조회수", ("rising", "min_views_per_hour"), 1, 1_000_000
+    ),
 }
 # 화면이 직접 보내지 않고 서버가 계산해 넣는 칸
 COMPUTED_FIELDS = ("browser.window_position",)
@@ -314,6 +329,10 @@ def validate(
     if isinstance(lo, int) and isinstance(hi, int) and lo >= hi:
         where = "comment.min_chars" if "comment.min_chars" in clean else "comment.max_chars"
         errors.setdefault(where, "최소 글자 수가 최대 글자 수보다 커서는 안 됩니다(최소 < 최대)")
+    rlo, rhi = merged.get("rising.min_views"), merged.get("rising.max_views")
+    if isinstance(rlo, int) and isinstance(rhi, int) and rlo > rhi:
+        where = "rising.min_views" if "rising.min_views" in clean else "rising.max_views"
+        errors.setdefault(where, "최소 조회수가 최대 조회수보다 커서는 안 됩니다")
     disclosure = merged.get("comment.disclosure")
     if isinstance(disclosure, str) and isinstance(hi, int) and len(disclosure) + 10 > hi:
         where = "comment.disclosure" if "comment.disclosure" in clean else "comment.max_chars"

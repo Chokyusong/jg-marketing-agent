@@ -68,7 +68,8 @@ class ManualTranscriptProvider:
             conn.execute(
                 "INSERT INTO video_context(video_id, transcript_source, transcript_text) "
                 "VALUES (?, 'manual', ?) ON CONFLICT(video_id) DO UPDATE SET "
-                "transcript_source = 'manual', transcript_text = excluded.transcript_text",
+                "transcript_source = 'manual', transcript_text = excluded.transcript_text, "
+                "transcript_language = '', transcript_generated = NULL",
                 (video_id, cleaned),
             )
         return Transcript(text=cleaned, source="manual")
@@ -77,7 +78,10 @@ class ManualTranscriptProvider:
         """붙여 넣은 자막을 지운다. 지운 것이 있었으면 True."""
         with db.session(self.db_path) as conn:
             cur = conn.execute(
-                "UPDATE video_context SET transcript_source = 'none', transcript_text = '' "
+                # R4: 지우면 자동으로 다시 읽어 보게 자동 읽기 기록도 비운다
+                "UPDATE video_context SET transcript_source = 'none', transcript_text = '', "
+                "transcript_language = '', transcript_generated = NULL, auto_reason = '', "
+                "transcript_note = '', auto_checked_at = NULL "
                 "WHERE video_id = ? AND transcript_source = 'manual'",
                 (video_id,),
             )

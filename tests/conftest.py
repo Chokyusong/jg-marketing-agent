@@ -86,6 +86,12 @@ def _never_real_youtube(monkeypatch):
     monkeypatch.setattr(youtube_driver.PlaywrightYouTubeDriver, "open", guarded_open)
     monkeypatch.setattr(login, "check_login", guarded_check)
 
+    # R4: 자막 자동 읽기도 실제로 접속하지 않는다. 가짜 공급처를 끼우지 않은 테스트에서는
+    # 「이 영상에는 자막이 없습니다」(빈 목록)로 돈다 — 3단계 이전과 같은 흐름
+    from app.transcript import auto
+
+    monkeypatch.setattr(auto, "default_lister", lambda timeout=10.0: lambda video_id: [])
+
 
 # ---------------------------------------------------------------- 임시 저장소·설정
 

@@ -286,7 +286,9 @@ def test_context_rows_are_on(page):
 def test_transcript_paste_box(page):
     box = _section(page, 'id="transcript-paste"', "</details>")
     assert page.count('<details class="paste" id="transcript-paste">') == 1  # 접어 둔 채(open 없음)
-    assert "<summary>자막 직접 넣기</summary>" in box
+    assert "<summary>자막 직접 넣기" in box
+    # R4: 자동으로 못 읽었을 때만 보이는 안내(처음에는 숨김)
+    assert 'id="transcript-paste-hint" hidden> · 자동으로 못 읽었을 때 여기에 붙여 넣으세요' in box
     assert "유튜브 영상 아래 「스크립트 표시」에서 복사해 붙여 넣으세요." in box
     assert '<textarea class="field" id="transcript-text"' in box
     assert 'data-max="20000"' in box

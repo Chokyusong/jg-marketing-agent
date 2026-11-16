@@ -36,7 +36,7 @@ def test_settings_shows_rules_profiles_model_and_limits(make_client, tmp_path):
     assert data["youtube"]["key_configured"] is False
     assert data["youtube"]["quota"]["daily_limit"] == 10000
     assert data["discover"]["query"] == "연애 고민"
-    assert data["transcript_provider"] == "manual"
+    assert data["transcript_provider"] == "auto"  # R4: 자막 자동으로 읽기가 기본
     b = data["browser"]
     assert b["window_position"] == "60,-1060"
     assert b["window_position_used"] == "60,-1060" and b["window_position_adjusted"] is False

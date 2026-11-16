@@ -32,6 +32,7 @@ from app.llm.registry import build_llm
 from app.ops.ledger import Ledger
 from app.ops.profiles import ProfileService
 from app.ops.rules import PostRules
+from app.transcript.auto import AutoTranscriptProvider
 from app.user_settings import UserStore, default_user_dir
 from app.youtube.client import YouTubeClient
 from app.youtube.quota import Clock, QuotaTracker, SearchCache, utc_now
@@ -118,6 +119,8 @@ def build_services(
         clock=clock,
         transcript_provider=settings.transcript_provider,
         context_chars=settings.context_chars,
+        # R4: 자막 자동 읽기(제한 시간은 설정 transcript.timeout_seconds, 기본 10초)
+        auto=AutoTranscriptProvider(timeout_seconds=settings.transcript_timeout_seconds),
     )
     checks = CheckService(
         context,

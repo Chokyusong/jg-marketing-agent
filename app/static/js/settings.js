@@ -32,6 +32,13 @@ export const FIELD_IDS = {
   'discover.max_results': 'set-max-results',
   'discover.exclude_shorts': 'set-exclude-shorts',
   'discover.shorts_under_seconds': 'set-shorts-seconds',
+  // R4
+  'transcript.auto': 'set-transcript-auto',
+  'llm.warmup_on_start': 'set-warmup-on-start',
+  'rising.query': 'set-rising-query',
+  'rising.min_views': 'set-rising-min',
+  'rising.max_views': 'set-rising-max',
+  'rising.min_views_per_hour': 'set-rising-per-hour',
 };
 const MAX_FACTS = 10;
 const RESET_WAIT_MS = 5000;
@@ -347,7 +354,8 @@ function modelRows(s) {
     [label('모델', 'set-model', 'llm.model'), el('dd', { class: 'set-field' }, [select, errSpan('set-model')])],
     readRow('상태', el('span', { id: 'model-status', class: 'flag-line', text: '모델 목록을 읽는 중…' })),
     readRow('지금 모델', el('span', { id: 'model-now', text: `${llm.model || '–'} · ${llm.local ? '이 PC 안에서 돌아갑니다' : '외부 서비스(영상 자료가 그 회사로 갑니다)'}` })),
-    readRow('기다리는 시간', `답 하나에 최대 ${Math.round(llm.timeout_seconds)}초`),
+    readRow('기다리는 시간', `답 하나에 최대 ${Math.round(llm.timeout_seconds)}초 · 모델을 처음 불러올 때는 ${Math.round(llm.cold_timeout_seconds || 420)}초`),
+    switchField('llm.warmup_on_start', '켤 때 미리 불러오기', '켜짐 · 프로그램을 켜면 모델을 미리 불러 둡니다', '꺼짐 · 첫 초안 때 불러옵니다'),
   ];
 }
 
@@ -519,7 +527,14 @@ export function settingsView(s) {
       numberField('discover.max_results', '기본 개수', { unit: '개 (1~50)' }),
       switchField('discover.exclude_shorts', '쇼츠 빼기', '켜짐 · 짧은 영상은 목록에서 뺍니다', '꺼짐'),
       numberField('discover.shorts_under_seconds', '쇼츠 길이', { unit: '초보다 짧으면 쇼츠', note: '기본 181초(3분 1초)' }),
-      readRow('자막', s.transcript_provider === 'manual' ? '직접 넣은 자막만' : '자동으로 읽고, 못 읽으면 제목·설명으로'),
+      switchField('transcript.auto', '자막 자동으로 읽기', '켜짐 · 영상을 고르면 자막을 읽습니다. 못 읽으면 제목·설명으로', '꺼짐 · 직접 넣은 자막만 씁니다'),
+    ]),
+    group('뜨기 직전 영상', 'set-rising', [
+      textField('rising.query', '검색어', { maxlength: 100, note: '올린 지 34시간 안의 영상에서 찾습니다' }),
+      numberField('rising.min_views', '조회수 최소', { unit: '회' }),
+      numberField('rising.max_views', '조회수 최대', { unit: '회' }),
+      numberField('rising.min_views_per_hour', '시간당 조회수', { unit: '회 이상' }),
+      readRow('댓글', '이 목록에서 고른 영상은 초안까지만 만듭니다'),
     ]),
     el('p', { class: 'caption set-version', text: `버전 ${s.version}` }),
   ];

@@ -236,6 +236,8 @@ select { padding-right: 6px; cursor: pointer; }
 .paste summary:hover { color: var(--text); }
 .paste.is-next summary { color: var(--gold); }
 .paste[open] { display: flex; flex-direction: column; gap: 6px; }
+.paste[hidden] { display: none; }
+.paste-hint { color: var(--dim); font-size: 12px; }
 .paste-actions { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
 .paste-count { margin-right: auto; color: var(--dim); font-size: 12px; }
 .paste-count.is-over { color: var(--bad); }

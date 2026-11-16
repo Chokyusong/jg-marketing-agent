@@ -106,7 +106,8 @@ def test_video_context_constraints(tmp_db_path):
         _insert_video(conn)
     bad_rows = [
         "INSERT INTO video_context(video_id) VALUES ('없는영상ID0')",  # videos에 없는 영상
-        "INSERT INTO video_context(video_id, transcript_source) VALUES ('AAAAAAAAAA1', 'auto')",
+        # R4부터 auto는 허용
+        "INSERT INTO video_context(video_id, transcript_source) VALUES ('AAAAAAAAAA1', 'robot')",
         "INSERT INTO video_context(video_id, body_source) VALUES ('AAAAAAAAAA1', 'comments')",
         "INSERT INTO video_context(video_id, comments_disabled) VALUES ('AAAAAAAAAA1', 2)",
     ]
@@ -200,7 +201,8 @@ def test_immediate_rolls_back_on_error(tmp_db_path):
 def test_r3_disclosed_columns_and_backfill(tmp_db_path):
     import sqlite3
 
-    last = len(db.MIGRATIONS) - 1  # R3 덩어리 바로 앞까지 만든 DB
+    # R3 덩어리 바로 앞까지 만든 DB(R4부터 R3가 맨 끝이 아니다)
+    last = next(i for i, m in enumerate(db.MIGRATIONS) if "ADD COLUMN disclosed" in m)
     conn = sqlite3.connect(tmp_db_path)
     for i in range(last):
         conn.executescript("BEGIN;" + db.MIGRATIONS[i] + f"PRAGMA user_version = {i + 1};COMMIT;")
@@ -213,7 +215,7 @@ def test_r3_disclosed_columns_and_backfill(tmp_db_path):
             "updated_at) VALUES ('BBBBBBBBBB2', ?, '{}', 1, 'draft', ?, ?)", (body, now, now))
     conn.commit()
     conn.close()
-    assert db.init_db(tmp_db_path) == db.SCHEMA_VERSION == last + 1
+    assert db.init_db(tmp_db_path) == db.SCHEMA_VERSION > last
     with db.session(tmp_db_path) as conn:
         rows = conn.execute("SELECT body, disclosed FROM drafts ORDER BY id").fetchall()
         assert [r["disclosed"] for r in rows] == [1, 0]

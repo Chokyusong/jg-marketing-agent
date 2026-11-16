@@ -20,7 +20,7 @@ def test_config_yaml_matches_design(base_config):
     assert base_config["posting"]["confirm_before_post"] is False  # R3: [댓글 달기] 한 번으로
     assert "own_video_ids" not in base_config  # R3: 내 채널 영상 구분 없음
     assert base_config["browser"]["window_position"] == "60,-1060"
-    assert base_config["transcript"]["provider"] == "manual"
+    assert base_config["transcript"]["provider"] == "auto"  # R4: 자막 자동으로 읽기가 기본
 
 
 def test_make_config_overrides_only_given_keys(make_config, base_config):

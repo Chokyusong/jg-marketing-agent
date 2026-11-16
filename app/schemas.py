@@ -13,6 +13,7 @@ from app.analysis.validator import Validation, ValidatorRules
 from app.llm.prompts import SOURCE_LABELS
 from app.ops.ledger import Run, TodayStats
 from app.ops.profiles import Profile
+from app.transcript.auto import source_label
 from app.transcript.manual import MAX_TRANSCRIPT_CHARS
 from app.youtube.service import SearchResult, StoredVideo
 from app.youtube.url_parser import watch_url
@@ -162,9 +163,11 @@ class ContextOut(BaseModel):
 
     video_id: str
     body_source: Literal["transcript", "title_description"]
-    transcript_source: Literal["manual", "unofficial", "none"]
+    transcript_source: Literal["manual", "auto", "unofficial", "none"]
     transcript_chars: int
-    transcript_text: str  # 붙여 넣은 자막(고쳐 쓸 수 있게 글 상자에 다시 채운다)
+    # 붙여 넣은 자막(고쳐 쓸 수 있게 글 상자에 다시 채운다). R4: 자동으로 읽은 자막은 싣지 않는다
+    # (글자 수·언어만. 글 상자는 사람이 넣는 곳이다)
+    transcript_text: str
     comment_count: int
     comments_disabled: bool
     truncated: bool  # 모델 입력 한도(context_chars)에 맞추느라 줄였는지
@@ -174,6 +177,14 @@ class ContextOut(BaseModel):
     quota: QuotaOut
     # 옛 화면 호환으로 남긴 칸. R3부터 광고 표기는 모든 영상에서 켜고 끌 수 있어 늘 false다
     own_video: bool = False
+    # R4: 자막 자동 읽기. 언어 코드(ko 등)·자동 생성 여부·화면용 이름(「한국어, 자동 생성」),
+    # 자동으로 못 읽었을 때 이유 코드(none·disabled·blocked·timeout·off …)와 한 줄
+    transcript_language: str = ""
+    transcript_generated: bool | None = None
+    transcript_label: str = ""
+    transcript_reason: str = ""
+    transcript_note: str = ""
+    auto_transcript: bool = True  # 「자막 자동으로 읽기」가 켜져 있는지
 
     @classmethod
     def from_context(
@@ -183,14 +194,25 @@ class ContextOut(BaseModel):
         context_chars: int,
         quota: dict[str, int],
         own_video: bool = False,
+        auto_transcript: bool = True,
     ) -> ContextOut:
+        auto = context.transcript_source == "auto"
         return cls(
             own_video=own_video,
             video_id=context.video_id,
             body_source=context.body_source,
             transcript_source=context.transcript_source,
             transcript_chars=context.transcript_chars,
-            transcript_text=context.transcript_text,
+            transcript_text="" if auto else context.transcript_text,
+            transcript_language=context.transcript_language,
+            transcript_generated=context.transcript_generated,
+            transcript_label=(
+                source_label(context.transcript_language, context.transcript_generated)
+                if auto else ""
+            ),
+            transcript_reason=context.transcript_reason,
+            transcript_note=context.transcript_note,
+            auto_transcript=auto_transcript,
             comment_count=len(context.comments),
             comments_disabled=context.comments_disabled,
             truncated=context.truncated,
@@ -602,6 +624,10 @@ class SettingsLLMOut(BaseModel):
     keep_alive: str
     context_chars: int
     error: ProblemOut | None = None  # 설정이 틀려 공급자를 못 만들었을 때
+    # R4: 모델이 아직 메모리에 없을 때 기다리는 시간, 켤 때 미리 불러오기, 추천 모델(코드 기본값)
+    cold_timeout_seconds: float = 420.0
+    warmup_on_start: bool = True
+    recommended_model: str = ""
 
 
 class SettingsBrowserOut(BaseModel):

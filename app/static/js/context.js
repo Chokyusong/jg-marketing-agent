@@ -1,4 +1,6 @@
 // ② 영상 자료(3단계): 영상을 고르면 맥락을 만들고 「자막」·「인기 댓글」 줄을 실제 값으로 그린다.
+// R4: 자막은 자동으로 읽는다("자동으로 읽은 자막 3,210자(한국어, 자동 생성)"). 못 읽으면 이유와 함께
+// "제목과 설명으로 대신합니다". 「자막 직접 넣기」는 자동으로 못 읽었을 때(또는 직접 넣은 자막이 있을 때)만 보인다.
 // 「자막 직접 넣기」에 넣고 [저장]하면 자막이 "붙여 넣은 자막 n자"로 바뀌고, 'transcript:saved'를 알린다
 // (초안이 아직 없으면 report.js가 그 자막으로 다시 만든다).
 import { api } from './api.js';
@@ -31,9 +33,17 @@ function load(videoId) {
   return run(videoId, () => api.buildContext(videoId));
 }
 
-function transcriptLine(ctx) {
+export function transcriptLine(ctx) {
   if (ctx.transcript_source === 'manual') return `붙여 넣은 자막 ${n(ctx.transcript_chars)}자`;
+  if (ctx.transcript_source === 'auto') {
+    const label = ctx.transcript_label ? `(${ctx.transcript_label})` : '';
+    return `자동으로 읽은 자막 ${n(ctx.transcript_chars)}자${label}`;
+  }
   if (ctx.transcript_source === 'unofficial') return `비공식 조회 자막 ${n(ctx.transcript_chars)}자`;
+  if (ctx.transcript_reason === 'off') return '자막 자동 읽기가 꺼져 있어 제목과 설명으로 대신합니다';
+  if (ctx.transcript_reason) {
+    return `자막을 읽지 못해 제목과 설명으로 대신합니다(${ctx.transcript_note || '이유 모름'})`;
+  }
   return '자막 없음 · 제목과 설명으로 대신 읽음';
 }
 
@@ -72,7 +82,7 @@ function render(state) {
     transcript.textContent = '영상을 고르면 표시됩니다.';
     comments.textContent = '–';
   } else if (state.contextLoading && !ctx) {
-    transcript.textContent = '영상 자료 모으는 중…';
+    transcript.textContent = '자막 읽는 중…';
     comments.textContent = '인기 댓글 불러오는 중…';
   } else if (ctx) {
     transcript.textContent = transcriptLine(ctx);
@@ -99,6 +109,13 @@ function render(state) {
   } else {
     errorBox.hidden = true;
   }
+
+  // R4: 자동으로 읽은 자막이 있으면 「자막 직접 넣기」를 숨긴다(못 읽었을 때의 보조)
+  const paste = $('transcript-paste');
+  const pasteHidden = Boolean(ctx && ctx.transcript_source === 'auto');
+  if (paste.hidden !== pasteHidden) paste.hidden = pasteHidden;
+  const hint = $('transcript-paste-hint');
+  if (hint) hint.hidden = !(ctx && ctx.transcript_source === 'none');
 
   $('transcript-text').disabled = !state.selectedId || state.contextLoading;
   const clear = $('transcript-clear');

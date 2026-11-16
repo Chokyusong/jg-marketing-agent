@@ -22,13 +22,14 @@ discover:
   max_results: 12
   exclude_shorts: true    # 검색 결과에서 쇼츠(아래 길이 미만·길이 없음)를 뺀다. ①칸 「쇼츠 빼기」의 기본값
   shorts_under_seconds: 181  # 이보다 짧은 영상을 쇼츠로 본다(유튜브 쇼츠는 3분까지)
-rising:
+rising:                 # 뜨기 직전 영상(①칸 [뜨기 직전 영상], 초안까지만). 올린 지 34시간 안의 영상에서 고른다
   query: 연애
   min_views: 1000
   max_views: 5000
   min_views_per_hour: 150
 transcript:
-  provider: manual        # manual | unofficial
+  provider: auto          # auto(자막 자동으로 읽기, 못 읽으면 제목·설명) | manual(직접 넣은 자막만)
+  timeout_seconds: 10     # 자막을 읽어 오는 데 기다리는 시간(넘으면 「자막 없음」으로 넘어간다)
 browser:
   default_target: youtube # youtube(실제 게시, 기본) | sandbox(연습 모드)
   headless: false         # 창 없이 돌릴지(자동 테스트는 true). 창이 보이면 아래 위치에 뜬다
@@ -37,7 +38,9 @@ browser:
   # chrome_path: ""       # 비우면 설치된 크롬을 찾는다. 프로필 폴더는 %LOCALAPPDATA%\JGMarketingAgent\profiles
 llm:
   active: ollama          # 아래 providers에서 고른 이름(DESIGN 5.2.1). 옛 키 provider: ollama도 읽는다
-  timeout_seconds: 180    # 답 하나를 기다리는 시간. 큰 모델은 첫 응답에 몇 분 걸릴 수 있다
+  timeout_seconds: 180    # 답 하나를 기다리는 시간
+  cold_timeout_seconds: 420  # 모델이 아직 메모리에 없을 때(처음 불러올 때) 그 요청만 기다리는 시간
+  warmup_on_start: true   # 프로그램을 켤 때 모델을 미리 불러 둔다(백그라운드, 실패해도 조용히)
   num_ctx: 8192           # 모델 입력 길이(토큰)
   keep_alive: "30m"       # 답한 뒤 모델을 메모리에 두는 시간
   context_chars: 6000     # 모델에 넣을 영상 자료 길이 한도(3단계)
