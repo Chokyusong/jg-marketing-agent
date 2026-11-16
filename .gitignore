@@ -1,8 +1,24 @@
+# 가상환경·캐시
 .venv/
 __pycache__/
+*.py[cod]
 .pytest_cache/
+.ruff_cache/
+
+# 비밀값
 .env
+.env.*
+!.env.example
+
+# 실행 데이터
 *.db
 *.sqlite3
 logs/
 error_screenshots/
+profiles/
+
+# 과제 원문 등 회사 자료
+*.pdf
+
+# Claude Code 개인 설정
+.claude/settings.local.json

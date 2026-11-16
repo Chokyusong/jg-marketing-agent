@@ -1,0 +1,1 @@
+# 통합 테스트: 외부 호출은 conftest의 mock_http로 바꾼다.

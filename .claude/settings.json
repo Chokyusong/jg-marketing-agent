@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python.exe -m pytest *)",
+      "Bash(.venv/Scripts/python.exe -m ruff check *)",
+      "Bash(.venv/Scripts/python.exe -m ruff format --check *)",
+      "Bash(.venv/Scripts/python.exe scripts/check_secrets.py *)",
+      "Bash(powershell -File scripts/verify.ps1 *)",
+      "Bash(powershell -ExecutionPolicy Bypass -File scripts/verify.ps1 *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git ls-files *)",
+      "Bash(git branch *)",
+      "Bash(ollama list)",
+      "Bash(ollama show *)",
+      "PowerShell(.\\scripts\\verify.ps1 *)",
+      "PowerShell(.\\.venv\\Scripts\\python.exe -m pytest *)",
+      "PowerShell(.\\.venv\\Scripts\\python.exe -m ruff check *)",
+      "PowerShell(.\\.venv\\Scripts\\python.exe scripts\\check_secrets.py *)",
+      "PowerShell(git status *)",
+      "PowerShell(git diff *)",
+      "PowerShell(git log *)",
+      "PowerShell(git show *)",
+      "PowerShell(git ls-files *)",
+      "PowerShell(git branch *)",
+      "PowerShell(ollama list)",
+      "PowerShell(ollama show *)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "PowerShell(git push *)",
+      "Bash(gh repo *)",
+      "PowerShell(gh repo *)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(!.env.example)",
+      "Bash(cat .env*)",
+      "Bash(type .env*)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "PowerShell(Get-Content .env*)",
+      "PowerShell(git push --force *)",
+      "PowerShell(git push -f *)"
+    ]
+  }
+}

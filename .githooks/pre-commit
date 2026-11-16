@@ -1,0 +1,20 @@
+#!/bin/sh
+# 커밋 전에 스테이징된 파일의 비밀값·커밋 금지 파일을 검사한다.
+# 설치: git config core.hooksPath .githooks
+ROOT="$(git rev-parse --show-toplevel)" || exit 1
+cd "$ROOT" || exit 1
+
+if [ -x ".venv/Scripts/python.exe" ]; then
+    PY=".venv/Scripts/python.exe"
+elif [ -x ".venv/bin/python" ]; then
+    PY=".venv/bin/python"
+elif command -v py >/dev/null 2>&1; then
+    PY="py -3"
+elif command -v python3 >/dev/null 2>&1; then
+    PY="python3"
+else
+    echo "[pre-commit] 파이썬을 찾지 못해 비밀값 검사를 할 수 없다. 커밋을 막는다." >&2
+    exit 1
+fi
+
+exec $PY scripts/check_secrets.py --staged

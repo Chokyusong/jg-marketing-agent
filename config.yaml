@@ -1,0 +1,27 @@
+profiles: [유튜브1, 유튜브2, 유튜브3]
+comment:
+  min_chars: 40
+  max_chars: 120
+  brand: 운명원
+  disclosure: "[광고]"
+brand:
+  facts:
+    - 운명원은 연애 사주 상담을 하는 곳이다
+limits:
+  daily_max_comments: 10
+discover:
+  query: 연애 고민
+  max_results: 12
+rising:
+  query: 연애
+  min_views: 1000
+  max_views: 5000
+  min_views_per_hour: 150
+transcript:
+  provider: manual        # manual | unofficial
+browser:
+  default_target: sandbox # sandbox | assist
+  window_position: "60,-1060"
+  typing_delay_ms: [60, 160]
+llm:
+  provider: ollama

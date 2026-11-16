@@ -1,0 +1,29 @@
+[project]
+name = "jg-marketing-agent"
+version = "0.1.0"
+description = "유튜브 영상 맥락에 맞는 홍보 표기 댓글 초안을 만들고 사람이 승인하는 로컬 대시보드"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "e2e: 창 없는 크롬(Playwright)으로 sandbox 화면을 돌리는 테스트. Playwright가 없으면 건너뜀",
+    "live: 진짜 YouTube API·Ollama를 부르는 테스트. RUN_LIVE=1일 때만 실행",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "scripts"]
+
+[tool.ruff.lint.per-file-ignores]
+# 1단계 원본 테스트는 그대로 둔다(import 정렬만 다름).
+"tests/test_health.py" = ["I001"]

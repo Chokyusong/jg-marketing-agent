@@ -1,0 +1,220 @@
+"""모든 테스트가 함께 쓰는 도우미.
+
+- 인터넷·API 키·Ollama 없이 돌아야 한다. 외부 호출은 아래 가짜로 바꾼다.
+- `live` 표시 테스트는 환경 변수 RUN_LIVE=1일 때만 실행한다.
+- `e2e` 표시 테스트는 playwright가 설치돼 있지 않으면 건너뛴다.
+- 아직 없는 앱 모듈(app.config 등)을 여기서 import하지 않는다.
+"""
+
+from __future__ import annotations
+
+import copy
+import importlib.util
+import json
+import os
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+import httpx
+import pytest
+import yaml
+
+ROOT = Path(__file__).resolve().parent.parent
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+CONFIG_PATH = ROOT / "config.yaml"
+
+# 표시 건너뛰기를 시험하는 하네스 테스트(tests/unit/test_markers.py)에서 쓴다.
+pytest_plugins = ["pytester"]
+
+
+# ---------------------------------------------------------------- 표시(marker)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    # pyproject.toml에도 등록돼 있다. 다른 루트에서 이 conftest만 쓸 때를 위해 한 번 더 등록.
+    config.addinivalue_line("markers", "e2e: Playwright sandbox 화면 테스트")
+    config.addinivalue_line("markers", "live: 진짜 외부 호출. RUN_LIVE=1일 때만")
+
+
+def live_enabled() -> bool:
+    return os.environ.get("RUN_LIVE") == "1"
+
+
+def playwright_available() -> bool:
+    return importlib.util.find_spec("playwright") is not None
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    skip_live = pytest.mark.skip(reason="live 테스트: RUN_LIVE=1일 때만 실행")
+    skip_e2e = pytest.mark.skip(reason="e2e 테스트: playwright 미설치(8단계에서 설치)")
+    run_live = live_enabled()
+    has_playwright = playwright_available()
+    for item in items:
+        if "live" in item.keywords and not run_live:
+            item.add_marker(skip_live)
+        if "e2e" in item.keywords and not has_playwright:
+            item.add_marker(skip_e2e)
+
+
+# ---------------------------------------------------------------- 임시 저장소·설정
+
+
+@pytest.fixture
+def tmp_db_path(tmp_path: Path) -> Path:
+    """테스트마다 새로 쓰는 SQLite 파일 경로(파일은 만들지 않는다)."""
+    return tmp_path / "test.sqlite3"
+
+
+def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    merged = copy.deepcopy(base)
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
+
+
+@pytest.fixture
+def base_config() -> dict[str, Any]:
+    """저장소의 config.yaml 내용(dict). 테스트에서 고쳐도 원본에는 영향 없음."""
+    with CONFIG_PATH.open(encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+@pytest.fixture
+def make_config(tmp_path: Path, base_config: dict[str, Any]) -> Callable[..., Path]:
+    """config.yaml을 바탕으로 일부만 바꾼 임시 설정 파일을 만든다.
+
+    사용: path = make_config({"limits": {"daily_max_comments": 2}})
+    """
+
+    counter = {"n": 0}
+
+    def _make(overrides: dict[str, Any] | None = None) -> Path:
+        counter["n"] += 1
+        data = _deep_merge(base_config, overrides or {})
+        path = tmp_path / f"config_{counter['n']}.yaml"
+        path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+        return path
+
+    return _make
+
+
+@pytest.fixture
+def clean_env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
+    """실제 .env·환경 변수의 비밀값이 테스트에 섞이지 않게 지운다."""
+    for name in ("YOUTUBE_API_KEY", "OLLAMA_BASE_URL", "OLLAMA_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+    return monkeypatch
+
+
+# ---------------------------------------------------------------- 저장해 둔 응답
+
+
+def load_fixture_json(name: str) -> Any:
+    with (FIXTURES_DIR / name).open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+@pytest.fixture
+def fixture_json() -> Callable[[str], Any]:
+    """tests/fixtures/<이름> JSON을 읽는다. 사용: fixture_json("youtube/search.json")"""
+    return load_fixture_json
+
+
+# ---------------------------------------------------------------- 가짜 LLM
+
+
+class FakeLLM:
+    """정해 둔 응답을 차례로 돌려주는 가짜 LLM.
+
+    응답이 Exception이면 그 차례에 예외를 던진다. 응답이 다 떨어지면 AssertionError.
+    부른 기록은 `calls`에 남는다(프롬프트에 실패 사유가 들어갔는지 확인할 때 쓴다).
+    """
+
+    def __init__(self, responses: list[Any]):
+        self._responses = list(responses)
+        self.calls: list[dict[str, Any]] = []
+
+    def generate_json(self, *args: Any, **kwargs: Any) -> Any:
+        self.calls.append({"args": args, "kwargs": kwargs})
+        if not self._responses:
+            raise AssertionError(f"FakeLLM: 준비한 응답보다 많이 불림({len(self.calls)}번째)")
+        item = self._responses.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return copy.deepcopy(item)
+
+    @property
+    def remaining(self) -> int:
+        return len(self._responses)
+
+
+@pytest.fixture
+def fake_llm() -> Callable[[list[Any]], FakeLLM]:
+    """사용: llm = fake_llm([{"concern": "..."}, {"body": "..."}])"""
+    return FakeLLM
+
+
+# ---------------------------------------------------------------- httpx.MockTransport
+
+
+class MockHTTP:
+    """httpx.MockTransport 도우미. 경로(+메서드)별로 응답을 정하고 요청을 기록한다.
+
+    사용:
+        mock = mock_http()
+        mock.add("GET", "/youtube/v3/search", json={...})
+        mock.add("GET", "/youtube/v3/videos", status_code=403, json={...})
+        client = httpx.Client(transport=mock.transport, base_url="https://example.test")
+    같은 경로를 여러 번 add하면 차례로 돌려주고, 마지막 것은 계속 돌려준다.
+    정하지 않은 경로로 요청이 오면 실패한다(실수로 진짜 주소를 부르는 것을 잡는다).
+    """
+
+    def __init__(self) -> None:
+        self.routes: dict[tuple[str, str], list[Any]] = {}
+        self.requests: list[httpx.Request] = []
+        self.transport = httpx.MockTransport(self._handle)
+
+    def add(
+        self,
+        method: str,
+        path: str,
+        *,
+        status_code: int = 200,
+        json: Any = None,
+        text: str | None = None,
+        exc: Exception | None = None,
+        handler: Callable[[httpx.Request], httpx.Response] | None = None,
+    ) -> MockHTTP:
+        if handler is None:
+
+            def handler(request: httpx.Request) -> httpx.Response:
+                if exc is not None:
+                    raise exc
+                if json is not None:
+                    return httpx.Response(status_code, json=json)
+                return httpx.Response(status_code, text=text or "")
+
+        self.routes.setdefault((method.upper(), path), []).append(handler)
+        return self
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        key = (request.method, request.url.path)
+        handlers = self.routes.get(key)
+        if not handlers:
+            raise AssertionError(f"MockHTTP: 정하지 않은 요청 {request.method} {request.url.path}")
+        handler = handlers.pop(0) if len(handlers) > 1 else handlers[0]
+        return handler(request)
+
+    def client(self, **kwargs: Any) -> httpx.Client:
+        kwargs.setdefault("base_url", "https://example.test")
+        return httpx.Client(transport=self.transport, **kwargs)
+
+
+@pytest.fixture
+def mock_http() -> Callable[[], MockHTTP]:
+    return MockHTTP
