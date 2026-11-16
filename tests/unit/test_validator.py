@@ -529,3 +529,87 @@ def test_long_context_is_fast_enough():
     result = run(GOOD, context=context, quote="하루에 한번 연락이면 충분할까")
     assert time.perf_counter() - start < 2.0
     assert check(result, "V6").passed
+
+
+# ---------------------------------------------------------------- 5단계: 전해 들은 식의 효능(V10)
+# 6단계 점검에서 "잘 본다던데", "유명하다던데"처럼 남의 말로 옮긴 효능 표현을 따로 잡지 못한다는
+# 것이 확인됐다. 확인할 수 없는 평판도 효능 주장이므로 V10에 더했다.
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    ["운명원이 잘 본다던데", "운명원 유명하다던데", "운명원 용하대요", "운명원이 용하다고 들었어요",
+     "다들 잘 맞는다더라고요", "운명원 잘 보는 곳이래요", "연애운 잘 봐준대요",
+     "입소문 난 곳이에요", "소문 듣고 찾는 곳", "평이 좋은 곳이에요", "평판이 좋아요",
+     "인기 많은 상담소예요", "많은 분들이 찾는 곳", "다들 추천하더라고요", "운명원이 좋대요",
+     "잘 맞는다고 하던데요", "정확하다고들 해요"],
+)
+def test_v10_catches_hearsay_claims(phrase):
+    v10 = check(run(f"{GOOD} {phrase}"), "V10")
+    assert not v10.passed, phrase
+    assert "효능·최상급" in v10.message
+
+
+@pytest.mark.parametrize("text", [
+    # 영상 속 말을 옮기거나 권하는 말은 걸리지 않는다
+    "[광고] '하루에 한 번 연락이면 충분할까요'라는 질문에 마음이 쓰였어요. 운명원에서 "
+    "연애 사주 상담을 받아 보세요.",
+    "[광고] 하루에 한 번 연락이면 충분할까요, 서로 잘 맞는지 궁금하다면 운명원의 연애 사주 "
+    "상담을 추천드려요.",
+    "[광고] 하루에 한 번 연락이면 충분할까요라는 고민, 이용하실 수 있는 운명원의 연애 사주 "
+    "상담이 있어요.",
+])
+def test_v10_hearsay_patterns_leave_normal_lines_alone(text):
+    result = run(text)
+    assert check(result, "V10").passed, check(result, "V10").message
+    assert result.passed, result.failure_lines()
+
+
+def test_quote_in_context_uses_v6_rule():
+    assert V.quote_in_context("하루에 한 번 연락으로 싸운 적", CONTEXT)
+    assert V.quote_in_context("하루에 한번 연락으로, 싸운 적!", CONTEXT)  # 공백·부호 무시
+    assert not V.quote_in_context("매일 밤 손편지를 써서 보냈대요", CONTEXT)
+    assert not V.quote_in_context("연락", CONTEXT)  # 6자보다 짧다
+
+
+# ---------------------------------------------------------------- 5단계: 따옴표로 옮긴 영상 속 말
+# 모델 비교에서 영상 자막 "그게 제일 걱정이라고 하네요"를 따옴표로 옮긴 초안이 V10("제일")에 걸렸다.
+# 영상의 말은 홍보 담당자의 주장이 아니므로 좁게 허용한다(따옴표 안, 브랜드와 떨어져 있을 때만).
+
+QUOTE_CTX = (
+    CONTEXT
+    + "\n다시 만나도 같은 이유로 싸울까 봐 그게 제일 걱정이래요\n여기가 제일 정확한 곳이에요"
+)
+QUOTED = "[광고] '다시 만나도 같은 이유로 싸울까 봐 그게 제일 걱정이래요'라는 말이 남아요. "
+
+
+def test_words_inside_a_quoted_video_line_are_not_claims():
+    text = QUOTED + "운명원에서 연애 사주 상담을 받아 보세요."
+    result = run(text, context=QUOTE_CTX, quote="같은 이유로 싸울까 봐 그게 제일 걱정이래요")
+    assert check(result, "V10").passed, check(result, "V10").message
+    assert result.passed, result.failure_lines()
+    # 사람이 쓴 글(근거를 글에서 찾음)도 같다
+    assert check(run(text, context=QUOTE_CTX), "V10").passed
+    # 영상 자료에 없는 말을 따옴표로 감싸도 면제되지 않는다
+    made_up = ("[광고] '하루에 한 번 연락, 제일 좋은 방법은 없어요'라는 말이 남아요. "
+               "운명원에서 상담받아 보세요.")
+    assert not check(run(made_up, context=QUOTE_CTX), "V10").passed
+
+
+def test_same_words_without_quote_marks_are_still_caught():
+    text = ("[광고] 다시 만나도 같은 이유로 싸울까 봐 그게 제일 걱정이래요라는 말이 남아요. "
+            "운명원에서 연애 사주 상담을 받아 보세요.")
+    assert not check(run(text, context=QUOTE_CTX), "V10").passed
+
+
+def test_claim_outside_the_quote_is_still_caught():
+    text = QUOTED + "운명원이 제일 용해요."
+    v10 = check(run(text, context=QUOTE_CTX), "V10")
+    assert not v10.passed and "제일" in v10.message
+
+
+def test_quoted_claim_next_to_the_brand_is_caught():
+    # 댓글 속 "여기가 제일 정확한 곳"을 브랜드에 붙여 옮기면 전해 들은 효능이다
+    text = ("[광고] 연락 문제로 힘드시죠. 운명원은 '여기가 제일 정확한 곳이에요'라는 말을 들어요. "
+            "연애 사주 상담을 받아 보세요.")
+    assert not check(run(text, context=QUOTE_CTX), "V10").passed

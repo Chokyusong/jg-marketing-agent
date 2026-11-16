@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import httpx
 from fastapi import Request
@@ -11,6 +11,7 @@ from fastapi import Request
 from app import db
 from app.analysis.checking import CheckService
 from app.analysis.context import ContextService
+from app.analysis.drafter import DraftService
 from app.analysis.validator import ValidatorRules
 from app.config import Settings, load_settings
 from app.errors import AppError
@@ -31,6 +32,8 @@ class Services:
     # 4단계: 고른 LLM 공급자. 설정이 틀려 못 만들었으면 llm은 None, 이유는 llm_error
     llm: LLMClient | None = None
     llm_error: AppError | None = None
+    # 5단계: 분석과 초안. LLM은 그때그때 `require_llm()`으로 받는다(테스트가 바꿔 끼울 수 있게)
+    drafts: DraftService = field(default=None)  # type: ignore[assignment]
 
     def require_llm(self) -> LLMClient:
         if self.llm is None:
@@ -84,7 +87,7 @@ def build_services(
         llm = build_llm(settings, transport=llm_transport)
     except AppError as exc:  # 앱은 뜬다. AI 상태와 AI 기능에서 이유를 알린다
         llm_error = exc
-    return Services(
+    services = Services(
         settings=settings,
         quota=quota,
         videos=videos,
@@ -93,6 +96,15 @@ def build_services(
         llm=llm,
         llm_error=llm_error,
     )
+    services.drafts = DraftService(
+        context,
+        checks,
+        llm=services.require_llm,
+        db_path=settings.db_path,
+        clock=clock,
+        brand_facts=settings.brand_facts,
+    )
+    return services
 
 
 class ServiceHolder:

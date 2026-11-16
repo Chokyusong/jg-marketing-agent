@@ -5,6 +5,7 @@
 3단계: 영상 맥락(자막 붙여넣기·인기 댓글) API를 붙였다(②칸 자막 출처).
 6단계: 규칙 검사 API(`POST /api/validate`)를 붙였다(②칸 댓글 초안 글 상자).
 4단계: LLM 연결(`app/llm/`). `GET /api/status`에 AI 상태, `POST /api/llm/warmup`.
+5단계: 분석과 초안(`/api/analysis/{video_id}`, `/api/drafts`). 승인은 규칙 검사를 통과한 것만.
 실제 유튜브 화면을 자동으로 조작하는 코드는 없다(DESIGN 6.1).
 """
 
@@ -21,6 +22,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.api import drafts as drafts_api
 from app.api import llm as llm_api
 from app.api import status as status_api
 from app.api import validate as validate_api
@@ -33,8 +35,8 @@ from app.youtube.quota import Clock, utc_now
 
 BASE_DIR = Path(__file__).resolve().parent
 mimetypes.add_type("font/woff2", ".woff2")  # 글꼴 파일을 올바른 형식으로 내려보낸다
-APP_VERSION = "0.5.0"  # 단계가 끝날 때마다 하나씩 올린다(실행 순서: 3 → P → 6 → 4 → 5 …)
-STAGE = 4
+APP_VERSION = "0.6.0"  # 단계가 끝날 때마다 하나씩 올린다(실행 순서: 3 → P → 6 → 4 → 5 → 7 …)
+STAGE = 5
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
@@ -99,6 +101,7 @@ def create_app(
     app.include_router(videos_api.router)
     app.include_router(validate_api.router)
     app.include_router(llm_api.router)
+    app.include_router(drafts_api.router)
     return app
 
 

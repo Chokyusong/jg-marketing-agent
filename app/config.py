@@ -29,7 +29,9 @@ DEFAULT_DB_PATH = ROOT / "data" / "app.sqlite3"
 SECRET_ENV_NAMES = ("YOUTUBE_API_KEY",)
 DEFAULT_CONTEXT_CHARS = 6000
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
-DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"  # 모델 확정은 5단계 끝(D3). 그때까지 가장 가벼운 일반 모델
+# D3(5단계 끝): 초안 비교에서 3번 안 통과율이 가장 높은 모델(docs/MODEL_EVAL.md).
+# 대표가 초안을 읽고 .env의 OLLAMA_MODEL로 바꿀 수 있다
+DEFAULT_OLLAMA_MODEL = "qwen3.8:27b"
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # D4 기본값(PLAYBOOK 2절): 대표가 정하지 않으면 이 한 줄만 운명원에 대한 사실로 쓴다
 DEFAULT_BRAND_FACTS = ("운명원은 연애 사주 상담을 하는 곳이다",)

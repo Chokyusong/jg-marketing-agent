@@ -56,6 +56,44 @@ MIGRATIONS: list[str] = [
         built_at           TEXT
     );
     """,
+    # 5단계: analyses(영상당 마지막 분석 1행), drafts(영상당 승인 초안 하나 — 코드가 지킨다)
+    """
+    CREATE TABLE analyses (
+        video_id      TEXT PRIMARY KEY REFERENCES videos(video_id) ON DELETE CASCADE,
+        topic         TEXT NOT NULL DEFAULT '',
+        concern       TEXT NOT NULL DEFAULT '',
+        tone          TEXT NOT NULL DEFAULT '',
+        viewer_needs  TEXT NOT NULL DEFAULT '',
+        evidence_json TEXT NOT NULL DEFAULT '[]',   -- [{quote, source}] 영상 자료와 대조해 남은 것
+        dropped_json  TEXT NOT NULL DEFAULT '[]',   -- 자료에 없어서 버린 구절
+        fallback      INTEGER NOT NULL DEFAULT 0 CHECK (fallback IN (0, 1)),
+        model         TEXT NOT NULL DEFAULT '',
+        created_at    TEXT NOT NULL
+    );
+    CREATE TABLE drafts (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        video_id         TEXT NOT NULL REFERENCES videos(video_id) ON DELETE CASCADE,
+        body             TEXT NOT NULL,             -- 표기([광고])를 포함한 전체 글
+        evidence_quote   TEXT NOT NULL DEFAULT '',
+        evidence_source  TEXT NOT NULL DEFAULT ''
+                         CHECK (evidence_source IN ('', 'transcript', 'title', 'description',
+                                                    'comment')),
+        tone_label       TEXT NOT NULL DEFAULT '',
+        model            TEXT NOT NULL DEFAULT '',
+        attempts         INTEGER NOT NULL DEFAULT 0,
+        first_passed     INTEGER NOT NULL DEFAULT 0 CHECK (first_passed IN (0, 1)),
+        validation_json  TEXT NOT NULL,
+        passed           INTEGER NOT NULL DEFAULT 0 CHECK (passed IN (0, 1)),
+        status           TEXT NOT NULL DEFAULT 'draft'
+                         CHECK (status IN ('draft', 'approved', 'superseded')),
+        edited_by_human  INTEGER NOT NULL DEFAULT 0 CHECK (edited_by_human IN (0, 1)),
+        created_at       TEXT NOT NULL,
+        updated_at       TEXT NOT NULL,
+        approved_at      TEXT
+    );
+    CREATE INDEX drafts_video ON drafts(video_id, id);
+    CREATE INDEX drafts_status ON drafts(status);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

@@ -6,8 +6,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.analysis.analyzer import Analysis
 from app.analysis.context import VideoContext
+from app.analysis.drafter import Draft
 from app.analysis.validator import Validation, ValidatorRules
+from app.llm.prompts import SOURCE_LABELS
 from app.transcript.manual import MAX_TRANSCRIPT_CHARS
 from app.youtube.service import SearchResult, StoredVideo
 from app.youtube.url_parser import watch_url
@@ -193,3 +196,103 @@ class ValidationOut(BaseModel):
             total=len(checks),
             checks=checks,
         )
+
+
+# ---------------------------------------------------------------- 5단계: 분석과 초안
+
+
+class EvidenceOut(BaseModel):
+    quote: str
+    source: Literal["transcript", "title", "description", "comment"]
+    source_label: str  # 자막 · 제목 · 설명 · 댓글
+
+
+class AnalysisOut(BaseModel):
+    """02칸 「영상 맥락 분석」 다섯 줄."""
+
+    video_id: str
+    topic: str
+    concern: str  # 과제의 "고민 한 줄"
+    tone: str
+    viewer_needs: str
+    evidence: list[EvidenceOut]
+    dropped_count: int  # 모델이 고른 근거 중 영상 자료에 없어서 버린 수
+    fallback: bool  # 근거가 모두 버려져 제목을 근거로 썼는지
+    model: str
+    created_at: str
+
+    @classmethod
+    def from_analysis(cls, a: Analysis) -> AnalysisOut:
+        return cls(
+            video_id=a.video_id,
+            topic=a.topic,
+            concern=a.concern,
+            tone=a.tone,
+            viewer_needs=a.viewer_needs,
+            evidence=[
+                EvidenceOut(quote=e.quote, source=e.source, source_label=e.source_label)
+                for e in a.evidence
+            ],
+            dropped_count=len(a.dropped),
+            fallback=a.fallback,
+            model=a.model,
+            created_at=a.created_at,
+        )
+
+
+class DraftCreateIn(BaseModel):
+    video_id: str = Field(min_length=1, max_length=64)
+    # [다른 초안 생성]: 이미 쓴 근거 구절. 비우면 서버가 그 영상 초안들의 근거를 피한다(another)
+    avoid_quotes: list[str] = Field(default_factory=list, max_length=20)
+    another: bool = False
+
+
+class DraftPatchIn(BaseModel):
+    body: str = Field(max_length=2000)
+
+
+class DraftOut(BaseModel):
+    id: int
+    video_id: str
+    body: str  # 표기를 포함한 전체 글
+    evidence_quote: str
+    evidence_source: str
+    evidence_label: str
+    tone_label: str
+    model: str
+    attempts: int
+    first_passed: bool
+    passed: bool
+    status: Literal["draft", "approved", "superseded"]
+    edited_by_human: bool
+    created_at: str
+    updated_at: str
+    approved_at: str | None
+    validation: ValidationOut
+
+    @classmethod
+    def from_draft(cls, d: Draft, rules: ValidatorRules) -> DraftOut:
+        return cls(
+            id=d.id,
+            video_id=d.video_id,
+            body=d.body,
+            evidence_quote=d.evidence_quote,
+            evidence_source=d.evidence_source,
+            evidence_label=SOURCE_LABELS.get(d.evidence_source, ""),
+            tone_label=d.tone_label,
+            model=d.model,
+            attempts=d.attempts,
+            first_passed=d.first_passed,
+            passed=d.passed,
+            status=d.status,  # type: ignore[arg-type]
+            edited_by_human=d.edited_by_human,
+            created_at=d.created_at,
+            updated_at=d.updated_at,
+            approved_at=d.approved_at,
+            validation=ValidationOut.from_validation(d.validation, rules),
+        )
+
+
+class DraftListOut(BaseModel):
+    video_id: str
+    items: list[DraftOut]  # 최신이 위

@@ -135,7 +135,7 @@
       <p class="note" id="quota-note">YouTube 할당량 오늘 <b id="quota-used">–</b> / <span id="quota-limit">10,000</span> 단위 · 검색 1회 100단위 · 같은 검색은 10분 동안 저장한 결과를 씁니다.</p>
     </div>
 
-    <!-- 02 AI 분석과 댓글 초안 (3단계: 자막 출처·붙여넣기, 6단계: 초안 직접 쓰기·규칙 검사, 5단계: 분석·AI 초안) -->
+    <!-- 02 AI 분석과 댓글 초안 (3단계: 자막 출처·붙여넣기, 6단계: 초안 직접 쓰기·규칙 검사, 5단계: 분석·AI 초안·승인) -->
     <div class="column" id="col-analyze">
       <div class="colhead"><h2>AI 분석과 댓글 초안</h2><span class="number">02 / 03</span></div>
 
@@ -143,14 +143,26 @@
         <p class="empty-sm">01에서 영상을 고르면 여기에 표시됩니다.</p>
       </div>
 
-      <div class="is-off">
-        <div class="section-mini">영상 맥락 분석 <span>CONTEXT REPORT · 5단계에서 연결</span></div>
-        <dl class="analysis is-compact">
-          <dt>주요 주제</dt><dd>5단계에서 연결</dd>
-          <dt>핵심 고민</dt><dd>5단계에서 연결</dd>
-          <dt>영상 톤</dt><dd>5단계에서 연결</dd>
-          <dt>시청자 니즈</dt><dd>5단계에서 연결</dd>
-          <dt>분석 근거</dt><dd>근거 문장과 출처 · 5단계에서 연결</dd>
+      <!-- 영상 맥락 분석(5단계): [분석하고 초안 만들기]를 눌러야 시작한다(모델이 느려서 고르자마자 돌지 않는다) -->
+      <div class="report" id="report-box" aria-live="polite">
+        <div class="section-mini"><span class="report-title">영상 맥락 분석 <small>CONTEXT REPORT</small></span>
+          <button type="button" class="line-btn run-btn" id="run-btn" disabled>분석하고 초안 만들기 ↗</button></div>
+        <div class="run-line">
+          <ol class="run-steps" id="run-steps" aria-label="진행 단계">
+            <li data-phase="context">맥락 수집</li><li data-phase="analysis">분석</li><li data-phase="draft">초안</li><li data-phase="check">검사</li>
+          </ol>
+          <span class="run-note" id="run-note">큰 모델은 처음에 1분쯤 걸립니다</span>
+        </div>
+        <div class="alert" id="run-error" role="alert" hidden>
+          <p class="alert-msg" id="run-error-msg"></p>
+          <p class="alert-action" id="run-error-action"></p>
+        </div>
+        <dl class="analysis is-compact" id="analysis-list">
+          <dt>주요 주제</dt><dd id="an-topic">–</dd>
+          <dt>핵심 고민</dt><dd id="an-concern">–</dd>
+          <dt>영상 톤</dt><dd id="an-tone">–</dd>
+          <dt>시청자 니즈</dt><dd id="an-needs">–</dd>
+          <dt>분석 근거</dt><dd id="an-evidence">근거 문장과 출처</dd>
         </dl>
       </div>
 
@@ -178,16 +190,19 @@
         </details>
       </div>
 
-      <!-- 댓글 초안(6단계): 사람이 직접 쓰고, 입력이 멈추면 규칙 검사 V1~V11. AI 초안은 5단계 -->
+      <!-- 댓글 초안(6단계): 사람이 고치고, 입력이 멈추면 규칙 검사 V1~V11. AI 초안이 들어온다(5단계) -->
       <div class="draft" id="draft-box" data-disclosure="{{ disclosure }}" data-min="{{ min_chars }}" data-max="{{ max_chars }}">
         <div class="section-mini"><label for="draft-text">댓글 초안</label> <span class="draft-count" id="draft-count">0 / {{ max_chars }}자</span></div>
         <div class="draft-edit">
           <div class="draft-mirror" id="draft-mirror" aria-hidden="true"></div>
-          <textarea class="draft-input" id="draft-text" rows="2" maxlength="1000" spellcheck="false" placeholder="{{ disclosure }}로 시작해 직접 써 보세요. 영상 속 말을 넣고 브랜드 이름을 한 번 씁니다." aria-describedby="draft-checks" disabled></textarea>
+          <textarea class="draft-input" id="draft-text" rows="2" maxlength="1000" spellcheck="false" placeholder="[분석하고 초안 만들기]를 누르거나 {{ disclosure }}로 시작해 직접 써 보세요." aria-describedby="draft-checks" disabled></textarea>
         </div>
         <div class="draftfooter">
-          <span class="tag" id="draft-tag">DRAFT · REVIEW REQUIRED</span>
-          <button type="button" class="line-btn is-off" disabled>다른 초안 생성 ↗ · 5단계에서 연결</button>
+          <span class="draft-labels"><span class="tag" id="draft-tag">DRAFT · REVIEW REQUIRED</span><span class="tone" id="draft-tone" title="말투 분류(댓글 본문에는 넣지 않습니다)"></span></span>
+          <span class="draft-actions">
+            <button type="button" class="line-btn" id="another-btn" disabled>다른 초안 생성 ↗</button>
+            <button type="button" class="line-btn approve-btn" id="approve-btn" disabled>이 초안 승인</button>
+          </span>
         </div>
         <div class="checks" id="draft-checks" aria-live="polite">
           <p class="checks-idle" id="checks-idle">영상을 고르고 초안을 쓰면 규칙 검사(V1~V11)를 합니다.</p>

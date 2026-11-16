@@ -43,3 +43,26 @@ def test_live_ollama_korean_json(tmp_db_path):
         llm.close()
     assert isinstance(data["concern"], str) and re.search(r"[가-힣]", data["concern"])
     assert isinstance(data["keywords"], list)
+
+
+@pytest.mark.live
+def test_live_analysis_and_draft_pass_checks(tmp_db_path):
+    """5단계: 진짜 모델로 가상 맥락 하나를 분석하고 초안을 만든다(규칙 검사까지)."""
+    from app.api.deps import build_services
+    from scripts import eval_drafts as E
+
+    settings = load_settings(db_path=tmp_db_path)
+    contexts = E.load_contexts(limit=1)
+    services = build_services(settings, transport=E.youtube_transport(contexts))
+    try:
+        if not services.llm_health().reachable:
+            pytest.skip("Ollama가 꺼져 있음")
+        E.prepare(services, contexts)
+        vid = contexts[0]["video_id"]
+        analysis = services.drafts.analyze(vid)
+        assert analysis.evidence and re.search(r"[가-힣]", analysis.concern)
+        draft = services.drafts.generate(vid)
+    finally:
+        services.close()
+    assert draft.body.startswith("[광고] ")
+    assert draft.attempts <= 3

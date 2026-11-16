@@ -5,7 +5,7 @@ import re
 import pytest
 
 JS_FILES = ["app.js", "api.js", "state.js", "format.js", "discover.js", "analysis.js", "flow.js",
-            "topbar.js", "context.js", "draft.js"]
+            "topbar.js", "context.js", "draft.js", "report.js"]
 
 
 @pytest.fixture
@@ -52,9 +52,10 @@ def test_discover_column_is_wired(page):
 
 
 def test_unconnected_parts_are_off_and_labelled(page):
-    for label in ("5단계에서 연결", "7단계에서 연결", "8단계에서 연결"):
+    for label in ("7단계에서 연결", "8단계에서 연결"):
         assert label in page
     assert "3단계에서 연결" not in page  # 3단계에서 켠 요소는 문구도 지운다
+    assert "5단계에서 연결" not in page  # 5단계에서 켠 분석·AI 초안·다른 초안·승인도
     assert "6단계에서 연결" not in page  # 6단계에서 켠 요소(초안 글 상자·규칙 검사)도
     assert "4단계에서 연결" not in page  # 4단계에서 켠 위 줄 AI 상태도
     assert '<dl class="today is-off"' in page
@@ -148,11 +149,9 @@ def test_context_rows_are_on(page):
     assert "<dt>자막 출처</dt>" in box and 'id="ctx-transcript"' in box
     assert "<dt>인기 댓글</dt>" in box and 'id="ctx-comments"' in box
     assert 'id="context-error"' in box and 'role="alert"' in box
-    # 분석(5단계)은 그대로 꺼져 있다. 초안 글 상자는 6단계에서 켰다(아래 테스트)
-    off_blocks = analyze.split('<div class="is-off">')[1:]
-    assert len(off_blocks) == 1
-    assert "CONTEXT REPORT · 5단계에서 연결" in off_blocks[0]
-    assert "자막 출처" not in off_blocks[0].split("</dl>", 1)[0]
+    # 분석(5단계)도 켰다: 02칸에 꺼 둔 덩어리가 없다
+    assert '<div class="is-off">' not in analyze
+    assert 'class="line-btn is-off"' not in analyze
 
 
 def test_transcript_paste_box(page):
@@ -183,9 +182,9 @@ def test_context_js_wires_the_three_apis(make_client):
 
 
 def test_version_shows_current_stage(page):
-    # 버전은 단계가 끝날 때마다 하나씩 올린다(실행 순서 3 → P → 6 → 4: 0.3.0 → 0.4.0 → 0.5.0)
-    assert "V 0.5.0 — LOCAL · 4단계" in page
-    assert "STAGE 4" in page
+    # 버전은 단계가 끝날 때마다 하나씩 올린다(실행 순서 3 → P → 6 → 4 → 5: 0.3.0 … 0.6.0)
+    assert "V 0.6.0 — LOCAL · 5단계" in page
+    assert "STAGE 5" in page
 
 
 # ---------------------------------------------------------------- 6단계: 02칸 댓글 초안·규칙 검사
@@ -202,9 +201,10 @@ def test_draft_box_is_on(page):
     assert 'id="draft-mirror" aria-hidden="true"' in draft  # 표기 금색으로 칠하는 거울
     assert 'id="draft-tag">DRAFT · REVIEW REQUIRED</span>' in draft
     assert 'id="draft-checks" aria-live="polite"' in draft
-    # 5단계 것은 꺼 둔 채로 "5단계에서 연결"
-    button = '<button type="button" class="line-btn is-off" disabled>'
-    assert button + "다른 초안 생성 ↗ · 5단계에서 연결</button>" in draft
+    # 5단계에서 켰다: [다른 초안 생성]·[이 초안 승인](초안이 생기기 전에는 눌리지 않는다)
+    another = '<button type="button" class="line-btn" id="another-btn" disabled>다른 초안 생성 ↗'
+    assert another in draft
+    assert 'id="approve-btn" disabled>이 초안 승인</button>' in draft
     assert "영상의 구체적 장면은 실제 자막 등 검증 가능한 근거가 있을 때만 반영합니다." in analyze
 
 
@@ -232,3 +232,65 @@ def test_draft_styles(make_client):
     assert "var(--gold)" in mirror
     assert ".draft-input {" in css and "color: transparent" in css.split(".draft-input {", 1)[1]
     assert ".checks-fail li {" in css and ".tag.is-ok" in css
+
+
+# ---------------------------------------------------------------- 5단계: 02칸 분석·AI 초안·승인
+
+
+def test_report_box_is_on_with_run_button_and_five_lines(page):
+    analyze = _section(page, 'id="col-analyze"', 'id="col-execute"')
+    report = _section(analyze, 'id="report-box"', 'id="context-box"')
+    assert "영상 맥락 분석" in report and "CONTEXT REPORT" in report
+    # 영상을 고르자마자 돌지 않는다: 단추로 시작(영상을 고르기 전에는 눌리지 않는다)
+    assert 'id="run-btn" disabled>분석하고 초안 만들기 ↗</button>' in report
+    for phase, label in (("context", "맥락 수집"), ("analysis", "분석"), ("draft", "초안"),
+                         ("check", "검사")):
+        assert f'<li data-phase="{phase}">{label}</li>' in report
+    assert "큰 모델은 처음에 1분쯤 걸립니다" in report  # 긴 작업 안내
+    assert 'id="run-error" role="alert" hidden' in report
+    for dt, dd in (("주요 주제", "an-topic"), ("핵심 고민", "an-concern"), ("영상 톤", "an-tone"),
+                   ("시청자 니즈", "an-needs"), ("분석 근거", "an-evidence")):
+        assert f'<dt>{dt}</dt><dd id="{dd}">' in report
+    assert 'id="draft-tone"' in page  # 말투 분류(본문에는 넣지 않는다)
+
+
+def test_execute_button_stays_off_until_stage_8(page):
+    execute = _section(page, 'id="col-execute"', 'id="activity"')
+    button = '<button type="button" class="primary" disabled>브라우저에서 영상 열기 ↗</button>'
+    assert button in execute
+    assert "작업 실행은 8단계에서 연결" in execute
+
+
+def test_report_js_runs_steps_in_order_on_button_only(make_client):
+    client = make_client(key=None)
+    api = client.get("/static/js/api.js").text
+    for snippet in ("`/api/analysis/${encodeURIComponent(videoId)}`, { method: 'POST' }",
+                    "request('/api/drafts', { method: 'POST'", "`/api/drafts?video_id=",
+                    "method: 'PATCH'", "`/api/drafts/${id}/approve`", "this.failures = failures"):
+        assert snippet in api, snippet
+    js = client.get("/static/js/report.js").text
+    assert "$('run-btn').addEventListener('click'" in js
+    # 영상을 고르면 저장된 것만 불러온다(api.analyze는 단추를 눌렀을 때만)
+    select_block = js.split("if (state.selectedId !== lastSelected) {", 1)[1].split("return;", 1)[0]
+    assert "restore(" in select_block and "run(" not in select_block
+    assert js.index("waitForContext(videoId)") < js.index("api.analyze(videoId)") < js.index(
+        "api.createDraft(videoId")
+    for text in ("큰 모델은 처음에 1분쯤 걸립니다", "번째에 통과", "초", "another: true",
+                 "api.updateDraft(draft.id, text)", "api.approveDraft(current.id)", "외 ",
+                 "setAttribute('title'"):
+        assert text in js, text
+    draft = client.get("/static/js/draft.js").text
+    assert "export function loadDraft(draft)" in draft and "'APPROVED · 승인됨'" in draft
+    assert "말투 · " in draft
+    assert "initReport" in client.get("/static/js/app.js").text
+    flow = client.get("/static/js/flow.js").text
+    assert "const current = approved ? 3 : video ? 2 : 1;" in flow  # 승인하면 03
+    assert "초안 승인 완료" in flow
+
+
+def test_report_lines_are_clipped_to_one_line(make_client):
+    css = make_client(key=None).get("/static/css/style.css").text
+    rule = css.split(".report .analysis dd {", 1)[1].split("}", 1)[0]
+    for token in ("white-space: nowrap", "overflow: hidden", "text-overflow: ellipsis"):
+        assert token in rule
+    assert ".run-steps li.is-current" in css and ".line-btn.approve-btn" in css

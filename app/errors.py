@@ -10,6 +10,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 
 class ErrorKind(StrEnum):
@@ -34,6 +35,10 @@ class ErrorKind(StrEnum):
     LLM_BAD_OUTPUT = "llm_bad_output"
     LLM_ERROR = "llm_error"  # 위 넷에 들지 않는 LLM 서버 오류
     LLM_PROVIDER_UNKNOWN = "llm_provider_unknown"  # llm.active가 providers에 없거나 종류를 모름
+    # 5단계: 초안
+    DRAFT_NOT_FOUND = "draft_not_found"
+    DRAFT_NOT_PASSED = "draft_not_passed"  # 규칙 검사에 걸린 초안은 승인하지 않는다(409)
+    DRAFT_SUPERSEDED = "draft_superseded"  # 새 초안이나 다른 승인으로 밀려난 초안
 
 
 @dataclass(frozen=True)
@@ -134,25 +139,47 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
         "지금 쓸 수 있는 종류(type)는 ollama입니다.",
         503,
     ),
+    ErrorKind.DRAFT_NOT_FOUND: ErrorText(
+        "초안을 찾지 못했습니다.",
+        "영상을 다시 고르고 [분석하고 초안 만들기]를 눌러 주세요.",
+        404,
+    ),
+    ErrorKind.DRAFT_NOT_PASSED: ErrorText(
+        "규칙 검사를 통과하지 못한 초안은 승인할 수 없습니다.",
+        "빨갛게 표시된 항목을 고친 뒤 다시 승인해 주세요.",
+        409,
+    ),
+    ErrorKind.DRAFT_SUPERSEDED: ErrorText(
+        "더 새 초안이 있어 이 초안은 고치거나 승인할 수 없습니다.",
+        "화면을 새로 고치고 지금 보이는 초안으로 진행해 주세요.",
+        409,
+    ),
 }
 
 
 class AppError(Exception):
     """사용자에게 보일 수 있는 오류. 응답 본문은 `to_dict()`."""
 
-    def __init__(self, kind: ErrorKind, *, detail: str = "") -> None:
+    def __init__(
+        self, kind: ErrorKind, *, detail: str = "", extra: dict[str, Any] | None = None
+    ) -> None:
         self.kind = ErrorKind(kind)
         text = ERROR_TEXTS[self.kind]
         self.message = text.message
         self.action = text.action
         self.http_status = text.http_status
         self.detail = detail
+        self.extra = dict(extra or {})  # 응답에 함께 싣는 구조화된 값(예: 걸린 검사 항목)
         super().__init__(f"{self.kind}: {self.message}")
 
-    def to_dict(self) -> dict[str, str]:
-        data = {"kind": str(self.kind), "message": self.message, "action": self.action}
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "kind": str(self.kind), "message": self.message, "action": self.action
+        }
         if self.detail:
             data["detail"] = self.detail
+        for key, value in self.extra.items():
+            data.setdefault(key, value)
         return data
 
 

@@ -1,5 +1,7 @@
 // 흐름 띠와 03 작업 상자: 지금 사용자가 있는 단계를 밝힌다(UI_SPEC 2.3).
-// 고르기 전 01, 고르면 02, 지금 글 상자의 초안이 규칙 검사를 통과하면 03(6단계).
+// 고르기 전 01, 고르면 02, 글 상자의 초안을 승인하면 03(5단계). 규칙 검사만 통과하면 02에 머물고
+// 03 상자가 "승인 대기"를 알린다. 03칸 실행 버튼은 8단계(브라우저 연결)까지 꺼 둔다.
+import { isApproved } from './draft.js';
 import { getState, selectedVideo, subscribe } from './state.js';
 
 function draftChecked(state) {
@@ -15,8 +17,9 @@ export function initFlow() {
   const paint = () => {
     const state = getState();
     const video = selectedVideo();
+    const approved = Boolean(video) && isApproved(state);
     const checked = Boolean(video) && draftChecked(state);
-    const current = checked ? 3 : video ? 2 : 1;
+    const current = approved ? 3 : video ? 2 : 1;
     for (const step of steps) {
       const n = Number(step.dataset.step);
       step.classList.toggle('is-current', n === current);
@@ -24,18 +27,21 @@ export function initFlow() {
       if (n === current) step.setAttribute('aria-current', 'step');
       else step.removeAttribute('aria-current');
     }
-    if (checked) {
-      title.textContent = '규칙 검사 통과';
-      desc.textContent = `선택: ${video.title} — 초안이 규칙 검사를 통과했습니다. 승인과 실행은 다음 단계에서 연결합니다. 게시 여부는 로그인된 사용자 본인이 결정합니다.`;
+    if (approved) {
+      title.textContent = '초안 승인 완료';
+      desc.textContent = `선택: ${video.title} — 승인한 초안으로 실행할 준비가 됐습니다. 브라우저 실행은 8단계에서 연결합니다. 게시 여부는 로그인된 사용자 본인이 결정합니다.`;
+    } else if (checked) {
+      title.textContent = '규칙 검사 통과 · 승인 대기';
+      desc.textContent = `선택: ${video.title} — 02의 [이 초안 승인]을 누르면 실행 단계로 넘어갑니다. 게시 여부는 로그인된 사용자 본인이 결정합니다.`;
     } else if (video) {
       title.textContent = '초안 대기';
-      desc.textContent = `선택: ${video.title} — 초안이 규칙 검사를 통과해야 열 수 있습니다. 게시 여부는 로그인된 사용자 본인이 결정합니다.`;
+      desc.textContent = `선택: ${video.title} — 초안이 규칙 검사를 통과하고 승인돼야 열 수 있습니다. 게시 여부는 로그인된 사용자 본인이 결정합니다.`;
     } else {
       title.textContent = '영상 선택 대기';
       desc.textContent = '01에서 영상을 고르세요. 게시 여부는 로그인된 사용자 본인이 결정합니다.';
     }
   };
   subscribe(paint);
-  // 글을 고치는 순간 통과 표시를 내린다(검사는 입력이 멈춘 뒤에 다시 한다).
+  // 글을 고치는 순간 통과·승인 표시를 내린다(검사는 입력이 멈춘 뒤에 다시 한다).
   document.getElementById('draft-text').addEventListener('input', paint);
 }

@@ -1,5 +1,6 @@
 // 02 댓글 초안(6단계): 사람이 직접 쓰는 글 상자. 입력이 0.4초 멈추면 POST /api/validate로 V1~V11을
-// 검사해 글자 수·통과 요약·실패 목록을 그린다. AI 초안(5단계)도 같은 검사를 거친다.
+// 검사해 글자 수·통과 요약·실패 목록을 그린다. AI 초안(5단계, loadDraft)은 서버가 검사한 결과를
+// 그대로 보이고, 사람이 고치면 같은 검사를 다시 한다.
 // 높이를 아끼려고 통과한 항목은 한 줄 요약으로 접고, 실패한 항목만 문구와 함께 펼친다.
 import { api } from './api.js';
 import { el } from './format.js';
@@ -65,11 +66,23 @@ function resultFor(state) {
   return v;
 }
 
+// 글 상자의 글이 AI 초안 그대로면 서버가 초안을 만들 때 한 검사 결과를 쓴다(근거 구절 기준).
+function draftResult(state, text) {
+  const d = state.draft;
+  return d && d.video_id === state.selectedId && d.body === text ? d.validation : null;
+}
+
 async function runCheck() {
   const state = getState();
   const videoId = state.selectedId;
   const text = $('draft-text').value;
   if (!videoId || !hasDraft(text)) return;
+  const known = draftResult(state, text);
+  if (known) {
+    seq += 1;
+    setState({ validation: { videoId, text, result: known }, validationLoading: false, validationError: null });
+    return;
+  }
   if (state.contextLoading && !state.context) {
     waitingForContext = true; // 맥락이 오면(또는 실패하면) 다시 부른다. 인기 댓글을 두 번 부르지 않게
     return;
@@ -131,15 +144,25 @@ function checksView(state) {
   return [summary, list];
 }
 
+// 지금 글 상자의 글이 승인한 초안 그대로인지
+export function isApproved(state) {
+  const d = state.draft;
+  const input = $('draft-text');
+  return Boolean(d && d.video_id === state.selectedId && d.status === 'approved' && input && d.body === input.value);
+}
+
 function render(state) {
   const input = $('draft-text');
-  input.disabled = !state.selectedId;
+  input.disabled = !state.selectedId || Boolean(state.run && state.run.videoId === state.selectedId && !['done', 'error'].includes(state.run.phase));
   const v = resultFor(state);
   const fresh = v && v.text === input.value;
   const checked = Boolean(fresh && v.result.passed);
+  const approved = isApproved(state);
   const tag = $('draft-tag');
-  tag.textContent = checked ? 'CHECKED' : 'DRAFT · REVIEW REQUIRED';
-  tag.classList.toggle('is-ok', checked);
+  tag.textContent = approved ? 'APPROVED · 승인됨' : checked ? 'CHECKED' : 'DRAFT · REVIEW REQUIRED';
+  tag.classList.toggle('is-ok', checked || approved);
+  const d = state.draft && state.draft.video_id === state.selectedId ? state.draft : null;
+  $('draft-tone').textContent = d && d.tone_label ? `말투 · ${d.tone_label}` : '';
 
   const checks = $('draft-checks');
   checks.replaceChildren(...checksView(state).filter(Boolean));
@@ -154,7 +177,28 @@ function resetFor(videoId) {
   paintMirror();
   fitHeight();
   paintCount();
-  setState({ validation: null, validationLoading: false, validationError: null });
+  setState({ validation: null, validationLoading: false, validationError: null, draft: null });
+}
+
+// AI 초안(5단계)을 글 상자에 넣는다. 검사 결과는 서버가 초안을 만들 때 한 것을 그대로 쓴다.
+export function loadDraft(draft) {
+  clearTimeout(timer);
+  seq += 1;
+  const input = $('draft-text');
+  input.value = draft.body;
+  paintMirror();
+  fitHeight();
+  paintCount();
+  setState({
+    draft,
+    validation: { videoId: draft.video_id, text: draft.body, result: draft.validation },
+    validationLoading: false,
+    validationError: null,
+  });
+}
+
+export function draftText() {
+  return $('draft-text').value;
 }
 
 export function initDraft() {

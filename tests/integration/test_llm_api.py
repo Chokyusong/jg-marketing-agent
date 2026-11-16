@@ -8,8 +8,9 @@ import pytest
 def ollama_up(mock_http, fixture_json):
     mock = mock_http()
     mock.add("GET", "/api/tags", json=fixture_json("ollama/tags.json"))
-    mock.add("POST", "/api/show", json=fixture_json("ollama/show_qwen2.5_7b.json"))
-    mock.add("POST", "/api/chat", json={"model": "qwen2.5:7b", "done": True, "done_reason": "load"})
+    mock.add("POST", "/api/show", json=fixture_json("ollama/show_qwen3.8_27b.json"))
+    loaded = {"model": "qwen3.8:27b", "done": True, "done_reason": "load"}
+    mock.add("POST", "/api/chat", json=loaded)
     return mock
 
 
@@ -19,7 +20,7 @@ def test_status_ai_ok(make_client, ollama_up):
     data = res.json()
     assert data["ai"] == {
         "provider": "ollama",
-        "model": "qwen2.5:7b",
+        "model": "qwen3.8:27b",  # 기본 모델(D3, 5단계)
         "reachable": True,
         "installed": True,
         "local": True,
@@ -91,7 +92,7 @@ def test_warmup_ok(make_client, ollama_up):
     res = make_client(llm=ollama_up).post("/api/llm/warmup")
     assert res.status_code == 200
     data = res.json()
-    assert (data["provider"], data["model"]) == ("ollama", "qwen2.5:7b")
+    assert (data["provider"], data["model"]) == ("ollama", "qwen3.8:27b")
     assert data["seconds"] >= 0
     chat = [r for r in ollama_up.requests if r.url.path == "/api/chat"]
     assert len(chat) == 1 and b'"messages":[]' in chat[0].content

@@ -37,7 +37,7 @@ def test_repo_config_builds_ollama(clean_env, tmp_path):
     try:
         assert isinstance(llm, LLMClient)
         assert isinstance(llm, OllamaClient)
-        assert (llm.provider, llm.model, llm.local) == ("ollama", "qwen2.5:7b", True)
+        assert (llm.provider, llm.model, llm.local) == ("ollama", "qwen3.8:27b", True)
         assert llm.base_url == "http://127.0.0.1:11434"
         assert llm.timeout_seconds == 180
     finally:

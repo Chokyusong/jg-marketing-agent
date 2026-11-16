@@ -1,10 +1,11 @@
 // 서버 API 호출. 오류는 ApiError(kind, message, action)로 바꿔 던진다.
 
 export class ApiError extends Error {
-  constructor({ kind = 'unknown', message = '요청을 처리하지 못했습니다.', action = '' } = {}) {
+  constructor({ kind = 'unknown', message = '요청을 처리하지 못했습니다.', action = '', failures = [] } = {}) {
     super(message);
     this.kind = kind;
     this.action = action;
+    this.failures = failures; // 승인 거절(409)일 때 걸린 검사 항목
   }
 }
 
@@ -60,4 +61,12 @@ export const api = {
   // 6단계: 규칙 검사 V1~V11
   validate: (videoId, text) =>
     request('/api/validate', { method: 'POST', body: JSON.stringify({ video_id: videoId, text }) }),
+  // 5단계: 분석과 초안
+  analyze: (videoId) => request(`/api/analysis/${encodeURIComponent(videoId)}`, { method: 'POST' }),
+  storedAnalysis: (videoId) => request(`/api/analysis/${encodeURIComponent(videoId)}`),
+  createDraft: (videoId, { another = false } = {}) =>
+    request('/api/drafts', { method: 'POST', body: JSON.stringify({ video_id: videoId, another }) }),
+  listDrafts: (videoId) => request(`/api/drafts?video_id=${encodeURIComponent(videoId)}`),
+  updateDraft: (id, body) => request(`/api/drafts/${id}`, { method: 'PATCH', body: JSON.stringify({ body }) }),
+  approveDraft: (id) => request(`/api/drafts/${id}/approve`, { method: 'POST' }),
 };

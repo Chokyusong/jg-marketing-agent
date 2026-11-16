@@ -19,6 +19,12 @@ const state = {
   validation: null,      // { videoId, text, result: { passed, char_count, checks: [...], ... } }
   validationLoading: false,
   validationError: null, // { kind, message, action }
+  // 5단계: 분석과 AI 초안. [분석하고 초안 만들기]를 눌러야 돈다(모델이 느려서 고르자마자 돌지 않는다)
+  analysis: null,        // POST/GET /api/analysis/{id} 응답 { video_id, topic, concern, tone, viewer_needs, evidence: [...] }
+  draft: null,           // 지금 글 상자에 넣은 초안(POST /api/drafts 응답) { id, video_id, body, status, validation, ... }
+  run: null,             // { videoId, phase: 'context'|'analysis'|'draft'|'check'|'done'|'error', startedAt, endedAt, note }
+  runError: null,        // { kind, message, action }
+  approving: false,
 };
 
 const listeners = new Set();

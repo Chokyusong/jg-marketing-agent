@@ -166,7 +166,7 @@ select { background: var(--panel); color: #cfcac3; border: 1px solid var(--line)
 .analysis { display: grid; grid-template-columns: 70px 1fr; gap: 8px 13px; margin: 0 0 14px; }
 .analysis dt { font-size: 11.5px; color: var(--dim); }
 .analysis dd { margin: 0; color: #c5c2bc; font-size: 12px; line-height: 1.6; }
-/* 6단계: 1080px 화면에서 3열이 스크롤 없이 보이게 꺼 둔 분석 줄(5단계) 간격을 줄인다 */
+/* 1080px 화면에서 3열이 스크롤 없이 보이게 분석 줄(5단계) 간격을 줄인다(6단계에서 맞춘 값) */
 .analysis.is-compact { gap: 3px 13px; margin-bottom: 10px; }
 .analysis.is-compact dt, .analysis.is-compact dd { line-height: 1.5; }
 .comment { width: 100%; min-height: 96px; background: var(--field); border: 1px solid #575148; color: #c9c4ba; padding: 13px; line-height: 1.8; font-size: 13px; }
@@ -176,6 +176,25 @@ select { background: var(--panel); color: #cfcac3; border: 1px solid var(--line)
 .line-btn { border: 1px solid #6f6b63; background: none; color: #eee9e1; padding: 8px 13px; font-size: 11.5px; white-space: nowrap; }
 .line-btn:disabled { opacity: 0.45; }
 .line-btn[hidden] { display: none; }
+/* 02 영상 맥락 분석(5단계): 1080px 화면에서 3열이 스크롤 없이 보이게 줄마다 한 줄로 자르고(말줄임)
+   전체는 마우스를 올리면(title) 보인다. 실행 단추는 제목 줄 오른쪽, 진행 단계는 그 아래 한 줄 */
+.report .section-mini { margin: 8px 0 7px; padding-bottom: 7px; }
+.report-title small { color: var(--dim); font-size: 11px; margin-left: 6px; letter-spacing: 0.05em; }
+.report .run-btn { padding: 4px 11px; border-color: var(--gold-2); color: var(--gold); }
+.report .run-btn:hover:not(:disabled) { background: rgba(209, 185, 144, 0.08); }
+.run-line { display: flex; align-items: center; gap: 10px; margin: 0 0 7px; min-width: 0; font-size: 11px; }
+.run-steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; flex: none; color: var(--dim); }
+.run-steps li { white-space: nowrap; }
+.run-steps li + li::before { content: "→"; margin-right: 4px; color: var(--off); }
+.run-steps li.is-done { color: var(--ok); }
+.run-steps li.is-current { color: var(--gold); }
+.run-steps li.is-bad { color: var(--bad); }
+.run-note { color: var(--dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: auto; }
+.run-note.is-busy { color: var(--gold); }
+.report .alert { margin: 0 0 8px; }
+.report .analysis { grid-template-columns: 70px minmax(0, 1fr); }
+.report .analysis dd { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.report .analysis dd[title] { cursor: help; }
 /* 02 영상 자료(3단계): 자막 출처·인기 댓글·자막 붙여넣기 */
 .context { border-top: 1px solid var(--line); padding-top: 12px; margin-bottom: 4px; }
 .context .analysis { margin-bottom: 8px; }
@@ -213,6 +232,11 @@ select { background: var(--panel); color: #cfcac3; border: 1px solid var(--line)
 .draft-edit:has(.draft-input:disabled) { opacity: 0.6; }
 .draft .draftfooter { margin-top: 7px; }
 .draft .draftfooter .line-btn { padding: 5px 11px; }
+.draft-labels { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.draft-labels .tone { color: var(--dim); font-size: 11px; white-space: nowrap; }
+.draft-actions { display: flex; gap: 6px; flex: none; }
+.line-btn.approve-btn { border-color: var(--text); background: var(--text); color: var(--bg); }
+.line-btn.approve-btn:disabled { background: none; border-color: #6f6b63; color: #eee9e1; }
 .tag.is-ok { color: var(--ok); }
 .line-btn.is-off { opacity: 0.45; }
 .checks { margin-top: 8px; font-size: 12px; line-height: 1.55; }

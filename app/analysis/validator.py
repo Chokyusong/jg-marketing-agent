@@ -29,6 +29,7 @@ MIN_EVIDENCE_CHARS = 6  # V6: 근거 구절은 정리 후 6자 이상
 MIN_OVERLAP_CHARS = 4  # V7: 글과 근거 구절이 정리 후 4자 이상 연속으로 겹친다
 QUOTE_SIMILARITY = 0.85  # V6: 근거 구절이 그대로 없으면 이만큼 비슷한 구간이 있어야 한다
 PREVIOUS_SIMILARITY = 0.6  # V11: 이전 글과 이만큼 비슷하면 실패
+BRAND_GAP = 8  # 따옴표로 옮긴 영상 속 말: 앞뒤 이만큼 안에 브랜드가 있으면 V8~V10 면제 없음
 FACT_EXTRA_CHARS = 3  # V10: 걸린 말 앞뒤로 이만큼 더 brand.facts와 똑같으면 사실 문장으로 본다
 _FIND_MIN = 2  # find_evidence: 정리 후 이보다 짧은 겹침은 구절로 치지 않는다
 
@@ -128,6 +129,21 @@ CLAIM_PATTERNS: tuple[str, ...] = (
     r"신통",
     r"효과",
     r"효험",
+    # 5단계: 전해 들은 식의 효능 표현("잘 본다던데", "유명하다던데", "용하대요"). 확인할 수 없는
+    # 평판을 남의 말로 옮기는 것도 효능 주장이다.
+    r"(?:다|라)\s?던데",
+    r"(?:다|라)\s?더라",
+    r"(?:다|라)고\s?(?:하던데|하더라|하더군|들었|들어서|소문)",
+    r"(?:다|라)고들",
+    r"(?:본|맞는|맞힌|맞춘|용하|좋|잘한|유명하|정확하)\s?(?:대요|대서|대더라|다네요|다니까)",
+    r"(?<![가-힣])용하",
+    r"잘\s?(?:본다|보는\s?(?:곳|데|분|집)|봐\s?주|봐\s?준|보신다|보시는\s?(?:곳|분)|맞는다|맞아요)",
+    r"입\s?소문",
+    r"소문\s?(?:난|이\s?났|나서|이\s?자자|듣고|들었)",
+    r"평이\s?좋",
+    r"평판",
+    r"인기\s?(?:많|있|높|최고)",
+    r"(?:다들|많이들|많은\s?분들이)\s?(?:찾|가|받|추천|다녀)",
 )
 
 BUILTIN_PATTERNS: dict[str, tuple[str, ...]] = {
@@ -301,6 +317,18 @@ def find_evidence(text: str, context_text: str) -> str | None:
         return None
     first, last = ctx_index[start], ctx_index[start + size - 1]
     return ctx[first : last + 1].strip()
+
+
+def quote_in_context(quote: str, context_text: str) -> bool:
+    """근거 구절이 영상 자료에 있는가 — V6과 같은 기준(정리 후 6자 이상, 그대로 있거나 85% 이상
+    비슷한 구간). 5단계 분석이 모델이 고른 근거를 거를 때 쓴다."""
+    quote_n = normalize(quote)
+    if len(quote_n) < MIN_EVIDENCE_CHARS:
+        return False
+    ctx_n = normalize(context_text)
+    if quote_n in ctx_n:
+        return True
+    return _best_window_ratio(quote_n, ctx_n) >= QUOTE_SIMILARITY
 
 
 def _best_window_ratio(quote_n: str, ctx_n: str) -> float:
@@ -491,14 +519,44 @@ def _fact_allows(text: str, start: int, end: int, facts_n: list[str]) -> bool:
     return False
 
 
+_QUOTED = re.compile('\'([^\'\n]{2,})\'|"([^"\n]{2,})"|‘([^’\n]{2,})’|“([^”\n]{2,})”')
+
+
+def _quoted_spans(text: str, context_text: str, rules: ValidatorRules) -> list[tuple[int, int]]:
+    """글 안에서 영상 자료의 말을 따옴표로 그대로 옮긴 구간들(원문 위치, 따옴표 포함).
+
+    5단계: 영상 속 말을 따옴표로 옮기면 그 안의 "제일 걱정", "소름 돋았다" 같은 말이 V8~V10에
+    걸렸다. 그 말은 홍보 담당자의 주장이 아니라 영상의 말이므로 넘어간다. 다만 좁게만 허용한다.
+    - 따옴표 안의 말이 V6과 같은 기준으로 영상 자료에 있어야 한다(따옴표 없이 옮기면 걸린다)
+    - 따옴표 안이나 따옴표 앞뒤 8자 안에 브랜드 이름이 있으면 넘어가지 않는다. 영상·댓글 속
+      "여기가 제일 정확해요"를 브랜드에 붙여 옮기는 것도 전해 들은 효능이기 때문이다
+    """
+    spans: list[tuple[int, int]] = []
+    for m in _QUOTED.finditer(text):
+        inner = next(g for g in m.groups() if g is not None)
+        around = text[max(0, m.start() - BRAND_GAP) : m.end() + BRAND_GAP]
+        if rules.brand and rules.brand in around:
+            continue
+        if quote_in_context(inner, context_text):
+            spans.append((m.start(), m.end()))
+    return spans
+
+
 def _pattern_check(
-    code: str, text: str, rules: ValidatorRules, hint: str, facts_n: list[str] | None = None
+    code: str,
+    text: str,
+    rules: ValidatorRules,
+    hint: str,
+    facts_n: list[str] | None = None,
+    quoted: Sequence[tuple[int, int]] = (),
 ) -> CheckResult:
     hits: list[str] = []
     for pattern in rules.patterns(code):
         for m in pattern.finditer(text):
             if facts_n and _fact_allows(text, m.start(), m.end(), facts_n):
                 continue
+            if any(a <= m.start() and m.end() <= b for a, b in quoted):
+                continue  # 영상 속 말을 따옴표로 그대로 옮긴 구간 안
             hits.append(m.group(0))
     if hits:
         return _check(code, False, f"걸린 말 {_found(hits)} — {hint}")
@@ -550,6 +608,7 @@ def validate(
     facts_n = [normalize(f) for f in brand_facts if f and f.strip()]
 
     v6, v7, quote = _v6_v7_evidence(clean, context_text or "", rules, evidence_quote)
+    quoted = _quoted_spans(clean, context_text or "", rules)
     checks = (
         _v1_length(clean, rules),
         _v2_links(clean),
@@ -561,15 +620,18 @@ def validate(
         _pattern_check(
             "V8", clean, rules,
             "직접 이용한 후기처럼 읽힙니다. 영상 내용에 공감하는 말로 바꾸세요",
+            quoted=quoted,
         ),
         _pattern_check(
             "V9", clean, rules,
             "소비자인 척하는 말입니다. 홍보 담당자로서 권하는 말로 바꾸세요",
+            quoted=quoted,
         ),
         _pattern_check(
             "V10", clean, rules,
             "확인할 수 없는 효능·최상급입니다. 빼거나 brand.facts의 사실로 바꾸세요",
             facts_n,
+            quoted=quoted,
         ),
         _v11_previous(clean, previous_texts, rules),
     )

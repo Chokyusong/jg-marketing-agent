@@ -66,7 +66,7 @@ def _insert_video(conn, video_id="AAAAAAAAAA1"):
 
 
 def test_stage3_adds_video_context(tmp_db_path):
-    assert db.init_db(tmp_db_path) == db.SCHEMA_VERSION == 2
+    assert db.init_db(tmp_db_path) == db.SCHEMA_VERSION >= 2  # 5단계에서 3번째 덩어리를 더했다
     assert "video_context" in _tables(tmp_db_path)
     with db.session(tmp_db_path) as conn:
         _insert_video(conn)
@@ -90,7 +90,7 @@ def test_upgrade_from_stage2_db_keeps_data(tmp_db_path):
     conn.commit()
     conn.close()
 
-    assert db.init_db(tmp_db_path) == 2
+    assert db.init_db(tmp_db_path) == db.SCHEMA_VERSION  # 3단계 이후 덩어리를 차례로 더한다
     with db.session(tmp_db_path) as conn:
         assert conn.execute("SELECT units FROM quota_usage").fetchone()["units"] == 101
     assert "video_context" in _tables(tmp_db_path)
