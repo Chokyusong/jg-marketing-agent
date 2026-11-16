@@ -12,7 +12,7 @@ import pytest
 
 JS_FILES = ["app.js", "api.js", "state.js", "format.js", "discover.js", "analysis.js", "flow.js",
             "topbar.js", "context.js", "draft.js", "report.js", "ops.js", "job.js", "sandbox.js",
-            "next.js", "screens.js", "layout.js"]
+            "next.js", "screens.js", "layout.js", "settings.js", "profiles.js", "setup.js"]
 # 화면에 쓰지 않는 개발 용어(UI_SPEC 4판 1절 5)
 FORBIDDEN = ("sandbox", "assist", "target", "config", "env", "단위", "playwright", "headless")
 
@@ -73,11 +73,14 @@ def test_discover_column_is_wired(page):
 def test_unconnected_parts_are_off_and_labelled(page):
     for stage in range(3, 10):
         assert f"{stage}단계에서 연결" not in page
-    # 다음 차례(R2·R4)에 연결할 단추는 꺼 두고 「곧 연결」로 알린다
+    # 다음 차례(R4)에 연결할 단추는 꺼 두고 「곧 연결」로 알린다
     rising = _section(page, 'id="rising-btn"', "</button>")
     assert "disabled" in rising and "곧 연결" in rising
-    for bid in ("settings-save", "settings-reset"):
-        assert re.search(rf'id="{bid}" disabled title="곧 연결됩니다"', page)
+    # R2: 설정 [저장] · [기본값으로]는 연결됐다([저장]은 바꾼 칸이 생길 때까지만 꺼 둔다)
+    assert '<button type="button" class="btn" id="settings-save" disabled>저장</button>' in page
+    reset = '<button type="button" class="btn btn-text" id="settings-reset">기본값으로</button>'
+    assert reset in page
+    assert "곧 연결됩니다" not in _section(page, 'id="screen-settings"', "</section>")
     assert "<dialog" not in page  # 3판의 겹침 패널은 화면으로 옮겼다
     assert '<fieldset class="settings" id="exec-settings">' in page  # ③ 설정은 켜져 있다
 
@@ -657,10 +660,22 @@ def test_screens_js_loads_on_show_and_keeps_keys_hidden(make_client):
     js = client.get("/static/js/screens.js").text
     for snippet in ("document.addEventListener('screen:show'", "api.records(ALL_ROWS)",
                     "has_screenshot", "/screenshot`", "화면 캡처", "유튜브에서 보기",
-                    "api.profiles('sandbox')", "api.profiles('youtube')", "로그인하기",
-                    "로그인 확인", "유튜브 열기", "곧 연결", "'유튜브 연결'", "'AI 모델'",
-                    "'댓글 규칙'", "'게시'", "'영상 찾기'",
                     "showScreen('records'"):
+        assert snippet in js, snippet
+    # R2: 프로필 화면(profiles.js) — 로그인 단추 세 개가 API를 부른다
+    profiles = client.get("/static/js/profiles.js").text
+    for snippet in ("document.addEventListener('screen:show'", "api.profiles('sandbox')",
+                    "api.profiles('youtube')", "로그인하기", "로그인 확인", "유튜브 열기",
+                    "api.profileLogin", "api.profileCheck", "api.profileOpen",
+                    "로그인을 마치고 크롬 창을 닫은 다음 [로그인 확인]을 누르세요"):
+        assert snippet in profiles, snippet
+    assert "곧 연결" not in profiles
+    # R2: 설정 화면(settings.js) — 다섯 묶음, 저장 · 기본값으로 · 키 저장 · 연결 확인
+    js = client.get("/static/js/settings.js").text
+    for snippet in ("'유튜브 연결'", "'AI 모델'", "'댓글 규칙'", "'게시'", "'영상 찾기'",
+                    "api.saveSettings(changes)", "api.resetSettings()", "api.saveKey(key)",
+                    "api.deleteKey()", "api.testKey()", "api.llmModels()", "api.screens()",
+                    "type: 'password'", "곧 적용", "applyWorkDefaults"):
         assert snippet in js, snippet
     # [미리 불러오기]는 단추를 눌렀을 때만 부른다(화면을 연다고 부르지 않는다)
     assert js.count("api.warmup()") == 1
@@ -668,8 +683,13 @@ def test_screens_js_loads_on_show_and_keeps_keys_hidden(make_client):
     api = client.get("/static/js/api.js").text
     assert "settings: () => request('/api/settings')" in api
     assert "warmup: () => request('/api/llm/warmup', { method: 'POST' })" in api
-    # 화면에 키 값을 그리지 않는다(있다/없다만)
+    # 화면에 키 값을 그리지 않는다(있다/없다만). 넣은 칸은 보내자마자 비운다
     assert "key_configured" in js and "api_key" not in js
+    assert "input.value = ''; // 보낸 값은 화면에 남기지 않는다" in js
+    setup = client.get("/static/js/setup.js").text
+    for snippet in ("focusSetting('set-key')", "focusSetting('set-model')", "focusProfile(",
+                    "has-setup", "setup-close"):
+        assert snippet in setup, snippet
     topbar = client.get("/static/js/topbar.js").text
     for snippet in ("export function showScreen(", "aria-current', 'page'",
                     "dispatchEvent(new CustomEvent('screen:show'",

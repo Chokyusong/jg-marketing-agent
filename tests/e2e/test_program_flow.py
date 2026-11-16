@@ -101,14 +101,15 @@ def test_full_flow_select_auto_draft_one_click_post_and_screens_keep_state(live)
         page.check('input[name="records-filter"][value="failure"]', force=True)
         assert "실패한 기록이 없습니다" in page.text_content("#records-all-body")
 
-        # 프로필 화면: 카드 세 장, 로그인 단추는 곧 연결
+        # 프로필 화면(R2): 카드 세 장, 카드마다 [로그인하기] · [로그인 확인] · [유튜브 열기]
         page.click("#nav-profiles")
         page.wait_for_selector("#profiles-body .card")
         assert page.locator("#profiles-body .card").count() == 3
-        assert page.locator("#profiles-body .card button:disabled").count() == 9
+        assert page.locator("#profiles-body .card button").count() == 9
+        assert page.locator("#profiles-body .card button:disabled").count() == 0
         assert "유튜브1" in page.text_content("#profiles-body")
 
-        # 설정 화면: 다섯 묶음, 저장은 곧 연결
+        # 설정 화면(R2): 다섯 묶음, [저장]은 바꾼 칸이 생기면 켜진다
         page.click("#nav-settings")
         page.wait_for_selector("#settings-body .set-group")
         heads = page.locator("#settings-body .set-group h3").all_text_contents()

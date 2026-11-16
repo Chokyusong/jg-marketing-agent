@@ -66,6 +66,26 @@ export async function refreshOps() {
   }
 }
 
+// R2: 설정 화면에서 하루 상한을 바꿔 저장하면 ③칸 고르기(그 값과 그보다 낮은 값)와 오늘 숫자를 새로
+export function limitOptions(max) {
+  return [...new Set([max, 5, 3, 1])].filter((n) => n > 0 && n <= max).sort((a, b) => b - a);
+}
+
+export function applyDailyMax(max) {
+  const box = settingsBox();
+  if (!box || box.dataset.limit === String(max)) return;
+  box.dataset.limit = String(max);
+  const limit = $('limit');
+  limit.replaceChildren(...limitOptions(max).map((n) => {
+    const option = el('option', { value: String(n), text: `${n}개까지` });
+    option.defaultSelected = n === max;
+    return option;
+  }));
+  limit.value = String(max);
+  setOps({ dailyLimit: max });
+  refreshOps();
+}
+
 export function practiceText(on) {
   return on ? '켜짐 · 연습 페이지에 답니다' : '꺼짐 · 실제 유튜브에 답니다';
 }

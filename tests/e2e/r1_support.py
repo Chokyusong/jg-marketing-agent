@@ -5,6 +5,8 @@
   영상마다 다른 분석을 돌려준다. `gate`에 영상 번호를 넣으면 그 영상의 분석을
   풀어 줄 때까지 붙잡는다(영상을 바꾸면 결과가 섞이지 않는지 본다).
 - 실제 유튜브용 크롬은 띄우지 않는다(`launcher`가 부르면 실패). 창도 띄우지 않는다(headless).
+- R2: `user_dir`을 주면 그 임시 폴더에 설정을 저장한다(키 암호화는 가짜 `FAKE_PROTECTOR`).
+  로그인 창 실행기·로그인 확인기는 가짜로 바꿔 끼울 수 있다(진짜 로그인 창을 열지 않는다).
 """
 
 from __future__ import annotations
@@ -25,6 +27,22 @@ from app.config import load_settings
 from app.desktop import ServerThread, open_listen_socket, wait_until_ready
 from app.llm.base import LLMHealth
 from app.main import create_app
+from app.user_settings import Protector
+
+FAKE_KEY_PREFIX = b"FAKE1"
+
+
+def _fake_protect(data: bytes) -> bytes:
+    return FAKE_KEY_PREFIX + bytes(b ^ 0x5A for b in data)
+
+
+def _fake_unprotect(blob: bytes) -> bytes:
+    if not blob.startswith(FAKE_KEY_PREFIX):
+        raise ValueError("가짜 암호가 아님")
+    return bytes(b ^ 0x5A for b in blob[len(FAKE_KEY_PREFIX):])
+
+
+FAKE_PROTECTOR = Protector(protect=_fake_protect, unprotect=_fake_unprotect)
 
 YT = "/youtube/v3/"
 QUOTE = "하루에 한 번 연락으로 싸운 적 있어요"
@@ -168,6 +186,11 @@ class ScriptedLLM:
     def health(self) -> LLMHealth:
         return LLMHealth("ollama", "fake-model", True, True, True)
 
+    def list_models(self):  # R2: 설정 화면의 모델 고르기
+        return [{"name": "fake-model:latest", "size": 4_700_000_000},
+                {"name": "qwen2.5-coder:7b", "size": 4_400_000_000},
+                {"name": "other-model:7b", "size": 4_100_000_000}]
+
     def warmup(self):
         raise AssertionError("warmup은 부르지 않는다")
 
@@ -180,16 +203,19 @@ def _no_real_chrome(args):
 
 
 @contextmanager
-def r1_server(tmp_path: Path, make_config, fixture_json) -> Iterator[dict]:
+def r1_server(tmp_path: Path, make_config, fixture_json, *, user_dir: Path | None = None,
+              key: bool = True, launcher=None, login_checker=None) -> Iterator[dict]:
     config = make_config({
         "limits": {"daily_max_comments": 10},
         "browser": {"headless": True, "typing_delay_ms": [2, 5],
                     "screenshot_dir": str(tmp_path / "shots")},
     })
+    environ = {"JG_PROFILES_DIR": str(tmp_path / "profiles")}
+    if key:
+        environ["YOUTUBE_API_KEY"] = "AIza" + "x" * 35  # 가짜 키(실행할 때 조립)
     settings = load_settings(
-        config, env_path=None, db_path=tmp_path / "r1.sqlite3",
-        environ={"YOUTUBE_API_KEY": "AIza" + "x" * 35,  # 가짜 키(실행할 때 조립)
-                 "JG_PROFILES_DIR": str(tmp_path / "profiles")},
+        config, env_path=None, db_path=tmp_path / "r1.sqlite3", environ=environ,
+        user_dir=user_dir, protector=FAKE_PROTECTOR if user_dir is not None else None,
     )
     drivers: list = []
 
@@ -198,22 +224,29 @@ def r1_server(tmp_path: Path, make_config, fixture_json) -> Iterator[dict]:
         drivers.append(driver)
         return driver
 
-    hooks = BrowserHooks(driver_factory=factory, launcher=_no_real_chrome,
-                         screens=lambda: [Monitor(0, 0, 1920, 1080, primary=True)])
-    app = create_app(settings, transport=youtube_transport(fixture_json), browser_hooks=hooks)
-    services = app.state.services.get()
+    hooks = BrowserHooks(driver_factory=factory, launcher=launcher or _no_real_chrome,
+                         login_checker=login_checker,
+                         screens=lambda: [Monitor(0, 0, 1920, 1080, primary=True),
+                                          Monitor(0, -1080, 1920, 0)])  # 위쪽 모니터
     llm = ScriptedLLM()
-    services.llm = llm
+
+    def use_fake_llm(built) -> None:  # 설정을 저장해 서비스를 다시 만들어도 가짜 LLM
+        built.llm = llm
+        built.llm_error = None
+
+    app = create_app(settings, transport=youtube_transport(fixture_json), browser_hooks=hooks,
+                     on_build=use_fake_llm)
+    app.state.services.get()  # 먼저 만들어 둔다(가짜 LLM을 끼운다)
     server = ServerThread(app, open_listen_socket())
     server.start()
     base = f"http://127.0.0.1:{server.port}"
     assert wait_until_ready(base, timeout=20, is_alive=server.is_alive)
     try:
-        yield {"base": base, "drivers": drivers, "llm": llm}
+        yield {"base": base, "drivers": drivers, "llm": llm, "app": app}
     finally:
         for gate in llm.gate.values():
             gate.set()
-        services.jobs.shutdown(timeout=15)
+        app.state.services.get().jobs.shutdown(timeout=15)
         server.stop()
 
 

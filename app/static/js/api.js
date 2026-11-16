@@ -1,11 +1,12 @@
 // 서버 API 호출. 오류는 ApiError(kind, message, action)로 바꿔 던진다.
 
 export class ApiError extends Error {
-  constructor({ kind = 'unknown', message = '요청을 처리하지 못했습니다.', action = '', failures = [] } = {}) {
+  constructor({ kind = 'unknown', message = '요청을 처리하지 못했습니다.', action = '', failures = [], fields = {} } = {}) {
     super(message);
     this.kind = kind;
     this.action = action;
     this.failures = failures; // 승인 거절(409)일 때 걸린 검사 항목
+    this.fields = fields; // R2: 설정 저장이 거절(422)됐을 때 칸 이름 → 이유
   }
 }
 
@@ -93,4 +94,16 @@ export const api = {
   // 9단계: SETTINGS 패널(읽기 전용)과 [모델 미리 불러오기]
   settings: () => request('/api/settings'),
   warmup: () => request('/api/llm/warmup', { method: 'POST' }),
+  // R2: 프로그램 안에서 설정 · API 키(값은 보내기만 하고 응답에는 없다) · 모델 목록 · 모니터
+  saveSettings: (values) => request('/api/settings', { method: 'PUT', body: JSON.stringify({ values }) }),
+  resetSettings: () => request('/api/settings/reset', { method: 'POST' }),
+  saveKey: (key) => request('/api/settings/youtube-key', { method: 'PUT', body: JSON.stringify({ key }) }),
+  deleteKey: () => request('/api/settings/youtube-key', { method: 'DELETE' }),
+  testKey: () => request('/api/settings/youtube-key/test', { method: 'POST' }),
+  llmModels: () => request('/api/llm/models'),
+  screens: () => request('/api/screens'),
+  // R2: 프로필 로그인(크롬 창은 사람이 직접 로그인한다) · 로그인 확인(창 없이 읽기만)
+  profileLogin: (name) => request(`/api/profiles/${encodeURIComponent(name)}/login`, { method: 'POST' }),
+  profileCheck: (name) => request(`/api/profiles/${encodeURIComponent(name)}/check`, { method: 'POST' }),
+  profileOpen: (name) => request(`/api/profiles/${encodeURIComponent(name)}/open`, { method: 'POST' }),
 };

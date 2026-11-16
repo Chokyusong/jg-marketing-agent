@@ -223,8 +223,11 @@ def test_first_user_can_finish_the_whole_flow_with_one_highlight_per_step(dashbo
     assert page.evaluate("document.activeElement.id") == "screen-title"
     assert page.text_content("#screen-title") == "설정"
     settings_text = page.text_content("#settings-body")
-    assert "운명원" in settings_text and "[광고]" in settings_text and "fake-model" in settings_text
-    assert "AIza" not in settings_text
+    # R2: 홍보하는 곳 · 홍보 표기는 고칠 수 있는 칸에 들어 있다(글자로는 모델 이름이 보인다)
+    assert page.input_value("#set-brand") == "운명원"
+    assert page.input_value("#set-disclosure") == "[광고]"
+    assert "fake-model" in settings_text
+    assert "AIza" not in settings_text and "AIza" not in page.content()
     page.click("#nav-work")
     assert page.is_visible("#screen-work") and not page.is_visible("#screen-settings")
 

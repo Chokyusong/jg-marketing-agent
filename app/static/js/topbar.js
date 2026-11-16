@@ -77,20 +77,23 @@ async function loadStatus() {
 
 export const refreshStatus = loadStatus;
 
-// 프로필 상태 한 줄(아래 줄): 크롬과 프로필 폴더. 게시 중이면 「게시 중」.
+// 프로필 상태 한 줄(아래 줄): 크롬, 로그인 확인 결과(R2). 게시 중이면 「게시 중」.
 export function browserStatusText(browser, job) {
   if (!browser) return { tone: 'is-wait', text: '확인 못 함', title: '' };
   if (!browser.chrome_found) {
     return { tone: 'is-bad', text: '크롬 없음', title: '이 PC에서 크롬을 찾지 못했습니다. 크롬을 설치해 주세요.' };
   }
-  const ready = browser.profiles.filter((p) => p.exists).length;
+  const total = browser.profiles.length;
+  const signed = browser.profiles.filter((p) => p.signed_in === true).length;
+  const first = browser.profiles[0];
   const title = browser.playwright_ready
-    ? `준비된 프로필 ${ready}개 / ${browser.profiles.length}개. 누르면 프로필 화면으로 갑니다.`
+    ? `로그인된 프로필 ${signed}개 / ${total}개. 누르면 프로필 화면으로 갑니다.`
     : '자동 입력 도구가 설치되지 않아 연습 모드와 내 채널 영상 자동 게시를 쓸 수 없습니다.';
   if (job && !job.finished) return { tone: 'is-wait', text: '게시 중', title };
   if (!browser.playwright_ready) return { tone: 'is-bad', text: '자동 입력 불가', title };
-  if (!ready) return { tone: 'is-bad', text: '준비 안 됨', title };
-  return { tone: 'is-ok', text: `${ready}/${browser.profiles.length} 준비됨`, title };
+  if (signed) return { tone: 'is-ok', text: `${signed}/${total} 로그인됨`, title };
+  if (first && first.signed_in === false) return { tone: 'is-bad', text: '로그인 안 됨', title };
+  return { tone: 'is-wait', text: '로그인 확인 전', title };
 }
 
 // AI 상태 한 줄: 정상이면 「모델 · 이 PC/외부」, 문제면 짧은 이유. 자세한 안내는 마우스를 올리면.
@@ -106,7 +109,7 @@ export function aiStatusText(ai) {
 
 export function youtubeStatusText(key) {
   if (key === true) return { tone: 'is-ok', text: '연결됨', title: 'API 키가 있습니다(값은 보이지 않습니다).' };
-  if (key === false) return { tone: 'is-bad', text: '키 없음', title: '유튜브 API 키가 없어 영상을 불러올 수 없습니다. 설정 화면에서 확인해 주세요.' };
+  if (key === false) return { tone: 'is-bad', text: '키 없음', title: '유튜브 API 키가 없어 영상을 불러올 수 없습니다. 설정 화면의 「유튜브 연결」에 키를 넣어 주세요.' };
   return { tone: 'is-wait', text: '확인 못 함', title: '' };
 }
 

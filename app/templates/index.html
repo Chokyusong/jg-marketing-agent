@@ -46,6 +46,17 @@
 
     <!-- 작업 화면 -->
     <section class="screen screen-work" id="screen-work" data-col="1" aria-labelledby="screen-title">
+      <!-- 시작 준비(UI_SPEC 7절): 준비가 안 된 것이 있으면 세 줄. 셋 다 되면 사라지고, 닫을 수도 있다(setup.js) -->
+      <section class="setup" id="setup-box" aria-labelledby="setup-title" hidden>
+        <h2 class="setup-title" id="setup-title">시작 준비</h2>
+        <ul class="setup-list">
+          <li class="setup-item" id="setup-youtube"><i class="dot is-wait" aria-hidden="true"></i><span class="setup-name">유튜브 연결</span><span class="setup-state" id="setup-youtube-state">확인 중</span><button type="button" class="btn btn-small" id="setup-youtube-btn">API 키 넣기</button></li>
+          <li class="setup-item" id="setup-ai"><i class="dot is-wait" aria-hidden="true"></i><span class="setup-name">AI 모델</span><span class="setup-state" id="setup-ai-state">확인 중</span><button type="button" class="btn btn-small" id="setup-ai-btn">모델 확인</button></li>
+          <li class="setup-item" id="setup-profile"><i class="dot is-wait" aria-hidden="true"></i><span class="setup-name">프로필 로그인</span><span class="setup-state" id="setup-profile-state">확인 중</span><button type="button" class="btn btn-small" id="setup-profile-btn" data-profile="{{ profiles[0] }}">{{ profiles[0] }} 로그인</button></li>
+        </ul>
+        <p class="setup-note">연습 모드는 키와 로그인 없이도 됩니다.</p>
+        <button type="button" class="btn btn-text setup-close" id="setup-close" aria-label="시작 준비 닫기">닫기</button>
+      </section>
       <!-- 좁은 창(1100px 아래): 세 칸을 탭으로 하나씩 -->
       <div class="col-tabs" role="tablist" aria-label="작업 칸">
         <button type="button" role="tab" class="col-tab" data-col="1" aria-selected="true">① 영상 불러오기</button>
@@ -262,19 +273,25 @@
       </div>
     </section>
 
-    <!-- 프로필 화면 -->
+    <!-- 프로필 화면(R2): 카드 세 장, [로그인하기] · [로그인 확인] · [유튜브 열기] (profiles.js) -->
     <section class="screen screen-profiles" id="screen-profiles" aria-labelledby="screen-title" hidden>
-      <p class="screen-note">프로필은 유튜브에 댓글을 달 계정입니다. 프로필마다 크롬 사용자 폴더가 따로 있어 로그인이 섞이지 않습니다. 꼭 필요한 것은 유튜브1 하나입니다.</p>
+      <div class="screen-note">
+        <p>프로필은 유튜브에 댓글을 달 계정입니다. 프로필마다 크롬 사용자 폴더가 따로 있어 로그인이 섞이지 않습니다.</p>
+        <p>꼭 필요한 것은 {{ profiles[0] }} 하나입니다. [로그인하기]를 누르면 열리는 크롬 창에서 직접 구글 계정으로 로그인하세요. 프로그램은 아이디와 비밀번호를 받지 않습니다.</p>
+      </div>
+      <p class="notice" id="profiles-msg" role="status" aria-live="polite" hidden></p>
       <div class="cards" id="profiles-body" aria-live="polite"><p class="empty">프로필을 불러오는 중…</p></div>
+      <p class="caption">로그아웃하려면 [유튜브 열기]로 연 크롬 창에서 유튜브 오른쪽 위 계정 사진을 눌러 로그아웃하세요.</p>
     </section>
 
-    <!-- 설정 화면(이번에는 보기만. 저장은 곧 연결) -->
+    <!-- 설정 화면(R2): 묶음별 편집 칸, [저장](바뀐 것이 있으면 금색) · [기본값으로] (settings.js) -->
     <section class="screen screen-settings" id="screen-settings" aria-labelledby="screen-title" hidden>
-      <p class="screen-note">지금 쓰는 설정입니다. 프로그램 안에서 바꾸고 저장하는 기능은 곧 연결됩니다. API 키 값은 화면에 보이지 않습니다.</p>
+      <p class="screen-note">여기서 바꾼 값은 [저장]을 누르면 바로 적용됩니다. 프로그램을 다시 켤 필요가 없습니다. API 키 값은 저장한 뒤 다시 보이지 않습니다.</p>
       <div class="set-body" id="settings-body" aria-live="polite"><p class="empty">설정을 불러오는 중…</p></div>
       <div class="set-foot">
-        <button type="button" class="btn" id="settings-save" disabled title="곧 연결됩니다">저장</button>
-        <button type="button" class="btn btn-text" id="settings-reset" disabled title="곧 연결됩니다">기본값으로</button>
+        <button type="button" class="btn" id="settings-save" disabled>저장</button>
+        <button type="button" class="btn btn-text" id="settings-reset">기본값으로</button>
+        <p class="set-msg" id="settings-msg" role="status" aria-live="polite"></p>
       </div>
     </section>
   </main>
