@@ -101,6 +101,7 @@ def create_app(
                 "stage": STAGE,
                 "default_query": current.discover.query,
                 "default_max_results": current.discover.max_results,
+                "default_exclude_shorts": current.discover.exclude_shorts,
                 "max_results_options": options,
                 "daily_max_comments": current.daily_max_comments,
                 "daily_limit_options": daily_limit_options(current.daily_max_comments),

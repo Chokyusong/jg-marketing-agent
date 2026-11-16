@@ -110,16 +110,121 @@ def test_analysis_drops_invented_evidence_and_fixes_source(setup):
     assert again["concern"] == data["concern"] and len(llm.calls) == 1
 
 
-def test_analysis_retries_once_when_all_evidence_is_invented_then_falls_back_to_title(setup):
+def test_analysis_retries_once_when_all_evidence_is_invented_then_stops(setup):
+    """실제 데이터 보정: 다시 시켜도 근거가 0개면 제목으로 때우지 않고 no_love_concern으로 멈춘다.
+
+    (예전에는 제목을 근거로 썼다 — fallback. 그 동작은 이 보정에서 바꿨다)
+    """
     client, _, use = setup
     invented = dict(ANALYSIS, evidence=[{"quote": INVENTED, "source": "transcript"}])
     llm = use([invented, invented])
-    data = client.post(f"/api/analysis/{VID}").json()
+    res = client.post(f"/api/analysis/{VID}")
     assert len(llm.calls) == 2
     assert "[다시 요청]" in user_prompts(llm)[1] and INVENTED in user_prompts(llm)[1]
-    assert data["fallback"] is True
-    assert data["evidence"] == [{"quote": "장거리 연애 1년차, 연락 문제로 자주 싸워요",
-                                 "source": "title", "source_label": "제목"}]
+    assert res.status_code == 422
+    error = res.json()["error"]
+    assert error["kind"] == "no_love_concern"
+    assert error["message"] == "이 영상 자료에서 연애 고민을 찾지 못했습니다."
+    assert client.get(f"/api/analysis/{VID}").json() is None  # 저장하지 않았다
+
+
+# ------------------------------------------------- 연애 고민이 없으면 멈춘다(실제 데이터 보정)
+
+NO_CONCERN = {
+    "has_love_concern": False,
+    "reason": "설명과 댓글이 상품 이벤트 글뿐",
+    "topic": "",
+    "concern": "",
+    "tone": "",
+    "viewer_needs": "",
+    "evidence": [],
+}
+
+
+def test_no_love_concern_stops_without_a_draft(setup):
+    client, services, use = setup
+    llm = use([NO_CONCERN, draft(GOOD_BODY)])
+    res = client.post("/api/drafts", json={"video_id": VID})  # 분석이 없으면 먼저 한다
+    assert res.status_code == 422
+    error = res.json()["error"]
+    assert error["kind"] == "no_love_concern"
+    assert error["message"] == "이 영상 자료에서 연애 고민을 찾지 못했습니다."
+    assert "자막을 붙여 넣고 다시 분석하거나 다른 영상을 골라 주세요" in error["action"]
+    assert "광고·협찬 위주" in error["action"]
+    assert error["detail"] == "설명과 댓글이 상품 이벤트 글뿐"
+    assert len(llm.calls) == 1  # 초안은 쓰게 하지 않았다
+    assert client.get("/api/drafts", params={"video_id": VID}).json()["items"] == []
+    # 작업 기록: 분석 실패(사유)와 초안 실패
+    rows = client.get("/api/records").json()["items"]
+    analyze = [r for r in rows if r["action"] == "analyze"]
+    assert analyze and analyze[0]["result"] == "failure"
+    assert "연애 고민을 찾지 못했습니다" in analyze[0]["reason"]
+    assert "상품 이벤트 글뿐" in analyze[0]["reason"]
+
+
+def test_no_love_concern_on_retry_also_stops(setup):
+    client, _, use = setup
+    invented = dict(ANALYSIS, evidence=[{"quote": INVENTED, "source": "transcript"}])
+    llm = use([invented, NO_CONCERN])
+    res = client.post(f"/api/analysis/{VID}")
+    assert res.status_code == 422 and res.json()["error"]["kind"] == "no_love_concern"
+    assert len(llm.calls) == 2
+
+
+def test_no_love_concern_forgets_the_old_analysis(setup):
+    client, _, use = setup
+    use([ANALYSIS])
+    assert client.post(f"/api/analysis/{VID}").status_code == 200
+    use([NO_CONCERN])
+    assert client.post(f"/api/analysis/{VID}").status_code == 422
+    assert client.get(f"/api/analysis/{VID}").json() is None
+    # 예전 분석으로 초안을 만들지 않는다: 초안 요청은 다시 분석부터 한다
+    llm = use([NO_CONCERN])
+    assert client.post("/api/drafts", json={"video_id": VID}).status_code == 422
+    assert len(llm.calls) == 1
+
+
+def test_promo_quotes_are_not_evidence(setup):
+    """자료에 실제로 있어도 광고·협찬·응모 글은 근거로 받지 않는다(버린 근거로 센다)."""
+    client, _, use = setup
+    promo_line = "오늘 영상은 협찬을 받아 만들었어요"
+    text = TRANSCRIPT + f"\n1:10 {promo_line}\n1:20 댓글로 응모하시면 추첨해서 드려요"
+    assert client.put(f"/api/videos/{VID}/transcript", json={"text": text}).status_code == 200
+    promo = dict(ANALYSIS, has_love_concern=True, reason="연애 고민 있음", evidence=[
+        {"quote": promo_line, "source": "transcript"},
+        {"quote": "댓글로 응모하시면 추첨해서 드려요", "source": "transcript"},
+        {"quote": Q_COMMENT, "source": "comment"},
+    ])
+    use([promo])
+    data = client.post(f"/api/analysis/{VID}").json()
+    assert data["has_love_concern"] is True and data["love_reason"] == "연애 고민 있음"
+    assert [e["quote"] for e in data["evidence"]] == [Q_COMMENT]
+    assert data["dropped_count"] == 2
+
+
+def test_analysis_prompt_warns_about_ads_when_there_is_no_transcript(setup):
+    client, _, use = setup
+    llm = use([ANALYSIS])
+    client.post(f"/api/analysis/{VID}")
+    system = llm.calls[0]["kwargs"]["system"]
+    user = llm.calls[0]["kwargs"]["user"]
+    assert "연애 고민" in system and "광고·협찬" in system
+    assert "has_love_concern" in user
+    assert "설명란과 댓글에는 광고·협찬" in user  # 자막이 없을 때만 붙는 안내
+    # 자막을 붙여 넣으면 그 안내는 빠진다
+    client.put(f"/api/videos/{VID}/transcript", json={"text": TRANSCRIPT})
+    llm = use([ANALYSIS])
+    client.post(f"/api/analysis/{VID}")
+    assert "설명란과 댓글에는 광고·협찬" not in llm.calls[0]["kwargs"]["user"]
+
+
+def test_draft_prompt_names_only_the_brand(setup):
+    client, _, use = setup
+    llm = use([ANALYSIS, draft(GOOD_BODY)])
+    client.post("/api/drafts", json={"video_id": VID})
+    system = llm.calls[1]["kwargs"]["system"]
+    assert "권하는 대상은 '운명원' 하나뿐" in system
+    assert "다른 상품·브랜드·채널 이름을 권하거나 언급하지 않는다" in system
 
 
 def test_analysis_uses_pasted_transcript_first(setup):

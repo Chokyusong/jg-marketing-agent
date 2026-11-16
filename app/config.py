@@ -68,6 +68,7 @@ class BrowserSettings:
 class DiscoverSettings:
     query: str = "연애 고민"
     max_results: int = 12
+    exclude_shorts: bool = True  # 검색 결과에서 쇼츠(61초 미만·길이 없음)를 뺀다
 
 
 @dataclass(frozen=True)
@@ -303,6 +304,7 @@ def load_settings(
     discover = DiscoverSettings(
         query=str(discover_raw.get("query") or DiscoverSettings.query),
         max_results=int(discover_raw.get("max_results") or DiscoverSettings.max_results),
+        exclude_shorts=bool(discover_raw.get("exclude_shorts", DiscoverSettings.exclude_shorts)),
     )
     limits = rules.get("limits") or {}
     transcript = rules.get("transcript") or {}

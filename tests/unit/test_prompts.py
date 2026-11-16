@@ -111,9 +111,13 @@ def test_analysis_prompt_wraps_video_material_and_warns_about_instructions():
 
 
 def test_schemas_accept_expected_shapes():
-    good = {"topic": "t", "concern": "c", "tone": "t", "viewer_needs": "n",
-            "evidence": [{"quote": "q", "source": "comment"}]}
+    # 실제 데이터 보정: has_love_concern·reason을 더했다(스키마가 요구한다)
+    good = {"has_love_concern": True, "reason": "r", "topic": "t", "concern": "c", "tone": "t",
+            "viewer_needs": "n", "evidence": [{"quote": "q", "source": "comment"}]}
     assert check_schema(good, P.ANALYSIS_SCHEMA) == []
+    assert check_schema({k: v for k, v in good.items() if k != "has_love_concern"},
+                        P.ANALYSIS_SCHEMA)
+    assert check_schema(dict(good, has_love_concern="아마"), P.ANALYSIS_SCHEMA)
     bad = dict(good, evidence=[{"quote": "q", "source": "어딘가"}])
     assert check_schema(bad, P.ANALYSIS_SCHEMA)
     assert check_schema({"body": "b", "used_quote": "q", "tone_label": "공감형"},

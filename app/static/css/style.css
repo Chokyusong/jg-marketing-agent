@@ -123,6 +123,14 @@ p { margin: 0; }
 .filters { display: flex; gap: 10px; margin: 14px 0 6px; }
 .filters label { flex: 1; min-width: 0; }
 .filters small { display: block; color: var(--dim); margin-bottom: 5px; font-size: 11px; }
+/* 쇼츠 제외 체크(실제 데이터 보정): 다른 거르기와 같은 높이로 한 줄에 */
+.filters .shorts-toggle { flex: none; }
+.check { display: flex; gap: 6px; align-items: center; height: 31px; padding: 0 8px; border: 1px solid var(--line); background: var(--panel); color: #cfcac3; font-size: 12px; white-space: nowrap; cursor: pointer; }
+.check input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.check i { width: 12px; height: 12px; border: 1px solid #7e766c; display: inline-block; flex: none; }
+.check input:checked + i { border-color: var(--gold); }
+.check input:checked + i::before { content: ""; display: block; width: 6px; height: 6px; background: var(--gold); margin: 2px; }
+.check input:focus-visible + i { outline: 1px solid var(--gold); outline-offset: 2px; }
 select { background: var(--panel); color: #cfcac3; border: 1px solid var(--line); border-radius: 0; padding: 7px 8px; width: 100%; font-size: 12px; }
 
 /* 오류 */

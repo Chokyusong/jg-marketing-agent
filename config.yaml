@@ -15,6 +15,7 @@ limits:
 discover:
   query: 연애 고민
   max_results: 12
+  exclude_shorts: true    # 검색 결과에서 쇼츠(61초 미만·길이 없음)를 뺀다. 화면 01 「쇼츠 제외」의 기본값
 rising:
   query: 연애
   min_views: 1000

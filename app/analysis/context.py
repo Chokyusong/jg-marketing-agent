@@ -3,7 +3,8 @@
 순서
 1. 자막: 붙여 넣은 자막이 있으면 그것. 없으면 설정의 자막 출처를 본다(지금은 manual만 있다.
    unofficial이면 `transcript_provider_off` 오류). 둘 다 없으면 "자막 없음".
-2. 자막이 없으면 제목과 설명을 본문으로 쓴다(과제 원문이 허용한 대체).
+2. 자막이 없으면 제목과 설명을 본문으로 쓴다(과제 원문이 허용한 대체). 이때 AI에 넘기는 글 머리에
+   「설명란에는 광고·협찬 글이 섞여 있을 수 있다」는 안내(`NO_TRANSCRIPT_NOTE`)를 붙인다.
 3. 인기 댓글: commentThreads.list(order=relevance) 상위 20개(1단위). 댓글이 막힌 영상이면
    오류가 아니라 빈 목록으로 진행한다.
 
@@ -38,6 +39,13 @@ MAX_COMMENTS = 20
 DESCRIPTION_LIMIT = 1500
 COMMENT_LIMIT = 200
 MIDDLE_CUT = "\n…(중략)…\n"
+# 자막이 없을 때(본문 출처가 제목·설명) 분석에 넘기는 글 머리에 붙이는 안내(실제 데이터 보정).
+# 실제 영상의 설명란이 협찬 상품 소개로 채워져 분석이 상품을 영상의 주제로 읽었다.
+NO_TRANSCRIPT_NOTE = (
+    "[안내] 자막이 없어 제목·설명·인기 댓글로 분석한다. 설명란과 댓글에는 광고·협찬·상품 소개·"
+    "이벤트 응모 글이 섞여 있을 수 있다. 그런 글은 영상의 연애 고민이 아니다. "
+    "근거는 제목 > 연애 고민을 말하는 댓글 > 설명 순으로 고른다."
+)
 TRANSCRIPT_LABELS = {"manual": "붙여 넣은 자막", "unofficial": "비공식 조회 자막"}
 
 
@@ -108,6 +116,8 @@ def fit_prompt(context: VideoContext, max_chars: int) -> FittedText:
     truncated = False
 
     head = f"[제목] {_one_line(video.title)}\n[채널] {_one_line(video.channel_title)}"
+    if not context.transcript_text:
+        head = f"{NO_TRANSCRIPT_NOTE}\n{head}"
     description, cut = _cut(video.description.strip(), DESCRIPTION_LIMIT)
     truncated |= cut
 

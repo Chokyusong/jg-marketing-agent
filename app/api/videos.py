@@ -37,12 +37,21 @@ def list_videos(
     order: Literal["date", "relevance", "viewCount"] = "date",
     period: Literal["day", "week", "month", "any"] = "week",
     max_results: Annotated[int | None, Query(ge=1, le=50)] = None,
+    exclude_shorts: bool | None = None,
 ) -> VideoListOut:
-    """입력 없이 부르면 config.yaml의 discover.query·max_results로 최신 영상을 찾는다."""
+    """입력 없이 부르면 config.yaml의 discover.query·max_results로 최신 영상을 찾는다.
+
+    `exclude_shorts`(선택, 비우면 config.yaml의 discover.exclude_shorts = 기본 참): 쇼츠(61초 미만·
+    길이 없음)를 빼고 `max_results`개를 채운다. 응답의 `shorts_excluded`가 뺀 수다.
+    """
     discover = services.settings.discover
     query = (q or "").strip() or discover.query
     result = services.videos.search(
-        query, order=order, period=period, max_results=max_results or discover.max_results
+        query,
+        order=order,
+        period=period,
+        max_results=max_results or discover.max_results,
+        exclude_shorts=discover.exclude_shorts if exclude_shorts is None else exclude_shorts,
     )
     out = VideoListOut.from_result(result, services.quota.summary())
     _mark_commented(out.items, services)

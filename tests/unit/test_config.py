@@ -13,6 +13,7 @@ def test_reads_repo_config_without_key(clean_env, tmp_path):
     settings = load_settings(env_path=tmp_path / "없음.env")
     assert settings.discover.query == "연애 고민"
     assert settings.discover.max_results == 12
+    assert settings.discover.exclude_shorts is True  # 실제 데이터 보정: 쇼츠 제외 기본 켬
     assert settings.daily_max_comments == 10
     assert settings.rules["comment"]["disclosure"] == "[광고]"
     assert settings.youtube_api_key is None
@@ -53,6 +54,10 @@ def test_custom_config_and_db_path(make_config, tmp_path):
     settings = load_settings(path, env_path=None, environ={"APP_DB_PATH": str(tmp_path / "x.db")})
     assert settings.discover.query == "이별"
     assert settings.discover.max_results == 5
+    assert settings.discover.exclude_shorts is True  # 적지 않으면 기본값(켬)
+    off = load_settings(make_config({"discover": {"exclude_shorts": False}}), env_path=None,
+                        environ={})
+    assert off.discover.exclude_shorts is False
     assert settings.db_path == Path(tmp_path / "x.db")
 
 

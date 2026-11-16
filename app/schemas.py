@@ -61,6 +61,9 @@ class VideoListOut(BaseModel):
     cached: bool
     items: list[VideoOut]
     quota: QuotaOut
+    # 실제 데이터 보정(필드 추가): 쇼츠(61초 미만·길이 없음)를 뺐는지와 뺀 수
+    exclude_shorts: bool = False
+    shorts_excluded: int = 0
 
     @classmethod
     def from_result(cls, result: SearchResult, quota: dict[str, int]) -> VideoListOut:
@@ -72,6 +75,8 @@ class VideoListOut(BaseModel):
             cached=result.cached,
             items=[VideoOut.from_stored(s) for s in result.videos],
             quota=QuotaOut(**quota),
+            exclude_shorts=result.exclude_shorts,
+            shorts_excluded=result.shorts_excluded,
         )
 
 
@@ -243,9 +248,13 @@ class AnalysisOut(BaseModel):
     viewer_needs: str
     evidence: list[EvidenceOut]
     dropped_count: int  # 모델이 고른 근거 중 영상 자료에 없어서 버린 수
-    fallback: bool  # 근거가 모두 버려져 제목을 근거로 썼는지
+    fallback: bool  # (예전) 근거가 모두 버려져 제목을 근거로 썼는지. 이제는 멈추므로 늘 거짓
     model: str
     created_at: str
+    # 실제 데이터 보정(필드 추가): 연애 고민이 없으면 분석이 no_love_concern 오류로 멈추므로
+    # 응답으로 온 분석은 늘 참이다. love_reason은 모델이 적은 판단 까닭(저장된 분석에는 없다)
+    has_love_concern: bool = True
+    love_reason: str = ""
 
     @classmethod
     def from_analysis(cls, a: Analysis) -> AnalysisOut:
@@ -263,6 +272,8 @@ class AnalysisOut(BaseModel):
             fallback=a.fallback,
             model=a.model,
             created_at=a.created_at,
+            has_love_concern=a.has_love_concern,
+            love_reason=a.love_reason,
         )
 
 

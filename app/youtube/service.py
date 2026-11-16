@@ -23,6 +23,15 @@ PERIODS: dict[str, timedelta | None] = {
     "any": None,
 }
 ORDERS = ("date", "relevance", "viewCount")
+# 쇼츠 제외(실제 데이터 보정): 길이 61초 미만이거나 길이 정보가 없는 영상은 뺀다.
+# 최신순 상위가 거의 쇼츠(댓글 0~3개)라 댓글 달 만한 영상이 보이지 않았다.
+SHORTS_MIN_SECONDS = 61
+# 쇼츠를 빼고도 max_results개를 채우려고 검색으로 받는 영상 수(검색 1회 = 100단위는 같다)
+SHORTS_SEARCH_POOL = 50
+
+
+def is_short(video: Video) -> bool:
+    return video.duration_seconds is None or video.duration_seconds < SHORTS_MIN_SECONDS
 
 
 @dataclass(frozen=True)
@@ -43,6 +52,8 @@ class SearchResult:
     max_results: int
     cached: bool
     videos: list[StoredVideo]
+    exclude_shorts: bool = False
+    shorts_excluded: int = 0  # 검색으로 받은 후보 중 쇼츠라 뺀 수
 
 
 VIDEO_FIELDS = tuple(f.name for f in fields(Video))
@@ -108,26 +119,56 @@ class VideoService:
     # -- 기능
 
     def search(
-        self, query: str, *, order: str, period: str, max_results: int
+        self,
+        query: str,
+        *,
+        order: str,
+        period: str,
+        max_results: int,
+        exclude_shorts: bool = False,
     ) -> SearchResult:
-        query = " ".join(query.split())
-        key = search_cache_key(query, order=order, period=period, max_results=max_results)
+        """검색(100단위) + 상세(50개당 1단위). 같은 검색은 10분 동안 저장한 결과를 쓴다.
 
-        cached_ids = self.cache.get(key)
-        if cached_ids is not None:
+        `exclude_shorts`면 영상 ID를 넉넉히(최대 50개) 받아 상세를 본 뒤 쇼츠(61초 미만·길이 없음)를
+        빼고, 원래 순서대로 `max_results`개만 돌려준다. 검색 횟수와 단위는 그대로다.
+        """
+        query = " ".join(query.split())
+        key = search_cache_key(
+            query, order=order, period=period, max_results=max_results,
+            exclude_shorts=exclude_shorts,
+        )
+
+        entry = self.cache.get_entry(key)
+        if entry is not None:
+            cached_ids, excluded = entry
             stored = self._load(cached_ids)
             if all(i in stored for i in cached_ids):
                 videos = [stored[i] for i in cached_ids]
-                return SearchResult(query, order, period, max_results, True, videos)
+                return SearchResult(
+                    query, order, period, max_results, True, videos, exclude_shorts, excluded
+                )
 
         span = PERIODS[period]
         published_after = self.clock() - span if span else None
+        pool = max(max_results, SHORTS_SEARCH_POOL) if exclude_shorts else max_results
         ids = self.client.search_video_ids(
-            query, max_results=max_results, order=order, published_after=published_after
+            query, max_results=pool, order=order, published_after=published_after
         )
-        videos = self._save(self.client.get_videos(ids), source="search") if ids else []
-        self.cache.put(key, [s.video.video_id for s in videos])
-        return SearchResult(query, order, period, max_results, False, videos)
+        found = self.client.get_videos(ids) if ids else []
+        excluded = 0
+        if exclude_shorts:
+            kept = [v for v in found if not is_short(v)]
+            excluded = len(found) - len(kept)
+            found = kept[:max_results]
+        videos = self._save(found, source="search") if found else []
+        ids_out = [s.video.video_id for s in videos]
+        if exclude_shorts:
+            self.cache.put(key, ids_out, shorts_excluded=excluded)
+        else:
+            self.cache.put(key, ids_out)
+        return SearchResult(
+            query, order, period, max_results, False, videos, exclude_shorts, excluded
+        )
 
     def get(self, video_id: str, *, source: str = "link") -> StoredVideo:
         if not is_video_id(video_id):

@@ -3,6 +3,7 @@
 // 영상을 고르자마자 돌리지 않는다(모델이 느려서 영상을 훑어보는 동안 매번 돌면 안 된다).
 // 영상을 고르면 저장된 분석·초안만 불러온다(모델을 부르지 않는다).
 // [다른 초안 생성]은 이미 쓴 근거를 피해 초안만 다시, [이 초안 승인]은 고친 글을 먼저 저장(PATCH)하고 승인.
+// 연애 고민이 없는 자료(no_love_concern)면 초안 없이 멈추고 「자막 붙여넣기」를 연다.
 import { api } from './api.js';
 import { draftText, isApproved, loadDraft } from './draft.js';
 import { refreshOps } from './ops.js';
@@ -17,6 +18,17 @@ const PHASE_TEXT = {
   check: '규칙 검사 결과 정리 중',
 };
 const SLOW_NOTE = '큰 모델은 처음에 1분쯤 걸립니다';
+// 실제 데이터 보정: 영상 자료에 연애 고민이 없으면 서버가 초안을 만들지 않고 이 오류로 멈춘다.
+// 02칸에 서버 문구(이 영상 자료에서 연애 고민을 찾지 못했습니다)와 다음 행동을 띄우고 자막 붙여넣기를 연다.
+const NO_CONCERN = 'no_love_concern';
+
+function openTranscriptPaste() {
+  const paste = $('transcript-paste');
+  if (!paste) return;
+  paste.open = true;
+  const box = $('transcript-text');
+  if (box && !box.disabled) box.focus({ preventScroll: true });
+}
 
 let lastSelected = null;
 let ticker = null;
@@ -76,7 +88,8 @@ async function run(videoId, { another = false } = {}) {
   } catch (error) {
     if (!mine(videoId) || error.message === 'stale') return;
     setRun({ phase: 'error', failedAt: getState().run.phase, endedAt: Date.now() });
-    setState({ runError: error });
+    setState({ runError: error, ...(error.kind === NO_CONCERN ? { analysis: null } : {}) });
+    if (error.kind === NO_CONCERN) openTranscriptPaste();
   } finally {
     stopTicker();
     refreshOps(); // 분석·초안(성공이든 실패든)이 작업 기록과 오늘 통계에 남는다(7단계)
@@ -144,8 +157,9 @@ function renderAnalysis(state) {
   const a = state.analysis && state.analysis.video_id === state.selectedId ? state.analysis : null;
   const busy = state.run && state.run.videoId === state.selectedId && ['context', 'analysis'].includes(state.run.phase);
   const empty = !state.selectedId ? '–' : busy ? '분석 중…' : '–';
+  const none = !a && !busy && state.selectedId && state.runError && state.runError.kind === NO_CONCERN;
   line('an-topic', a ? a.topic : empty, a ? a.topic : '');
-  line('an-concern', a ? a.concern : empty, a ? a.concern : '');
+  line('an-concern', a ? a.concern : none ? '연애 고민 없음' : empty, a ? a.concern : '');
   line('an-tone', a ? a.tone : empty, a ? a.tone : '');
   line('an-needs', a ? a.viewer_needs : empty, a ? a.viewer_needs : '');
   if (!a || !a.evidence.length) {

@@ -110,6 +110,9 @@
                 {% for n in max_results_options %}<option value="{{ n }}"{% if n == default_max_results %} selected{% endif %}>{{ n }}개</option>{% endfor %}
               </select>
             </label>
+            <label class="shorts-toggle" title="61초 미만 영상(쇼츠)과 길이 정보가 없는 영상을 목록에서 뺍니다. 검색 1회 100단위는 같습니다"><small>쇼츠</small>
+              <span class="check"><input type="checkbox" id="exclude-shorts" name="exclude_shorts"{% if default_exclude_shorts %} checked{% endif %} /><i aria-hidden="true"></i>쇼츠 제외</span>
+            </label>
           </div>
         </form>
       </div>

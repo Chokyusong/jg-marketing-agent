@@ -437,3 +437,40 @@ def test_hidden_job_buttons_stay_hidden(make_client):
     shown = css.index(".job-actions .line-btn {")
     hidden = css.index(".job-actions .line-btn[hidden] { display: none; }")
     assert hidden > shown
+
+
+# ---------------------------------------------------------------- 실제 데이터 보정
+
+
+def test_discover_has_exclude_shorts_checked_by_default(page, make_client):
+    # 01칸 거르기 옆 「쇼츠 제외」 체크(config.yaml discover.exclude_shorts = 기본 켬)
+    assert re.search(r'id="exclude-shorts"[^>]*checked', page)
+    assert "쇼츠 제외" in page
+    client = make_client(key=None)
+    api = client.get("/static/js/api.js").text
+    assert "params.set('exclude_shorts', String(excludeShorts))" in api
+    discover = client.get("/static/js/discover.js").text
+    assert "excludeShorts: $('exclude-shorts')" in discover
+    assert "`쇼츠 ${state.meta.shortsExcluded}개 제외`" in discover  # 결과 줄
+    css = client.get("/static/css/style.css").text
+    assert ".filters .shorts-toggle { flex: none; }" in css  # 같은 줄(높이가 늘지 않게)
+
+
+def test_exclude_shorts_unchecked_when_config_turns_it_off(make_client):
+    overrides = {"discover": {"query": "연애 고민", "max_results": 12, "exclude_shorts": False}}
+    page = make_client(key=None, overrides=overrides).get("/").text
+    assert re.search(r'id="exclude-shorts"[^>]*/>', page)
+    assert not re.search(r'id="exclude-shorts"[^>]*checked', page)
+
+
+def test_no_love_concern_shows_message_and_opens_transcript_paste(make_client):
+    client = make_client(key=None)
+    js = client.get("/static/js/report.js").text
+    assert "const NO_CONCERN = 'no_love_concern';" in js
+    assert "if (error.kind === NO_CONCERN) openTranscriptPaste();" in js
+    assert "paste.open = true;" in js
+    assert "'연애 고민 없음'" in js  # 분석 줄 「핵심 고민」
+    # 오류 문구는 서버 문구를 그대로 띄운다(run-error)
+    assert "$('run-error-msg').textContent = err.message" in js
+    page = client.get("/").text
+    assert 'id="transcript-paste"' in page and 'id="run-error"' in page

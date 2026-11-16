@@ -16,7 +16,9 @@ def test_list_without_input_uses_default_query(mock_http, fixture_json, fake_key
     assert data["max_results"] == 12
     assert (data["order"], data["period"]) == ("date", "week")
     assert data["cached"] is False
-    assert [v["video_id"] for v in data["items"]] == ["AAAAAAAAAA1", "BBBBBBBBBB2", "CCCCCCCCCC3"]
+    # 실제 데이터 보정: 기본으로 쇼츠를 뺀다(CCCCCCCCCC3은 45초). 예전 기대값은 세 개였다
+    assert [v["video_id"] for v in data["items"]] == ["AAAAAAAAAA1", "BBBBBBBBBB2"]
+    assert (data["exclude_shorts"], data["shorts_excluded"]) == (True, 1)
     first = data["items"][0]
     assert first["title"] == "썸 타다 끝나는 이유 3가지"
     assert first["channel_title"] == "테스트 관계심리"
@@ -28,7 +30,7 @@ def test_list_without_input_uses_default_query(mock_http, fixture_json, fake_key
 
     search = mock.requests[0].url.params
     assert search["q"] == "연애 고민"
-    assert search["maxResults"] == "12"
+    assert search["maxResults"] == "50"  # 쇼츠를 빼고 12개를 채우려고 넉넉히 받는다(100단위 그대로)
     assert search["publishedAfter"] == "2026-11-09T03:00:00Z"  # 고정 시계 − 7일
 
 
@@ -36,7 +38,9 @@ def test_list_with_filters(mock_http, fixture_json, fake_key, make_client):
     mock = mock_http()
     add_search_and_videos(mock, fixture_json)
     client = make_client(mock, key=fake_key)
-    params = {"q": "이별", "order": "viewCount", "period": "any", "max_results": 20}
+    # 쇼츠 제외를 끄면 예전과 똑같이 요청한다(옛 호출 방식)
+    params = {"q": "이별", "order": "viewCount", "period": "any", "max_results": 20,
+              "exclude_shorts": "false"}
     res = client.get("/api/videos", params=params)
     assert res.status_code == 200
     params = mock.requests[0].url.params
@@ -66,7 +70,8 @@ def test_same_search_within_ten_minutes_uses_saved_result(
     clock.advance(minutes=9)
     again = client.get("/api/videos").json()
     assert again["cached"] is True
-    assert len(again["items"]) == 3
+    assert len(again["items"]) == 2  # 쇼츠 하나를 뺀 목록(뺀 수도 저장해 둔다)
+    assert again["shorts_excluded"] == 1
     assert len(mock.requests) == 2  # YouTube를 다시 부르지 않았다
     assert again["quota"]["used_today"] == 101
 
@@ -188,3 +193,98 @@ def test_list_accepts_relevance_order(mock_http, fixture_json, fake_key, make_cl
     res = make_client(mock, key=fake_key).get("/api/videos", params={"order": "relevance"})
     assert res.status_code == 200
     assert mock.requests[0].url.params["order"] == "relevance"
+
+
+# ---------------------------------------------------------------- 쇼츠 제외 (실제 데이터 보정)
+
+# 길이가 섞인 가짜 목록(검색 순서): 긴 영상 · 쇼츠 · 길이 없음 · 61초(경계, 남김) · 60초(뺌) …
+MIXED = [
+    ("LongVideo01", "PT8M0S"),
+    ("ShortVid012", "PT12S"),
+    ("NoLength013", None),
+    ("Edge61Sec14", "PT1M1S"),
+    ("Edge60Sec15", "PT1M"),
+    ("LongVideo06", "PT20M5S"),
+    ("ShortVid017", "PT39S"),
+    ("LongVideo08", "PT1H2M"),
+    ("LongVideo09", "PT3M"),
+]
+
+
+def _mixed_videos(ids):
+    items = []
+    for vid, duration in MIXED:
+        if vid not in ids:
+            continue
+        item = {
+            "kind": "youtube#video",
+            "id": vid,
+            "snippet": {"publishedAt": "2026-11-15T09:30:00Z",
+                        "channelId": "UCtestchannel000000000009",
+                        "title": f"가상 영상 {vid}", "description": "", "thumbnails": {},
+                        "channelTitle": "가상 채널"},
+            "statistics": {"viewCount": "100", "likeCount": "1", "commentCount": "5"},
+        }
+        if duration:
+            item["contentDetails"] = {"duration": duration}
+        items.append(item)
+    return {"kind": "youtube#videoListResponse", "items": items}
+
+
+def _add_mixed(mock):
+    search = {"items": [{"id": {"kind": "youtube#video", "videoId": v}} for v, _ in MIXED]}
+    mock.add("GET", f"{YT}/search", json=search)
+    mock.add("GET", f"{YT}/videos", json=_mixed_videos({v for v, _ in MIXED}))
+    return mock
+
+
+def test_shorts_are_excluded_keeping_order_and_count(mock_http, fake_key, make_client):
+    mock = _add_mixed(mock_http())
+    data = make_client(mock, key=fake_key).get("/api/videos", params={"max_results": 4}).json()
+    # 61초 미만(12초·39초·60초)과 길이 정보가 없는 것을 빼고, 검색 순서대로 4개
+    assert [v["video_id"] for v in data["items"]] == [
+        "LongVideo01", "Edge61Sec14", "LongVideo06", "LongVideo08"]
+    assert data["max_results"] == 4
+    assert data["exclude_shorts"] is True
+    assert data["shorts_excluded"] == 4  # 받은 후보 9개 중 쇼츠 4개
+    assert mock.requests[0].url.params["maxResults"] == "50"  # 넉넉히 받는다
+    assert len([r for r in mock.requests if r.url.path.endswith("/search")]) == 1  # 검색은 한 번
+    assert data["quota"]["used_today"] == 101  # 검색 100 + 상세 1
+
+
+def test_shorts_kept_when_turned_off(mock_http, fake_key, make_client):
+    mock = _add_mixed(mock_http())
+    params = {"max_results": 4, "exclude_shorts": "false"}
+    data = make_client(mock, key=fake_key).get("/api/videos", params=params).json()
+    assert data["exclude_shorts"] is False and data["shorts_excluded"] == 0
+    assert mock.requests[0].url.params["maxResults"] == "4"
+    # 검색이 9개를 돌려줘도(가짜) 상세에서 받은 대로 — 예전 동작 그대로 쇼츠도 남는다
+    assert "ShortVid012" in [v["video_id"] for v in data["items"]]
+
+
+def test_shorts_setting_is_part_of_the_cache_key(mock_http, fake_key, make_client):
+    mock = _add_mixed(mock_http())
+    client = make_client(mock, key=fake_key)
+    on = client.get("/api/videos", params={"max_results": 4}).json()
+    assert on["cached"] is False
+    again = client.get("/api/videos", params={"max_results": 4}).json()
+    assert again["cached"] is True and again["shorts_excluded"] == 4
+    assert [v["video_id"] for v in again["items"]] == [v["video_id"] for v in on["items"]]
+    off = client.get("/api/videos", params={"max_results": 4, "exclude_shorts": "false"}).json()
+    assert off["cached"] is False  # 쇼츠 제외를 끈 검색은 따로 저장한다
+    assert len([r for r in mock.requests if r.url.path.endswith("/search")]) == 2
+
+
+def test_shorts_default_comes_from_config(mock_http, fake_key, make_client):
+    mock = _add_mixed(mock_http())
+    overrides = {"discover": {"query": "연애 고민", "max_results": 12, "exclude_shorts": False}}
+    data = make_client(mock, key=fake_key, overrides=overrides).get("/api/videos").json()
+    assert data["exclude_shorts"] is False
+    assert mock.requests[0].url.params["maxResults"] == "12"
+
+
+def test_fewer_long_videos_than_requested(mock_http, fake_key, make_client):
+    mock = _add_mixed(mock_http())
+    data = make_client(mock, key=fake_key).get("/api/videos", params={"max_results": 12}).json()
+    assert len(data["items"]) == 5  # 긴 영상이 5개뿐이면 5개만(채우려고 다시 검색하지 않는다)
+    assert len([r for r in mock.requests if r.url.path.endswith("/search")]) == 1

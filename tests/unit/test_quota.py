@@ -50,6 +50,21 @@ def test_cache_key_normalizes_spaces_and_separates_filters():
     assert a != search_cache_key("연애 고민", order="viewCount", period="week", max_results=12)
     assert a != search_cache_key("연애 고민", order="date", period="day", max_results=12)
     assert a != search_cache_key("연애 고민", order="date", period="week", max_results=20)
+    # 실제 데이터 보정: 쇼츠 제외 여부도 키에 든다. 주지 않으면(옛 호출) 끈 것과 같다
+    on = search_cache_key("연애 고민", order="date", period="week", max_results=12,
+                          exclude_shorts=True)
+    assert a != on
+    assert a == search_cache_key("연애 고민", order="date", period="week", max_results=12,
+                                 exclude_shorts=False)
+
+
+def test_cache_keeps_shorts_count_and_reads_old_rows(tmp_db_path):
+    db.init_db(tmp_db_path)
+    cache = SearchCache(tmp_db_path)
+    cache.put("old", ["A", "B"])  # 옛 모양(목록만)
+    cache.put("new", ["C"], shorts_excluded=7)
+    assert cache.get("old") == ["A", "B"] and cache.get_entry("old") == (["A", "B"], 0)
+    assert cache.get("new") == ["C"] and cache.get_entry("new") == (["C"], 7)
 
 
 def test_cache_expires_after_ten_minutes(tmp_db_path):

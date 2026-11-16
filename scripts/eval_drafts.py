@@ -3,7 +3,8 @@
     .\\.venv\\Scripts\\python.exe scripts\\eval_drafts.py
     .\\.venv\\Scripts\\python.exe scripts\\eval_drafts.py --models qwen2.5:7b --contexts 3 -d 2
 
-- 맥락: `tests/fixtures/contexts/*.json`(직접 쓴 가상 영상 5개). 가짜 YouTube 응답으로 바꿔
+- 맥락: `tests/fixtures/contexts/*.json`(직접 쓴 가상 영상 6개: 연애 주제 5개 + 협찬 위주 1개).
+  가짜 YouTube 응답으로 바꿔
   앱의 실제 흐름(`DraftService`: 맥락 → 분석 → 근거 고르기 → 본문 → 규칙 검사 → 최대 3번)에 넣는다.
   YouTube·인터넷은 부르지 않는다. 임시 DB를 쓴다(앱 DB를 건드리지 않는다).
 - 영상마다 초안 N개: 첫 초안 다음부터는 [다른 초안 생성]처럼 이미 쓴 근거를 피한다.
@@ -14,6 +15,10 @@
   그러면 다음 영상의 초안은 그 권유 문장을 「이미 쓴 표현」으로 받고 V11 비교도 한다.
 - 권유 문장 다양성: 브랜드가 든 마지막 문장(`prompts.closing_sentence`)이 서로 다른 개수,
   「흐름이 궁금하다면」 같은 굳은 틀이 든 개수, V12(한자·일본어·이모지)에 걸린 초안 수를 센다.
+- 실제 데이터 보정: 맥락의 `foreign_products`(남의 상품 이름)가 초안에 들어갔는지 센다
+  (「남의 상품 권함」). 분석이 「연애 고민을 찾지 못했습니다」(`no_love_concern`)로 멈춘 것은
+  오류가 아니라 「멈춤」으로 따로 센다.
+  표 아래에 맥락마다 결과(핵심 고민 또는 연애 고민 없음 · 통과 수 · 남의 상품 권함)를 붙인다.
 - Ollama 공급자만 시험하는 스크립트라 `app.llm.ollama`를 직접 쓴다(앱 코드는 등록부만 쓴다).
 """
 
@@ -36,7 +41,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.api.deps import Services, build_services  # noqa: E402
 from app.config import Settings, load_settings  # noqa: E402
-from app.errors import AppError  # noqa: E402
+from app.errors import AppError, ErrorKind  # noqa: E402
 from app.llm import prompts  # noqa: E402
 from app.youtube.quota import utc_now  # noqa: E402
 
@@ -156,6 +161,8 @@ class DraftRow:
     error: str = ""
     approved: bool = False
     v12_failed: bool = False  # 최종 글이 V12에 걸렸는지
+    no_concern: bool = False  # 분석이 「연애 고민 없음」으로 멈춰 초안을 만들지 않았는지
+    foreign_product: str = ""  # 초안에 들어간 남의 상품 이름(실제 데이터 보정)
 
 
 @dataclass
@@ -197,6 +204,8 @@ class ModelResult:
             "load_s": self.load_s,
             "warm_first_s": self.warm_first_s,
             "dropped_evidence": sum(a.get("dropped", 0) for a in self.analyses),
+            "no_concern_stops": sum(bool(a.get("no_concern")) for a in self.analyses),
+            "foreign_product_drafts": sum(bool(d.foreign_product) for d in self.drafts),
             **self.closing_stats(),
             "error": self.error,
         }
@@ -240,9 +249,18 @@ def run_contexts(
     drafter = services.drafts
     for ctx in contexts:
         vid = ctx["video_id"]
+        foreign = [str(x) for x in ctx.get("foreign_products") or [] if x]
         try:
             analysis, secs = timed(lambda vid=vid: drafter.analyze(vid))
         except AppError as exc:
+            if exc.kind is ErrorKind.NO_LOVE_CONCERN:  # 멈춤(기대한 동작일 수 있다) — 오류와 따로
+                result.analyses.append({"video_id": vid, "no_concern": True,
+                                        "reason": exc.detail})
+                for n in range(1, drafts_per_context + 1):
+                    result.drafts.append(DraftRow(vid, ctx["title"], n, no_concern=True,
+                                                  error="연애 고민 없음 · 멈춤"))
+                log(f"  {vid} 연애 고민 없음으로 멈춤: {exc.detail}")
+                continue
             result.analyses.append({"video_id": vid, "error": f"{exc.kind}: {exc.detail}"})
             for n in range(1, drafts_per_context + 1):
                 result.drafts.append(DraftRow(vid, ctx["title"], n, error=f"분석 실패 {exc.kind}"))
@@ -274,6 +292,7 @@ def run_contexts(
                 )
             except AppError as exc:
                 row.error = f"{exc.kind}: {exc.detail}"
+                row.no_concern = exc.kind is ErrorKind.NO_LOVE_CONCERN
                 result.drafts.append(row)
                 log(f"    초안 {n} 실패: {exc.kind}")
                 continue
@@ -287,8 +306,11 @@ def run_contexts(
             row.passed = draft.passed
             row.failures = draft.validation.failure_lines()
             row.v12_failed = any(c.code == "V12" for c in draft.validation.failures)
+            row.foreign_product = next((x for x in foreign if x in draft.body), "")
             result.drafts.append(row)
             mark = "통과" if draft.passed else "실패"
+            if row.foreign_product:
+                mark += f" · 남의 상품 권함({row.foreign_product})"
             log(f"    초안 {n} {mark} · {draft.attempts}번 · {row.seconds:.1f}s · {draft.body}")
             # 다음 초안을 만들면 승인 안 한 초안은 밀려나므로(superseded) 통과하자마자 승인한다
             if approve_first and draft.passed and not approved_one:
@@ -398,6 +420,29 @@ def markdown(results: Sequence[ModelResult], *, contexts: int, drafts: int) -> s
             f"| `{r.model}` | {c['distinct_closings']}/{r.total} | {c['stock_closings']} "
             f"| {c['v12_failed']} | {c['approved']} |"
         )
+    lines += [
+        "",
+        "맥락마다(실제 데이터 보정): 분석의 핵심 고민 또는 「연애 고민 없음」으로 멈춤, "
+        "통과한 초안 수, "
+        "남의 상품(맥락의 `foreign_products`)이 든 초안 수.",
+        "",
+        "| 모델 | 영상 | 분석 | 통과 | 남의 상품 권함 |",
+        "|---|---|---|---:|---:|",
+    ]
+    for r in results:
+        by_vid = {a["video_id"]: a for a in r.analyses}
+        for vid in dict.fromkeys(d.video_id for d in r.drafts):
+            rows = [d for d in r.drafts if d.video_id == vid]
+            a = by_vid.get(vid, {})
+            if a.get("no_concern"):
+                what = "연애 고민 없음 · 멈춤"
+            elif a.get("error"):
+                what = f"오류 {a['error']}"
+            else:
+                what = str(a.get("concern") or "").replace("|", "/")
+            passed = sum(d.passed for d in rows)
+            foreign = sum(bool(d.foreign_product) for d in rows)
+            lines.append(f"| `{r.model}` | {vid} | {what} | {passed}/{len(rows)} | {foreign} |")
     for r in results:
         lines += ["", f"#### `{r.model}` 초안 원문", "",
                   "| 영상 | # | 결과 | 시도 | 초안 (근거 · 출처) |", "|---|---:|---|---:|---|"]
@@ -409,6 +454,8 @@ def markdown(results: Sequence[ModelResult], *, contexts: int, drafts: int) -> s
             mark = "통과" if d.passed else f"실패: {codes}"
             if d.approved:
                 mark += " · 승인"
+            if d.foreign_product:
+                mark += f" · 남의 상품 권함({d.foreign_product})"
             body = d.body.replace("|", "/")
             lines.append(
                 f"| {d.video_id} | {d.n} | {mark} | {d.attempts} | {body} "
@@ -420,7 +467,8 @@ def markdown(results: Sequence[ModelResult], *, contexts: int, drafts: int) -> s
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--models", nargs="*", default=list(DEFAULT_MODELS))
-    parser.add_argument("--contexts", type=int, default=5, help="쓸 가상 맥락 수(앞에서부터)")
+    parser.add_argument("--contexts", type=int, default=None,
+                        help="쓸 가상 맥락 수(앞에서부터, 비우면 전부)")
     parser.add_argument("-d", "--drafts", type=int, default=3, help="맥락마다 초안 수")
     parser.add_argument("--timeout", type=float, default=300.0, help="요청 하나의 시간 제한(초)")
     parser.add_argument("--json-out", type=Path)

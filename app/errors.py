@@ -39,6 +39,8 @@ class ErrorKind(StrEnum):
     DRAFT_NOT_FOUND = "draft_not_found"
     DRAFT_NOT_PASSED = "draft_not_passed"  # 규칙 검사에 걸린 초안은 승인하지 않는다(409)
     DRAFT_SUPERSEDED = "draft_superseded"  # 새 초안이나 다른 승인으로 밀려난 초안
+    # 실제 데이터 보정(2026-11-16): 영상 자료에 연애 고민이 없으면 초안을 만들지 않는다
+    NO_LOVE_CONCERN = "no_love_concern"
     # 7단계: 운영 규칙(영상당 1개 · 하루 상한 · 승인한 초안만)
     ALREADY_COMMENTED = "already_commented"
     DAILY_LIMIT_REACHED = "daily_limit_reached"
@@ -166,6 +168,12 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
         "더 새 초안이 있어 이 초안은 고치거나 승인할 수 없습니다.",
         "화면을 새로 고치고 지금 보이는 초안으로 진행해 주세요.",
         409,
+    ),
+    ErrorKind.NO_LOVE_CONCERN: ErrorText(
+        "이 영상 자료에서 연애 고민을 찾지 못했습니다.",
+        "자막을 붙여 넣고 다시 분석하거나 다른 영상을 골라 주세요. "
+        "설명란이 광고·협찬 위주인 영상일 수 있습니다.",
+        422,
     ),
     ErrorKind.ALREADY_COMMENTED: ErrorText(
         "이미 댓글을 단 영상입니다. 영상 하나에는 댓글을 하나만 답니다.",

@@ -20,13 +20,78 @@ def _llm_off(request):
 
 
 def test_fixture_contexts_are_five_distinct_topics():
+    # 실제 데이터 보정으로 협찬 위주 자료(06)가 더해졌다. 연애 주제 다섯은 그대로(01~05)
     items = E.load_contexts(CONTEXTS)
-    assert len(items) == 5
-    assert len({c["video_id"] for c in items}) == 5
-    assert len({c["title"] for c in items}) == 5
-    for c in items:
+    assert len(items) == 6
+    love = [c for c in items if not c.get("foreign_products")]
+    assert len(love) == 5
+    assert len({c["video_id"] for c in items}) == 6
+    assert len({c["title"] for c in items}) == 6
+    for c in love:
         assert len(c["video_id"]) == 11
         assert c["transcript"].count("\n") >= 4 and len(c["comments"]) >= 3 and c["description"]
+
+
+def test_sponsored_fixture_is_mostly_ads_without_transcript():
+    ctx = json.loads((CONTEXTS / "06_sponsored.json").read_text(encoding="utf-8"))
+    assert len(ctx["video_id"]) == 11 and not ctx.get("transcript")
+    assert "연애" in ctx["title"]
+    products = ctx["foreign_products"]
+    assert products and all(p in ctx["description"] for p in products)
+    ads = [c for c in ctx["comments"] if any(p in c for p in products)]
+    assert len(ads) * 2 == len(ctx["comments"])  # 댓글 절반이 이벤트 응모 글
+
+
+def _sponsored_run(fake_llm, tmp_db_path, responses):
+    contexts = [c for c in E.load_contexts(CONTEXTS) if c["video_id"] == "EvalCtx0006"]
+    llm = fake_llm(responses)
+    llm.model = "fake"
+    settings = E.eval_settings("fake", tmp_db_path)
+    services = build_services(settings, transport=E.youtube_transport(contexts),
+                              llm_transport=httpx.MockTransport(_llm_off))
+    services.llm = llm
+    try:
+        E.prepare(services, contexts)
+        result = E.ModelResult(model="fake")
+        E.run_contexts(services, contexts, drafts_per_context=1, result=result, log=lambda s: None)
+    finally:
+        services.llm = None
+        services.close()
+    return result, llm
+
+
+def test_eval_counts_drafts_that_push_another_product(tmp_db_path, fake_llm):
+    quote = "기념일마다 서운한데 말하면 쪼잔해 보일까 봐"
+    analysis = {"has_love_concern": True, "reason": "기념일 서운함 댓글", "topic": "기념일",
+                "concern": "기념일을 잊는 애인에게 서운함", "tone": "상담",
+                "viewer_needs": "서운함 말하기",
+                "evidence": [{"quote": quote, "source": "comment"}]}
+    bad = (f"'{quote}'라는 말에 공감해요. 운명원에서 상담받기 전에 쾌속장 화이바톡으로 "
+           "속부터 편하게 해 보세요.")
+    result, llm = _sponsored_run(fake_llm, tmp_db_path, [analysis] + [
+        {"body": bad, "used_quote": quote, "tone_label": "공감형"}] * 3)
+    # 자막이 없어 「광고·협찬 글이 섞여 있을 수 있다」는 안내가 분석 프롬프트에 붙었다
+    assert "설명란과 댓글에는 광고·협찬" in llm.calls[0]["kwargs"]["user"]
+    row = result.drafts[0]
+    assert row.foreign_product == "화이바톡"
+    assert result.summary()["foreign_product_drafts"] == 1
+    table = E.markdown([result], contexts=1, drafts=1)
+    assert "남의 상품 권함(화이바톡)" in table
+    assert "| `fake` | EvalCtx0006 | 기념일을 잊는 애인에게 서운함 | " in table
+
+
+def test_eval_counts_no_love_concern_as_a_stop(tmp_db_path, fake_llm):
+    none = {"has_love_concern": False, "reason": "협찬 상품 이벤트 글뿐", "topic": "",
+            "concern": "", "tone": "", "viewer_needs": "", "evidence": []}
+    result, llm = _sponsored_run(fake_llm, tmp_db_path, [none])
+    assert len(llm.calls) == 1  # 초안을 쓰게 하지 않았다
+    assert result.analyses == [{"video_id": "EvalCtx0006", "no_concern": True,
+                                "reason": "협찬 상품 이벤트 글뿐"}]
+    assert result.drafts[0].no_concern and not result.drafts[0].foreign_product
+    summary = result.summary()
+    assert summary["no_concern_stops"] == 1 and summary["foreign_product_drafts"] == 0
+    assert "| `fake` | EvalCtx0006 | 연애 고민 없음 · 멈춤 | 0/1 | 0 |" in E.markdown(
+        [result], contexts=1, drafts=1)
 
 
 def test_eval_runs_the_real_pipeline_with_fake_llm(tmp_db_path, fake_llm):

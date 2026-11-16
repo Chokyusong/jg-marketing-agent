@@ -53,9 +53,13 @@ class QuotaTracker:
         return {"used_today": self.used_today(), "daily_limit": DAILY_QUOTA}
 
 
-def search_cache_key(query: str, *, order: str, period: str, max_results: int) -> str:
+def search_cache_key(
+    query: str, *, order: str, period: str, max_results: int, exclude_shorts: bool = False
+) -> str:
+    """같은 검색 10분 저장의 키. 쇼츠 제외 여부도 키에 든다(결과가 다르다)."""
     return json.dumps(
-        {"q": " ".join(query.split()), "order": order, "period": period, "n": max_results},
+        {"q": " ".join(query.split()), "order": order, "period": period, "n": max_results,
+         "no_shorts": bool(exclude_shorts)},
         ensure_ascii=False,
         sort_keys=True,
     )
@@ -68,6 +72,11 @@ class SearchCache:
         self.ttl = ttl
 
     def get(self, key: str) -> list[str] | None:
+        entry = self.get_entry(key)
+        return None if entry is None else entry[0]
+
+    def get_entry(self, key: str) -> tuple[list[str], int] | None:
+        """(영상 ID들, 뺀 쇼츠 수). 10분이 지났거나 없으면 None."""
         with db.session(self.db_path) as conn:
             row = conn.execute(
                 "SELECT video_ids, created_at FROM search_cache WHERE cache_key = ?", (key,)
@@ -77,13 +86,20 @@ class SearchCache:
         created = datetime.fromisoformat(row["created_at"])
         if self.clock() - created >= self.ttl:
             return None
-        return list(json.loads(row["video_ids"]))
+        data = json.loads(row["video_ids"])
+        if isinstance(data, dict):  # 쇼츠 제외 검색: {"ids": [...], "shorts_excluded": n}
+            return list(data.get("ids") or []), int(data.get("shorts_excluded") or 0)
+        return list(data), 0
 
-    def put(self, key: str, video_ids: list[str]) -> None:
+    def put(self, key: str, video_ids: list[str], *, shorts_excluded: int | None = None) -> None:
+        """`shorts_excluded`를 주면 뺀 쇼츠 수도 함께 저장한다(표는 그대로, 값만 객체로)."""
+        value: object = list(video_ids)
+        if shorts_excluded is not None:
+            value = {"ids": list(video_ids), "shorts_excluded": int(shorts_excluded)}
         with db.session(self.db_path) as conn:
             conn.execute(
                 "INSERT INTO search_cache(cache_key, video_ids, created_at) VALUES (?, ?, ?) "
                 "ON CONFLICT(cache_key) DO UPDATE SET "
                 "video_ids = excluded.video_ids, created_at = excluded.created_at",
-                (key, json.dumps(video_ids), self.clock().isoformat()),
+                (key, json.dumps(value), self.clock().isoformat()),
             )

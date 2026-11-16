@@ -41,12 +41,13 @@ async function request(path, options = {}) {
 
 export const api = {
   status: () => request('/api/status'),
-  searchVideos: ({ q, period, order, maxResults }) => {
+  searchVideos: ({ q, period, order, maxResults, excludeShorts }) => {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (period) params.set('period', period);
     if (order) params.set('order', order);
     if (maxResults) params.set('max_results', String(maxResults));
+    if (typeof excludeShorts === 'boolean') params.set('exclude_shorts', String(excludeShorts)); // 실제 데이터 보정
     const qs = params.toString();
     return request(`/api/videos${qs ? `?${qs}` : ''}`);
   },

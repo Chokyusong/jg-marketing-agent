@@ -1,4 +1,4 @@
-// ① 영상 탐색: 탭, 검색창과 거르기, 영상 목록, 선택, 오류 문구.
+// ① 영상 탐색: 탭, 검색창과 거르기(쇼츠 제외 포함), 영상 목록, 선택, 오류 문구.
 import { api } from './api.js';
 import { el, formatAgo, formatViews, thumbnail } from './format.js';
 import { getState, setState, subscribe } from './state.js';
@@ -41,6 +41,7 @@ async function runSearch() {
       period: $('period').value,
       order: $('order').value,
       maxResults: Number($('max-results').value),
+      excludeShorts: $('exclude-shorts') ? $('exclude-shorts').checked : undefined,
     });
     if (!query) $('q').value = data.query;
     const keep = data.items.some((v) => v.video_id === getState().selectedId);
@@ -49,7 +50,10 @@ async function runSearch() {
       videos: data.items,
       quota: data.quota,
       selectedId: keep ? getState().selectedId : null,
-      meta: { mode: 'search', query: data.query, cached: data.cached, count: data.items.length },
+      meta: {
+        mode: 'search', query: data.query, cached: data.cached, count: data.items.length,
+        shortsExcluded: data.exclude_shorts ? data.shorts_excluded || 0 : null,
+      },
     });
   } catch (error) {
     setState({ loading: false, error });
@@ -139,6 +143,10 @@ function renderMeta(state) {
   if (!state.meta || state.loading) return;
   if (state.meta.mode === 'search') {
     meta.append(`‘${state.meta.query}’ 영상 ${state.meta.count}개`);
+    // 실제 데이터 보정: 쇼츠(61초 미만·길이 없음)를 뺀 수
+    if (state.meta.shortsExcluded != null) {
+      meta.append(el('span', { class: 'shorts-note', title: '61초 미만 영상과 길이 정보가 없는 영상은 목록에서 뺍니다', text: `쇼츠 ${state.meta.shortsExcluded}개 제외` }));
+    }
     if (state.meta.cached) {
       meta.append(el('span', { class: 'tag', title: '같은 검색은 10분 동안 저장한 결과를 씁니다(할당량 절약)', text: 'SAVED · 10분 저장 결과' }));
     }

@@ -1,7 +1,8 @@
 """댓글 초안 서비스(PLAYBOOK 5단계): 분석 → 근거 고르기 → 본문 쓰기 → 규칙 검사 → 다시 쓰기.
 
 초안 만들기 흐름
-1. 근거 구절 하나를 고른다(`avoid_quotes`에 없는 것, 자막 > 댓글 > 설명 > 제목 순).
+1. 근거 구절 하나를 고른다(`avoid_quotes`에 없는 것, 자막 > 제목 > 댓글 > 설명 순).
+   분석이 연애 고민을 찾지 못하면(`no_love_concern`) 초안을 만들지 않고 그 오류로 멈춘다.
 2. 모델은 **본문만** 쓴다. 홍보 표기 `[광고] `는 코드가 앞에 붙인다(모델이 빼먹을 수 없게).
 3. 6단계 `CheckService.check()`(= `validate()`)로 검사한다. 걸리면 실패 문구를 넣어 다시 쓰게 한다
    (모두 3번까지).
@@ -131,7 +132,13 @@ class DraftService:
         try:
             result = self._analyze(video_id)
         except AppError as exc:
-            self._record("analyze", "failure", video_id=video_id, reason=exc.message)
+            reason = exc.message
+            if exc.kind is ErrorKind.NO_LOVE_CONCERN:
+                # 연애 고민이 없는 자료: 예전 분석이 남아 있으면 지운다(그것으로 초안을 만들지 않게)
+                self._forget_analysis(video_id)
+                if exc.detail:
+                    reason = f"{exc.message} · {exc.detail}"
+            self._record("analyze", "failure", video_id=video_id, reason=reason)
             raise
         reason = f"핵심 고민 · {result.concern}" if result.concern else "분석 완료"
         self._record("analyze", "info", video_id=video_id, reason=reason)
@@ -169,6 +176,10 @@ class DraftService:
                 ),
             )
         return result
+
+    def _forget_analysis(self, video_id: str) -> None:
+        with db.session(self.db_path) as conn:
+            conn.execute("DELETE FROM analyses WHERE video_id = ?", (video_id,))
 
     def stored_analysis(self, video_id: str) -> Analysis | None:
         self._check_id(video_id)
