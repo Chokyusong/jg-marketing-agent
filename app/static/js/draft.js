@@ -1,4 +1,4 @@
-// 02 댓글 초안(6단계): 사람이 직접 쓰는 글 상자. 입력이 0.4초 멈추면 POST /api/validate로 V1~V11을
+// 02 댓글 초안(6단계): 사람이 직접 쓰는 글 상자. 입력이 0.4초 멈추면 POST /api/validate로 V1~V12을
 // 검사해 글자 수·통과 요약·실패 목록을 그린다. AI 초안(5단계, loadDraft)은 서버가 검사한 결과를
 // 그대로 보이고, 사람이 고치면 같은 검사를 다시 한다.
 // 높이를 아끼려고 통과한 항목은 한 줄 요약으로 접고, 실패한 항목만 문구와 함께 펼친다.
@@ -113,7 +113,7 @@ function checksView(state) {
   const text = $('draft-text').value;
   const v = resultFor(state);
   if (!state.selectedId) {
-    return [el('p', { class: 'checks-idle', text: '영상을 고르고 초안을 쓰면 규칙 검사(V1~V11)를 합니다.' })];
+    return [el('p', { class: 'checks-idle', text: '영상을 고르고 초안을 쓰면 규칙 검사(V1~V12)를 합니다.' })];
   }
   if (state.validationError) {
     return [
@@ -122,7 +122,7 @@ function checksView(state) {
     ];
   }
   if (!hasDraft(text)) {
-    return [el('p', { class: 'checks-idle', text: '초안을 쓰고 입력을 멈추면 규칙 검사(V1~V11)를 합니다.' })];
+    return [el('p', { class: 'checks-idle', text: '초안을 쓰고 입력을 멈추면 규칙 검사(V1~V12)를 합니다.' })];
   }
   if (!v) return [el('p', { class: 'checks-idle', text: '규칙 검사 중…' })];
 

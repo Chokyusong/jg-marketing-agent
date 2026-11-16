@@ -16,7 +16,7 @@ ServicesDep = Annotated[Services, Depends(get_services)]
 
 @router.post("/validate", response_model=ValidationOut)
 def validate_text(body: ValidateIn, services: ServicesDep) -> ValidationOut:
-    """글 하나를 V1~V11로 검사한다. 대조 자료는 그 영상의 맥락(제목·설명·자막·댓글)이다.
+    """글 하나를 V1~V12로 검사한다. 대조 자료는 그 영상의 맥락(제목·설명·자막·댓글)이다.
 
     이전 글 비교(V11)는 다른 영상에서 승인한 초안들과 한다(5단계부터 DB에서 꺼낸다).
     """

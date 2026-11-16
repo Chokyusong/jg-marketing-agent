@@ -1,4 +1,4 @@
-"""규칙 검사 V1~V11 (app/analysis/validator.py): 네트워크·DB·LLM 없이 도는 순수 함수.
+"""규칙 검사 V1~V12 (app/analysis/validator.py): 네트워크·DB·LLM 없이 도는 순수 함수.
 
 규칙마다 통과 예 2개 이상과 실패 예 2개 이상, 경계값(39·40·120·121자), 이모지·영문이 섞인 글,
 홍보 담당자의 정상 표현이 V8~V10에 걸리지 않는지, 사람이 고친 글도 같은 함수로 검사되는지 본다.
@@ -61,7 +61,7 @@ def sized(n: int) -> str:
 def test_good_draft_passes_every_rule():
     result = run(GOOD)
     assert result.passed is True
-    assert [c.code for c in result.checks] == [f"V{i}" for i in range(1, 12)]
+    assert [c.code for c in result.checks] == [f"V{i}" for i in range(1, 13)]
     assert all(c.passed for c in result.checks)
     assert result.char_count == len(GOOD)
     assert result.evidence_quote == "하루에 한 번 연락이면 충분할까요"
@@ -469,13 +469,16 @@ def test_human_edited_text_goes_through_same_function():
 
 
 def test_emoji_and_english_mixed_text():
+    # 5단계 점검에서 V12가 생긴 뒤: 영문은 괜찮고, 이모지는 V12 하나에만 걸린다
     text = (
         "[광고] 하루에 한 번 연락이면 충분할까요 😢 LDR couple 이야기 "
         "공감돼요! 운명원에서 상담받아 보세요 🙏"
     )
     result = run(text)
-    assert result.passed, result.failure_lines()
+    assert [c.code for c in result.failures] == ["V12"]
     assert result.evidence_quote == "하루에 한 번 연락이면 충분할까요"
+    without_emoji = text.replace(" 😢", "").replace(" 🙏", "")
+    assert run(without_emoji).passed, run(without_emoji).failure_lines()
 
 
 # ---------------------------------------------------------------- 설정: 추가 표현
@@ -613,3 +616,65 @@ def test_quoted_claim_next_to_the_brand_is_caught():
     text = ("[광고] 연락 문제로 힘드시죠. 운명원은 '여기가 제일 정확한 곳이에요'라는 말을 들어요. "
             "연애 사주 상담을 받아 보세요.")
     assert not check(run(text, context=QUOTE_CTX), "V10").passed
+
+
+# ---------------------------------------------------------------- V12 허용 글자 (5단계 점검)
+
+V12_HEAD = "[광고] 하루에 한 번 연락이면 충분할까요"
+V12_TAIL = " 운명원에서 상담받아 보세요."
+V12_PASS = [
+    GOOD,
+    # 영문·숫자·기본 문장부호 모두: . , ! ? ~ ' " ‘ ’ “ ” … · - ( ) [ ] % : /
+    "[광고] '하루에 한 번 연락이면 충분할까요'라는 말, 공감돼요! 2~3일(주말) · 50% … "
+    "“이유”와 ‘마음’ - A/B: 운명원에서 상담받아 보세요?",
+    # 한글 낱자(완성형이 아닌 ㅠㅠ)
+    V12_HEAD + " ㅠㅠ 그 마음 알 것 같아요." + V12_TAIL,
+]
+
+
+@pytest.mark.parametrize("text", V12_PASS)
+def test_v12_passes_korean_english_digits_basic_punctuation(text):
+    v12 = check(run(text), "V12")
+    assert v12.passed, v12.message
+
+
+V12_FAIL = [
+    # 실제 qwen3.8:27b 초안에서 나온 한자(5단계 점검)
+    (V12_HEAD + "라는 말에 마음이揪입니다." + V12_TAIL, "揪", "한자"),
+    (V12_HEAD + "라는 고민, 緣分을 짚어 보세요." + V12_TAIL, "緣", "한자"),
+    (V12_HEAD + "라는 말이 와닿았어요ね." + V12_TAIL, "ね", "일본어"),
+    (V12_HEAD + "라는 말이 와닿았어요 \U0001F495" + V12_TAIL, "\U0001F495", "이모지"),
+    (V12_HEAD + "라는 말이 와닿았어요 \u2665" + V12_TAIL, "\u2665", "기호"),
+    (V12_HEAD + "라는 말이 와닿았어요\u3002" + V12_TAIL, "\u3002", "허용하지 않는"),
+    (V12_HEAD + "라는 말이 와닿았어요;" + V12_TAIL, ";", "허용하지 않는"),
+]
+
+
+@pytest.mark.parametrize(("text", "char", "kind"), V12_FAIL)
+def test_v12_fails_and_names_the_character(text, char, kind):
+    result = run(text)
+    v12 = check(result, "V12")
+    assert not v12.passed
+    assert f"'{char}'" in v12.message and kind in v12.message
+    assert "지우거나 한글로 바꾸세요" in v12.message
+    assert any("V12" in line for line in result.failure_lines())
+    # V12만 걸린다(다른 규칙은 그대로 통과)
+    assert [c.code for c in result.failures] == ["V12"], result.failure_lines()
+
+
+def test_v12_lists_at_most_five_characters_and_counts_the_rest():
+    text = GOOD + " 一二三四五六七"
+    v12 = check(run(text), "V12")
+    assert not v12.passed and "외 2개" in v12.message
+
+
+def test_v12_shows_invisible_characters_by_code_point():
+    text = GOOD.replace("와닿았어요", "와닿\u200d았어요")  # 보이지 않는 이음 글자(ZWJ)
+    v12 = check(run(text), "V12")
+    assert not v12.passed and "U+200D" in v12.message
+
+
+def test_v12_ignores_configured_disclosure_and_brand():
+    rules = ValidatorRules(brand="運命苑", disclosure="【AD】")
+    text = "【AD】 하루에 한 번 연락이면 충분할까요라는 질문이 와닿았어요. 運命苑에서 상담받으세요."
+    assert check(run(text, rules=rules), "V12").passed

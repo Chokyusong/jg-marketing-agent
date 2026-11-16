@@ -55,8 +55,8 @@ def test_good_text_passes_and_builds_context_when_missing(client_and_mock):
     assert data["passed"] is True
     assert data["char_count"] == len(GOOD)
     assert (data["min_chars"], data["max_chars"], data["disclosure"]) == (40, 120, "[광고]")
-    assert (data["passed_count"], data["total"]) == (11, 11)
-    assert [c["code"] for c in data["checks"]] == [f"V{i}" for i in range(1, 12)]
+    assert (data["passed_count"], data["total"]) == (12, 12)
+    assert [c["code"] for c in data["checks"]] == [f"V{i}" for i in range(1, 13)]
     assert set(data["checks"][0]) == {"code", "name", "passed", "message"}
     assert data["evidence_quote"] == "하루에 한 번 연락으로 싸운"
     # 맥락이 없어서 만들었다: 영상 상세 1 + 인기 댓글 1
@@ -88,7 +88,7 @@ def test_link_fails_v2_and_removing_it_passes(client_and_mock):
     client, _ = client_and_mock
     data = post(client, GOOD + " www.example.com").json()
     assert data["passed"] is False
-    assert data["passed_count"] == 10
+    assert data["passed_count"] == 11
     v2 = by_code(data)["V2"]
     assert v2["passed"] is False and "링크를 지우세요" in v2["message"]
     assert post(client, GOOD).json()["passed"] is True

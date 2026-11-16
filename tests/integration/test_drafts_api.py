@@ -169,7 +169,7 @@ def test_draft_passes_on_first_try_and_code_adds_disclosure(setup):
     assert data["attempts"] == 1 and data["status"] == "draft"
     assert data["evidence_quote"] == Q_COMMENT and data["evidence_source"] == "comment"
     assert data["evidence_label"] == "댓글" and data["tone_label"] == "공감형"
-    assert data["validation"]["passed"] is True and data["validation"]["total"] == 11
+    assert data["validation"]["passed"] is True and data["validation"]["total"] == 12
     call = llm.calls[1]["kwargs"]
     assert call["temperature"] == 0.8  # 초안은 높은 온도
     assert "[광고]는 쓰지 않는다" in call["system"]
@@ -369,3 +369,44 @@ def test_responses_do_not_contain_the_api_key(setup, fake_key):
                 client.post("/api/drafts", json={"video_id": VID}),
                 client.get("/api/drafts", params={"video_id": VID})):
         assert fake_key not in res.text
+
+
+# ---------------------------------------------------------------- 5단계 점검: V12와 권유 문장
+
+
+HANJA_BODY = GOOD_BODY.replace("마음에 남네요", "마음이揪입니다")
+
+
+def test_hanja_in_draft_fails_v12_and_is_rewritten(setup):
+    # 실제 qwen3.8:27b 초안에 섞여 나온 한자(揪) → V12에 걸려 다시 쓴다
+    client, _, use = setup
+    llm = use([ANALYSIS, draft(HANJA_BODY), draft(GOOD_BODY)])
+    data = client.post("/api/drafts", json={"video_id": VID}).json()
+    assert data["attempts"] == 2 and data["passed"] is True and data["first_passed"] is False
+    retry = user_prompts(llm)[2]
+    assert "[다시 쓰기]" in retry and f"앞의 본문: {HANJA_BODY}" in retry
+    assert "V12" in retry and "'揪'(한자)" in retry
+    assert data["body"] == f"[광고] {GOOD_BODY}"
+
+
+def test_hanja_draft_that_never_gets_fixed_cannot_be_approved(setup):
+    client, _, use = setup
+    use([ANALYSIS, draft(HANJA_BODY), draft(HANJA_BODY), draft(HANJA_BODY)])
+    data = client.post("/api/drafts", json={"video_id": VID}).json()
+    assert data["passed"] is False and codes(data["validation"]) == {"V12"}
+    res = client.post(f"/api/drafts/{data['id']}/approve")
+    assert res.status_code == 409
+    assert [f["code"] for f in res.json()["error"]["failures"]] == ["V12"]
+
+
+def test_draft_prompt_lists_closings_of_drafts_approved_for_other_videos(setup):
+    client, _, use = setup
+    llm = use([ANALYSIS, draft(GOOD_BODY), ANALYSIS, draft(OTHER_BODY)])
+    first = client.post("/api/drafts", json={"video_id": VID}).json()
+    assert "이미 쓴 권유 문장" not in user_prompts(llm)[1]  # 승인한 초안이 아직 없다
+    assert client.post(f"/api/drafts/{first['id']}/approve").status_code == 200
+    client.post("/api/drafts", json={"video_id": OTHER})
+    prompt = user_prompts(llm)[3]
+    assert "이미 쓴 권유 문장(다른 영상에 승인됨)" in prompt
+    assert "- 운명원에서 연애 사주 상담을 받아 보셔도 좋겠어요." in prompt
+    assert "핵심 고민(" in prompt

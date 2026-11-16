@@ -10,6 +10,10 @@
 - 모델을 하나씩 올리고 내린다(그래픽 메모리 12GB에 큰 모델 둘이 같이 올라가지 않게).
   불러오기와 불러온 직후 첫 답은 따로 잰다(시연 전에 불러 두기로 숨길 수 있는 시간).
 - 표: 첫 시도 통과율, 3번 안 통과율, 초안 하나 평균 시간, 초안 원문.
+- `--approve-first`: 영상마다 처음 통과한 초안을 승인한다(사람이 영상마다 하나씩 승인하는 흐름).
+  그러면 다음 영상의 초안은 그 권유 문장을 「이미 쓴 표현」으로 받고 V11 비교도 한다.
+- 권유 문장 다양성: 브랜드가 든 마지막 문장(`prompts.closing_sentence`)이 서로 다른 개수,
+  「흐름이 궁금하다면」 같은 굳은 틀이 든 개수, V12(한자·일본어·이모지)에 걸린 초안 수를 센다.
 - Ollama 공급자만 시험하는 스크립트라 `app.llm.ollama`를 직접 쓴다(앱 코드는 등록부만 쓴다).
 """
 
@@ -33,10 +37,13 @@ sys.path.insert(0, str(ROOT))
 from app.api.deps import Services, build_services  # noqa: E402
 from app.config import Settings, load_settings  # noqa: E402
 from app.errors import AppError  # noqa: E402
+from app.llm import prompts  # noqa: E402
 from app.youtube.quota import utc_now  # noqa: E402
 
 CONTEXTS_DIR = ROOT / "tests" / "fixtures" / "contexts"
 DEFAULT_MODELS = ("qwen2.5:7b", "qwen3.8:27b", "qwen3.6:latest")
+# 5단계 첫 비교에서 qwen3.8:27b 초안 15개 대부분이 되풀이한 권유 틀(5단계 점검)
+STOCK_CLOSINGS = ("흐름이 궁금", "흐름을 짚어", "흐름을 확인", "흐름을 살펴")
 
 
 # ---------------------------------------------------------------- 가상 맥락 → 가짜 YouTube
@@ -147,6 +154,8 @@ class DraftRow:
     failures: list[str] = field(default_factory=list)
     seconds: float = 0.0
     error: str = ""
+    approved: bool = False
+    v12_failed: bool = False  # 최종 글이 V12에 걸렸는지
 
 
 @dataclass
@@ -188,7 +197,24 @@ class ModelResult:
             "load_s": self.load_s,
             "warm_first_s": self.warm_first_s,
             "dropped_evidence": sum(a.get("dropped", 0) for a in self.analyses),
+            **self.closing_stats(),
             "error": self.error,
+        }
+
+
+    def closings(self) -> list[str]:
+        return [
+            prompts.closing_sentence(d.body, brand="운명원", disclosure="[광고]")
+            for d in self.drafts if d.body
+        ]
+
+    def closing_stats(self) -> dict[str, int]:
+        closings = self.closings()
+        return {
+            "distinct_closings": len(set(closings)),
+            "stock_closings": sum(any(w in c for w in STOCK_CLOSINGS) for c in closings),
+            "v12_failed": sum(d.v12_failed for d in self.drafts),
+            "approved": sum(d.approved for d in self.drafts),
         }
 
 
@@ -205,8 +231,12 @@ def run_contexts(
     drafts_per_context: int,
     result: ModelResult,
     log: Callable[[str], None] = print,
+    approve_first: bool = False,
 ) -> None:
-    """맥락마다 분석 1번 + 초안 N개. 분석 실패는 그 맥락만 건너뛴다."""
+    """맥락마다 분석 1번 + 초안 N개. 분석 실패는 그 맥락만 건너뛴다.
+
+    `approve_first`면 맥락마다 처음 통과한 초안을 승인한다(다음 맥락의 「이미 쓴 권유 문장」·V11).
+    """
     drafter = services.drafts
     for ctx in contexts:
         vid = ctx["video_id"]
@@ -235,6 +265,7 @@ def run_contexts(
         log(f"  {vid} 분석 {secs:.1f}s · 근거 {len(analysis.evidence)}개"
             f" · 버림 {len(analysis.dropped)}")
         used: list[str] = []
+        approved_one = False
         for n in range(1, drafts_per_context + 1):
             row = DraftRow(vid, ctx["title"], n)
             try:
@@ -255,9 +286,18 @@ def run_contexts(
             row.first_passed = draft.first_passed
             row.passed = draft.passed
             row.failures = draft.validation.failure_lines()
+            row.v12_failed = any(c.code == "V12" for c in draft.validation.failures)
             result.drafts.append(row)
             mark = "통과" if draft.passed else "실패"
             log(f"    초안 {n} {mark} · {draft.attempts}번 · {row.seconds:.1f}s · {draft.body}")
+            # 다음 초안을 만들면 승인 안 한 초안은 밀려나므로(superseded) 통과하자마자 승인한다
+            if approve_first and draft.passed and not approved_one:
+                try:
+                    drafter.approve(draft.id)
+                    row.approved = approved_one = True
+                    log(f"    승인: 초안 {n}")
+                except AppError as exc:  # 승인 때 다시 검사한다
+                    log(f"    승인 못 함: {exc.kind}")
 
 
 def unload_all(base_url: str) -> None:
@@ -280,6 +320,7 @@ def run_model(
     drafts_per_context: int,
     timeout: float | None,
     log: Callable[[str], None] = print,
+    approve_first: bool = False,
 ) -> ModelResult:
     result = ModelResult(model=model)
     with tempfile.TemporaryDirectory() as tmp:
@@ -292,7 +333,8 @@ def run_model(
             log(f"- {model}: 불러오기 {result.load_s:.1f}s")
             prepare(services, contexts)
             run_contexts(
-                services, contexts, drafts_per_context=drafts_per_context, result=result, log=log
+                services, contexts, drafts_per_context=drafts_per_context, result=result, log=log,
+                approve_first=approve_first,
             )
         except AppError as exc:
             result.error = f"{exc.kind}: {exc.detail or exc.message}"
@@ -330,7 +372,7 @@ def _fmt(x: float | None) -> str:
 def markdown(results: Sequence[ModelResult], *, contexts: int, drafts: int) -> str:
     lines = [
         f"맥락 {contexts}개 × 모델마다 초안 {drafts}개(= {contexts * drafts}개). "
-        "통과 = 규칙 검사 V1~V11 모두 통과. 시간 단위 초.",
+        "통과 = 규칙 검사 V1~V12 모두 통과. 시간 단위 초.",
         "",
         "| 모델 | 초안 | 첫 시도 통과율 | 3번 안 통과율 | 평균 시도 | 초안 평균 시간 | 불러오기 "
         "| 불러온 뒤 첫 분석 | 버린 근거 |",
@@ -345,6 +387,17 @@ def markdown(results: Sequence[ModelResult], *, contexts: int, drafts: int) -> s
             f"| {_fmt(r.warm_first_s)} | {s['dropped_evidence']} |"
             + (f" 중단: {r.error}" if r.error else "")
         )
+    lines += [
+        "",
+        "| 모델 | 권유 문장 서로 다른 것 | 굳은 틀(흐름이 궁금…) | V12 걸림 | 승인 |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for r in results:
+        c = r.closing_stats()
+        lines.append(
+            f"| `{r.model}` | {c['distinct_closings']}/{r.total} | {c['stock_closings']} "
+            f"| {c['v12_failed']} | {c['approved']} |"
+        )
     for r in results:
         lines += ["", f"#### `{r.model}` 초안 원문", "",
                   "| 영상 | # | 결과 | 시도 | 초안 (근거 · 출처) |", "|---|---:|---|---:|---|"]
@@ -354,6 +407,8 @@ def markdown(results: Sequence[ModelResult], *, contexts: int, drafts: int) -> s
                 continue
             codes = ", ".join(f.split(" ", 1)[0] for f in d.failures)
             mark = "통과" if d.passed else f"실패: {codes}"
+            if d.approved:
+                mark += " · 승인"
             body = d.body.replace("|", "/")
             lines.append(
                 f"| {d.video_id} | {d.n} | {mark} | {d.attempts} | {body} "
@@ -370,6 +425,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=float, default=300.0, help="요청 하나의 시간 제한(초)")
     parser.add_argument("--json-out", type=Path)
     parser.add_argument("--md-out", type=Path)
+    parser.add_argument(
+        "--approve-first", action="store_true",
+        help="영상마다 처음 통과한 초안을 승인(다음 영상이 그 권유 문장을 피하게)",
+    )
     args = parser.parse_args(argv)
 
     contexts = load_contexts(limit=args.contexts)
@@ -381,7 +440,7 @@ def main(argv: list[str] | None = None) -> int:
         results.append(
             run_model(
                 model, contexts, drafts_per_context=args.drafts, timeout=args.timeout,
-                log=lambda s: print(s, flush=True),
+                log=lambda s: print(s, flush=True), approve_first=args.approve_first,
             )
         )
     elapsed = time.monotonic() - started

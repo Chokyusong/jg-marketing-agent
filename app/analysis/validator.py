@@ -1,4 +1,4 @@
-"""댓글 규칙 검사 V1~V11 (DESIGN 5.4, PLAYBOOK 6단계).
+"""댓글 규칙 검사 V1~V12 (DESIGN 5.4, PLAYBOOK 6단계).
 
 네트워크·DB·LLM 없이 도는 순수 함수다. AI가 쓴 초안과 사람이 고친 글이 **같은 함수**를 거친다.
 
@@ -45,6 +45,7 @@ CHECK_NAMES: dict[str, str] = {
     "V9": "소비자인 척 없음",
     "V10": "효능·최상급 표현 없음",
     "V11": "이전 글과 다름",
+    "V12": "한글·영문·숫자·기본 문장부호만",
 }
 PATTERN_CODES = ("V8", "V9", "V10")
 
@@ -563,6 +564,52 @@ def _pattern_check(
     return _check(code, True, "걸린 표현 없음")
 
 
+# V12: 허용 글자(PLAYBOOK 6단계 표). 공백 문자는 여기서 받고 줄바꿈은 V1이 잡는다.
+ALLOWED_PUNCT = frozenset(".,!?~'\"‘’“”…·-()[]%:/")
+
+
+def _allowed_char(ch: str) -> bool:
+    o = ord(ch)
+    return (
+        0xAC00 <= o <= 0xD7A3  # 한글 완성형
+        or 0x1100 <= o <= 0x11FF  # 한글 낱자
+        or 0x3130 <= o <= 0x318F  # 한글 호환 낱자(ㄱ, ㅏ, ㆍ …)
+        or ("a" <= ch <= "z") or ("A" <= ch <= "Z") or ("0" <= ch <= "9")
+        or ch.isspace()
+        or ch in ALLOWED_PUNCT
+    )
+
+
+def _char_kind(ch: str) -> str:
+    o = ord(ch)
+    if 0x4E00 <= o <= 0x9FFF or 0x3400 <= o <= 0x4DBF or 0xF900 <= o <= 0xFAFF or o >= 0x20000:
+        return "한자"
+    if 0x3040 <= o <= 0x30FF or 0x31F0 <= o <= 0x31FF or 0xFF66 <= o <= 0xFF9F:
+        return "일본어 글자"
+    if o in (0x200D, 0xFE0E, 0xFE0F) or unicodedata.category(ch) in ("Cf", "Mn", "Cc"):
+        return "보이지 않는 글자"
+    if 0x1F000 <= o <= 0x1FAFF or 0x2600 <= o <= 0x27BF or unicodedata.category(ch) == "So":
+        return "이모지·기호"
+    return "허용하지 않는 문자"
+
+
+def _v12_charset(text: str, rules: ValidatorRules) -> CheckResult:
+    body = _strip_markers(text, rules)  # 설정한 표기·브랜드 이름은 그대로 둔다
+    bad = list(dict.fromkeys(ch for ch in body if not _allowed_char(ch)))
+    if not bad:
+        return _check("V12", True, "한글·영문·숫자·기본 문장부호만 씀")
+    shown = []
+    for ch in bad[:5]:
+        kind = _char_kind(ch)
+        label = f"U+{ord(ch):04X}" if kind == "보이지 않는 글자" else ch
+        shown.append(f"'{label}'({kind})")
+    more = f" 외 {len(bad) - 5}개" if len(bad) > 5 else ""
+    return _check(
+        "V12", False,
+        f"쓸 수 없는 글자가 있습니다: {', '.join(shown)}{more} — 지우거나 한글로 바꾸세요",
+    )
+
+
 def _v11_previous(text: str, previous_texts: Sequence[str], rules: ValidatorRules) -> CheckResult:
     body_n = normalize(_strip_markers(text, rules))
     best, best_text = 0.0, ""
@@ -598,7 +645,7 @@ def validate(
     previous_texts: Sequence[str],
     evidence_quote: str | None = None,
 ) -> Validation:
-    """V1~V11을 모두 돌린다. 하나라도 실패하면 `passed=False`.
+    """V1~V12를 모두 돌린다. 하나라도 실패하면 `passed=False`.
 
     - `context_text`: 대조할 영상 자료 전체(3단계 `search_text`: 제목·설명·자막·댓글, 자르지 않음)
     - `previous_texts`: 이전에 승인·게시한 글들(V11). 5단계 전까지는 빈 목록
@@ -634,6 +681,7 @@ def validate(
             quoted=quoted,
         ),
         _v11_previous(clean, previous_texts, rules),
+        _v12_charset(clean, rules),
     )
     return Validation(
         passed=all(c.passed for c in checks),

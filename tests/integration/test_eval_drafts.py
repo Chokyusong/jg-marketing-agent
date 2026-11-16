@@ -55,7 +55,8 @@ def test_eval_runs_the_real_pipeline_with_fake_llm(tmp_db_path, fake_llm):
     try:
         E.prepare(services, contexts)
         result = E.ModelResult(model="fake")
-        E.run_contexts(services, contexts, drafts_per_context=2, result=result, log=lambda s: None)
+        E.run_contexts(services, contexts, drafts_per_context=2, result=result,
+                       log=lambda s: None, approve_first=True)
     finally:
         services.llm = None  # 가짜 LLM에는 close가 없다
         services.close()
@@ -74,6 +75,14 @@ def test_eval_runs_the_real_pipeline_with_fake_llm(tmp_db_path, fake_llm):
     table = E.markdown([result], contexts=1, drafts=2)
     assert "| `fake` | 2 | 50% | 100% |" in table
     assert good_a in table
+    # 영상마다 처음 통과한 초안을 승인했다(다음 영상의 「이미 쓴 권유 문장」이 된다)
+    assert first.approved and not second.approved
+    assert services.drafts is not None
+    # 권유 문장 다양성: 서로 다른 것 2개, 굳은 틀(흐름을 짚어) 1개, V12 0개, 승인 1개
+    stats = result.closing_stats()
+    assert stats == {"distinct_closings": 2, "stock_closings": 1, "v12_failed": 0, "approved": 1}
+    assert "| `fake` | 2/2 | 1 | 0 | 1 |" in table
+    assert "통과 · 승인" in table
     json.dumps(result.summary(), ensure_ascii=False)
 
 

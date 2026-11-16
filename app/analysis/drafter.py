@@ -190,6 +190,11 @@ class DraftService:
         )
         previous = self.previous_texts(video_id)
         avoid_bodies = [d.body for d in self.list(video_id)][:3]
+        # 다른 영상에서 승인한 초안의 권유 문장: 되풀이하지 말라고 프롬프트에 넣는다(5단계 점검)
+        used_closings = [
+            prompts.closing_sentence(t, brand=rules.brand, disclosure=rules.disclosure)
+            for t in previous
+        ]
 
         best: tuple[int, str, str, Validation, int] | None = None  # (실패 수, 글, 말투, 검사, 차례)
         failure_lines: list[str] = []
@@ -206,6 +211,7 @@ class DraftService:
                 failure_lines=failure_lines,
                 previous_body=previous_body,
                 avoid_bodies=avoid_bodies,
+                used_closings=used_closings,
             )
             try:
                 data = llm.generate_json(
