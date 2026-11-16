@@ -16,6 +16,7 @@ from app.analysis.validator import ValidatorRules
 from app.browser.chrome import find_chrome
 from app.browser.hooks import BrowserHooks
 from app.browser.jobs import JobService
+from app.browser.screens import Monitor, read_monitors
 from app.config import Settings, load_settings
 from app.errors import AppError
 from app.llm.base import LLMClient, LLMHealth
@@ -52,6 +53,14 @@ class Services:
         if self.hooks.chrome_finder is not None:
             return self.hooks.chrome_finder()
         return find_chrome(self.settings.browser.chrome_path)
+
+    def monitors(self) -> list[Monitor]:
+        """지금 연결된 모니터 영역(9단계, 창 위치 확인). 테스트는 hooks.screens로 바꾼다."""
+        reader = self.hooks.screens or read_monitors
+        try:
+            return list(reader())
+        except Exception:
+            return []
 
     def require_llm(self) -> LLMClient:
         if self.llm is None:
@@ -176,6 +185,7 @@ def build_jobs(services: Services, *, clock: Clock = utc_now) -> JobService:
         chrome_finder=services.find_chrome,
         verify_comment=hooks.verify_comment or verify_comment,
         clock=clock,
+        screens=services.monitors,
         **extra,
     )
 

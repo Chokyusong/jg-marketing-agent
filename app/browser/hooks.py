@@ -22,3 +22,5 @@ class BrowserHooks:
     verify_comment: Callable[[str, str], bool | None] | None = None
     approval_timeout: float | None = None
     confirm_timeout: float | None = None
+    # 9단계: 모니터 목록 읽기(창 위치 확인). 비우면 Windows API(app/browser/screens.read_monitors)
+    screens: Callable[[], Any] | None = None

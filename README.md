@@ -2,7 +2,7 @@
 
 유튜브 영상을 분석해 홍보 표기(`[광고]`)가 붙은 댓글 초안을 만들고, 사람이 승인하는 로컬 대시보드(FastAPI). 제이지그룹 AI PM 채용 과제 TRACK 2 「마케팅 AI 에이전트 개발」.
 
-## 지금 되는 것 / 아직 안 되는 것 (2026-11-16, 3단계 + P단계 + 6단계 + 4단계 + 5단계 + 7단계 + 8단계)
+## 지금 되는 것 / 아직 안 되는 것 (2026-11-17, 3단계 + P단계 + 6단계 + 4단계 + 5단계 + 7단계 + 8단계 + 9단계)
 
 **되는 것**
 - 프로그램으로 실행 (P단계): `JG-Marketing-Agent.cmd`를 더블클릭하면 브라우저 탭·주소창 없는 자체 창(「JG Marketing Agent」)이 뜬다. 창을 닫으면 프로그램이 끝난다. 이미 떠 있으면 새로 띄우지 않고 알린다. 창 안의 바깥 링크("YouTube에서 보기")는 기본 브라우저로 열린다
@@ -20,16 +20,17 @@
   - 프로필 폴더는 저장소 밖 `%LOCALAPPDATA%\JGMarketingAgent\profiles\profile-N`. 그 프로필의 크롬 창이 이미 열려 있으면 「그 프로필의 크롬 창을 닫아 주세요」. 실제 유튜브에 로그인해 두는 준비는 `.\scripts\setup_profile.ps1 -Profile 1`(크롬이 그 프로필로 Google 로그인 화면을 연다. 로그인은 사람이 직접)
   - 프로그램 창을 닫으면 진행 중인 작업을 취소하고 자동 실행 크롬을 닫는다
   - 창 위치 기본값 `60,-1060`은 "주 모니터 위쪽에 2번 모니터"를 전제로 한다. 모니터 배치가 다르면 `config.yaml`의 `browser.window_position`을 고친다(2026-11-16 이 PC는 2번 모니터가 왼쪽 X=-1920이라 확인 실행 때 `-1860,60`을 썼다)
+  - 9단계부터 크롬을 띄우기 전에 실제 모니터 배치(Windows API)를 읽어, 설정한 창 위치가 어느 모니터에도 없으면 주 모니터 `60,60`에 띄우고 작업 기록에 「크롬 창 위치(…)가 화면 밖이라 주 모니터(60,60)에 띄웁니다」를 남긴다(`app/browser/screens.py`). 프로그램 창 확인용 `JG_DESKTOP_WINDOW_POS`도 같은 확인을 거쳐 밖이면 가운데에 띄운다
 - AI 연결 (4단계): 로컬 Ollama에 「이 모양의 JSON으로 답해라」를 시키고 받는 통로(`app/llm/`). 위 줄 AI 상태가 실제 값을 보인다 — 정상이면 「ollama · 모델 이름 · 로컬」(연두), Ollama가 꺼져 있으면 「ollama · 꺼짐」, 모델이 없으면 「모델 이름 · 모델 없음」(붉은 점, 마우스를 올리면 할 일). 30초마다 다시 확인한다. 생각 출력 기능이 있는 모델(qwen3.x)은 생각을 끄고 부른다. 답이 JSON이 아니거나 모양이 틀리면 한 번 다시 시킨다. LLM은 설정(`llm.active`)으로 고르는 틀이라 나중에 다른 공급자(OpenAI 호환·Claude·로그인된 CLI, 12단계)를 끼울 수 있다. 지금 구현한 공급자는 Ollama 하나다. 설치된 모델 시험과 5단계 초안 비교 결과: [docs/MODEL_EVAL.md](docs/MODEL_EVAL.md)
+- 대시보드 완성 (9단계): 화면 전체에서 **다음에 누를 것 하나만 금색**으로 채운다([영상 찾기] → 목록에서 고르기 → [분석하고 초안 만들기] → [이 초안 승인] → [브라우저에서 영상 열기] → [게시 승인]). 흐름 띠의 지금 단계 줄에 같은 안내와 예상 시간이 뜬다. 메뉴·시스템 상태·오늘 통계·작업 기록 열은 한국어 이름이 먼저(영어는 작게), 본문 14px·가장 작은 글자 11.5px. 메뉴를 누르면 그 칸으로 가서 잠깐 밝게 하고, 지금 있는 칸을 메뉴에 표시한다. 1920×1080에서 3열이 스크롤 없이 다 보이고, 프로그램 창 기본 크기(1600×1000)처럼 낮은 창에서는 칸 안에서만 스크롤한다. 위 줄 [설정 SETTINGS]는 지금 설정을 읽기 전용으로 보여 주는 패널(글자 수·홍보 표기·브랜드 사실·하루 상한·프로필 3개와 폴더 준비·AI 모델·크롬 창 위치·YouTube 키 있음/없음·할당량, 키 값과 PC 경로는 보이지 않음)과 [모델 미리 불러오기] 단추, 작업 기록 [전체 보기 VIEW ALL]은 전체 기록(최대 200건·실패 사유·실패 화면 캡처·실패만 보기) 패널을 연다. 두 패널은 Esc로 닫히고 연 단추로 초점이 돌아온다
 - 설정: `config.yaml`(규칙)과 `.env`(비밀값)를 앱이 읽는다. 키가 없어도 화면은 뜨고 불러오기 때 안내가 나온다
 - 0단계 하네스: 작업 규칙(`AGENTS.md`), 검증 스크립트(`scripts/verify.ps1`), pytest 설정과 테스트 도우미, 비밀값 검사(`scripts/check_secrets.py` + pre-commit 훅)
 
 **아직 안 되는 것**
-- 모델 미리 불러 두기 버튼(9단계, API는 있다)
+- [모델 미리 불러오기] 단추는 연결만 했고 실제 모델로 눌러 보지 않았다(이 PC의 그래픽 카드를 다른 작업이 쓰는 중)
 - 실제 데이터 보정(연애 고민 없으면 멈춤·쇼츠 제외, 2026-11-17)은 코드·자동 테스트와 실제 키 검색 1회까지 했다. 보정 뒤 실제 모델(qwen3.8:27b)로 다시 재는 일은 이 PC의 메모리가 모자라(다른 프로그램이 그래픽 메모리·메모리를 차지) 아직 못 했다 — [docs/MODEL_EVAL.md](docs/MODEL_EVAL.md) 「실제 데이터 보정」
 - 실제 유튜브 자동 게시는 만들지 않는다(정책). 실제 유튜브는 크롬으로 열기만 하고 사람이 게시한다. 공식 API로 댓글을 다는 기능도 만들지 않았다
-- 작업 기록 전체 보기(VIEW ALL)와 SETTINGS 패널(9단계)
-- 실제 YouTube 키로 한 번 불러 보는 확인(`live` 테스트)은 아직 하지 않았다. 3단계 02칸 화면, 6단계 초안 글 상자, 5단계 AI 분석·초안 화면, 7단계 통계·작업 기록·03칸 설정, 8단계 03칸 작업 화면도 대표 확인 전이다. 8단계 창이 보이는 실행(2번 모니터)은 개발 PC에서 한 번 해 봤고, 실제 유튜브 열기(assist)는 아직 사람이 해 보지 않았다
+- 실제 YouTube 키로 한 번 불러 보는 확인(`live` 테스트)은 아직 하지 않았다. 3단계 02칸 화면, 6단계 초안 글 상자, 5단계 AI 분석·초안 화면, 7단계 통계·작업 기록·03칸 설정, 8단계 03칸 작업 화면, 9단계 대시보드 전체 흐름도 대표 확인 전이다. 8단계 창이 보이는 실행(2번 모니터)은 개발 PC에서 한 번 해 봤고, 실제 유튜브 열기(assist)는 아직 사람이 해 보지 않았다
 - 프로그램 창은 개발 PC에서 띄우고 닫아 봤다. 대표가 직접 더블클릭해 보는 확인은 아직이다
 - 실행 파일 한 개(`.exe`)로 묶기는 11단계다. 지금은 Python 가상환경(`.venv`)을 한 번 준비해야 한다
 
@@ -80,7 +81,7 @@ git config core.hooksPath .githooks      # 커밋 전 비밀값 검사 훅 (처�
 ```powershell
 .\scripts\verify.ps1                     # ruff check → pytest -q, 실패하면 0이 아닌 종료 코드
 .\.venv\Scripts\python.exe -m pytest tests\unit -q
-.\.venv\Scripts\python.exe -m pytest -m e2e      # 창 없는 크롬으로 테스트 페이지 전 과정(8단계)
+.\.venv\Scripts\python.exe -m pytest -m e2e      # 창 없는 크롬으로 테스트 페이지 전 과정(8단계)·대시보드 전체 흐름(9단계)
 $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env:RUN_LIVE
 .\.venv\Scripts\python.exe scripts\check_secrets.py --all
 .\.venv\Scripts\python.exe scripts\ollama_smoke.py           # 설치된 일반 모델마다 한국어 JSON 한 번(시간·성공 표)
@@ -88,7 +89,7 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 
 - 기본 테스트는 인터넷·API 키·Ollama 없이 돈다.
 - `live`(진짜 YouTube·Ollama 호출)는 `RUN_LIVE=1`일 때만 돈다.
-- `e2e`는 임시 포트로 앱 서버를 띄우고, 설치된 Google Chrome을 창 없이(headless) 임시 프로필로 열어 테스트 페이지 전 과정(한 글자씩 입력·승인 전에는 안 달림·실패 캡처·두 번째 거절·하루 상한·프로필 사용 중)을 돈다. Playwright나 크롬이 없으면 건너뛴다. `verify.ps1`의 `pytest -q`에 들어 있다.
+- `e2e`는 임시 포트로 앱 서버를 띄우고, 설치된 Google Chrome을 창 없이(headless) 임시 프로필로 열어 테스트 페이지 전 과정(한 글자씩 입력·승인 전에는 안 달림·실패 캡처·두 번째 거절·하루 상한·프로필 사용 중)을 돈다. 9단계 `tests/e2e/test_dashboard_flow.py`는 가짜 YouTube·가짜 LLM으로 대시보드를 [영상 찾기]부터 게시 완료·기록·통계·두 패널까지 눌러 보며 단계마다 금색 강조가 하나뿐이고 그것이 다음 행동인지 본다. Playwright나 크롬이 없으면 건너뛴다. `verify.ps1`의 `pytest -q`에 들어 있다.
 
 ## API
 
@@ -119,7 +120,8 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | `POST /api/jobs/{id}/approve` | sandbox: 입력을 마친 뒤 사람이 게시를 승인(그 전에는 「댓글」을 누르지 않는다) |
 | `POST /api/jobs/{id}/confirm` | assist: `{"posted": true}` 게시했어요 / `false` 게시 안 함 |
 | `POST /api/jobs/{id}/cancel` | 작업 취소(크롬을 닫고 예약을 실패로 푼다) |
-| `GET /api/jobs/{id}/screenshot` | 실패 화면 캡처(PNG) |
+| `GET /api/jobs/{id}/screenshot` | 실패 화면 캡처(PNG). 앱을 다시 켜서 메모리에 없는 지난 작업도 캡처 폴더의 `<작업 ID>.png`를 찾는다(9단계) |
+| `GET /api/settings` | 9단계 SETTINGS 패널: 지금 설정을 읽기 전용으로. `comment`(글자 수·표기·브랜드), `brand_facts`, `daily_max_comments`, `profiles[{name, folder, ready}]`, `llm`(`active`·`type`·`model`·`local`·`timeout_seconds`·`keep_alive`), `browser`(창 위치 설정값·실제로 쓸 위치·조정 여부·확인 문구·크롬 찾음 등), `youtube`(`key_configured`·`quota`), `discover`. 키 값·PC 경로·LLM 주소는 싣지 않고 모델을 부르지 않는다 |
 | `GET /sandbox/watch?v=&profile=&fail=` | 통제된 테스트 페이지(실제 유튜브가 아님). `GET`·`POST /sandbox/api/comments`가 `sandbox_comments` 표에 댓글을 저장한다 |
 
 영상 목록·영상 항목 응답(`GET /api/videos`, `POST /api/videos/resolve`, `GET /api/videos/{id}`)의 영상마다 `commented: {sandbox, youtube}`(그 대상에 게시 완료했는지)가 붙는다(7단계, 기존 필드는 그대로).
@@ -147,7 +149,7 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | 6 | 규칙 검사 | 진행 중 (코드·자동 테스트 완료, 화면 확인 남음. 실행 순서상 4·5단계보다 먼저 했다) |
 | 7 | 운영 규칙과 기록 | 진행 중 (코드·자동 테스트 완료, 승인하면 기록 줄과 통계가 바뀌는지 보는 화면 확인 남음) |
 | 8 | 브라우저 연결 | 진행 중 (코드·자동 테스트·e2e·2번 모니터 창 실행 1회 완료, 대표 화면 확인과 실제 유튜브 열기(assist) 확인 남음) |
-| 9 | 대시보드 완성 | 미시작 |
+| 9 | 대시보드 완성 | 진행 중 (코드·자동 테스트·화면 흐름 e2e·4가지 화면 크기 측정 완료, 대표가 처음부터 끝까지 한 번 써 보는 확인 남음) |
 | 10 | 가점 | 미시작 |
 | 11 | 시연 준비 | 미시작 |
 

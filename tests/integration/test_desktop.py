@@ -436,3 +436,38 @@ def test_closing_window_with_real_app_stops_job_worker(real_app):
 
 def test_shutdown_jobs_ignores_apps_without_services():
     desktop.shutdown_jobs(tiny_app())  # 서비스가 없으면 할 일 없음(오류 없음)
+
+
+# ------------------------------------------------ 9단계: 개발용 창 위치도 화면 안인지 확인
+
+
+def test_checked_window_position_drops_off_screen_values():
+    from app.browser.screens import Monitor
+
+    main_only = [Monitor(0, 0, 1920, 1080, primary=True)]
+    upper = [*main_only, Monitor(0, -1080, 1920, 0)]
+    check = desktop.checked_window_position
+    assert check((60, -1060), main_only) == (None, None)  # 화면 밖 → 가운데
+    assert check((60, -1060), upper) == (60, -1060)
+    assert check((None, None), upper) == (None, None)
+    assert check((60, -1060), []) == (60, -1060)  # 모니터를 못 읽으면 그대로
+
+
+@pytest.mark.parametrize(
+    ("monitors", "expected"),
+    [("main_only", (None, None)), ("upper", (60, -1060))],
+)
+def test_main_checks_env_window_position_against_monitors(monkeypatch, monitors, expected):
+    from app.browser import screens
+    from app.browser.screens import Monitor
+
+    layouts = {
+        "main_only": [Monitor(0, 0, 1920, 1080, primary=True)],
+        "upper": [Monitor(0, 0, 1920, 1080, primary=True), Monitor(0, -1080, 1920, 0)],
+    }
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(desktop, "run", lambda **kwargs: captured.update(kwargs) or 0)
+    monkeypatch.setattr(screens, "read_monitors", lambda: layouts[monitors])
+    monkeypatch.setenv(desktop.WINDOW_POS_ENV, "60,-1060")
+    assert desktop.main() == 0
+    assert captured["window_pos"] == expected

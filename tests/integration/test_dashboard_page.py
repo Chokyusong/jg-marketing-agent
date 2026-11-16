@@ -5,7 +5,8 @@ import re
 import pytest
 
 JS_FILES = ["app.js", "api.js", "state.js", "format.js", "discover.js", "analysis.js", "flow.js",
-            "topbar.js", "context.js", "draft.js", "report.js", "ops.js", "job.js", "sandbox.js"]
+            "topbar.js", "context.js", "draft.js", "report.js", "ops.js", "job.js", "sandbox.js",
+            "next.js", "panels.js", "layout.js"]
 
 
 @pytest.fixture
@@ -61,7 +62,10 @@ def test_unconnected_parts_are_off_and_labelled(page):
     assert '<dl class="today is-off"' not in page and '<dl class="today"' in page
     assert '<fieldset class="settings" disabled>' not in page
     assert '<button type="button" class="primary" disabled>' not in page  # 큰 버튼은 8단계에 켰다
-    assert '<button type="button" disabled title="9단계에서 연결">SETTINGS</button>' in page
+    # 9단계: SETTINGS를 켰다(읽기 전용 설정 창을 연다)
+    assert "9단계에서 연결" not in page
+    assert ('<button type="button" id="settings-open" aria-haspopup="dialog" '
+            'aria-controls="settings-panel">') in page
 
 
 def test_no_example_numbers(page):
@@ -118,13 +122,14 @@ def test_bundled_serif_font_is_linked(page, make_client):
 
 
 def test_label_text_is_at_least_11px(make_client):
-    # UI_SPEC 6절: 이름표 11px 이상(영상 길이, 진행 단계 이름 포함, 좁은 화면 포함)
+    # UI_SPEC 6절: 이름표 11px 이상(영상 길이, 진행 단계 이름 포함, 좁은 화면 포함).
+    # 9단계에서 가장 작은 글자를 11.5px로 올렸다(본문 14px · 보조 12px 이상)
     css = make_client(key=None).get("/static/css/style.css").text
     sizes = [float(x) for x in re.findall(r"font-size:\s*([\d.]+)px", css)]
-    assert sizes and min(sizes) >= 11
+    assert sizes and min(sizes) >= 11.5
     for selector in (".duration {", ".job-steps li {"):
         rule = css.split(selector, 1)[1].split("}", 1)[0]
-        assert "font-size: 11px" in rule
+        assert "font-size: 11.5px" in rule
 
 
 def test_broken_thumbnail_falls_back_to_empty_box(make_client):
@@ -183,8 +188,8 @@ def test_context_js_wires_the_three_apis(make_client):
 
 def test_version_shows_current_stage(page):
     # 버전은 단계가 끝날 때마다 하나씩 올린다(실행 순서 3 → P → 6 → 4 → 5 → 7 → 8: 0.3.0 … 0.8.0)
-    assert "V 0.8.0 — LOCAL · 8단계" in page
-    assert "STAGE 8" in page
+    assert "V 0.9.0 — LOCAL · 9단계" in page
+    assert "STAGE 9" in page
 
 
 # ---------------------------------------------------------------- 6단계: 02칸 댓글 초안·규칙 검사
@@ -282,7 +287,9 @@ def test_report_js_runs_steps_in_order_on_button_only(make_client):
                  "setAttribute('title'"):
         assert text in js, text
     draft = client.get("/static/js/draft.js").text
-    assert "export function loadDraft(draft)" in draft and "'APPROVED · 승인됨'" in draft
+    # 9단계: 한국어 이름표(승인됨)를 앞에 따로 두고 영어 꼬리표는 짧게
+    assert "export function loadDraft(draft)" in draft
+    assert "'APPROVED'" in draft and "'승인됨'" in draft
     assert "말투 · " in draft
     assert "initReport" in client.get("/static/js/app.js").text
     flow = client.get("/static/js/flow.js").text
@@ -343,9 +350,11 @@ def test_daily_limit_options_follow_config(make_client):
 def test_records_table_is_on(page):
     history = _section(page, 'id="activity"', "</section>")
     assert "7단계에서 연결" not in history
-    assert 'id="records-meta">ACTIVITY ARCHIVE &nbsp;/&nbsp; 최근 5줄<' in history
-    for th in ("TIME", "VIDEO", "ACTION", "COMMENT", "STATUS", "PROFILE"):
-        assert f"<th>{th}</th>" in history
+    # 9단계: 한국어 이름을 위에, 영어는 작게 아래에
+    assert 'id="records-meta">최근 5줄 · ACTIVITY ARCHIVE<' in history
+    for ko, en in (("시간", "TIME"), ("영상", "VIDEO"), ("작업", "ACTION"), ("댓글", "COMMENT"),
+                   ("상태", "STATUS"), ("프로필", "PROFILE")):
+        assert f'<th><span class="ko">{ko}</span><small class="en">{en}</small></th>' in history
     assert '<tbody id="records-body">' in history
     assert "아직 기록이 없습니다." in history
     assert '<col class="c-comment" />' in history
@@ -474,3 +483,102 @@ def test_no_love_concern_shows_message_and_opens_transcript_paste(make_client):
     assert "$('run-error-msg').textContent = err.message" in js
     page = client.get("/").text
     assert 'id="transcript-paste"' in page and 'id="run-error"' in page
+
+
+# ---------------------------------------------------------------- 9단계: 대시보드 완성
+
+
+def test_korean_labels_come_first_and_english_is_small(page):
+    nav = _section(page, '<nav class="nav"', "</nav>")
+    for ko, en in (("대시보드", "DASHBOARD"), ("영상 탐색", "DISCOVER"), ("분석", "ANALYZE"),
+                   ("실행", "EXECUTE"), ("기록", "ACTIVITY"), ("설정", "SETTINGS")):
+        assert f'<span class="ko">{ko}</span><small class="en">{en}</small>' in nav
+    assert 'class="on"' not in nav  # 지금 칸 표시는 topbar.js가 붙인다
+    for ko in ("AI 모델", "유튜브", "브라우저"):
+        assert f'<span class="sys-ko">{ko}</span>' in page
+    today = _section(page, '<dl class="today', "</dl>")
+    for ko, en in (("오늘 처리", "TODAY · VIDEOS"), ("초안", "DRAFTS"), ("게시 완료", "POSTED"),
+                   ("성공률", "SUCCESS")):
+        assert f'<dt class="ko">{ko}</dt><dt>{en}</dt>' in today
+
+
+def test_settings_and_records_panels_are_dialogs(page):
+    for panel, title, label in (("settings-panel", "settings-title", "설정 닫기"),
+                                ("records-panel", "records-title", "전체 기록 닫기")):
+        assert f'id="{panel}" aria-labelledby="{title}">' in page
+        block = _section(page, f'id="{panel}"', "</dialog>")
+        assert f'<h2 id="{title}" tabindex="-1">' in block  # 열면 제목으로 초점
+        assert f'data-close aria-label="{label}"' in block  # 닫기 단추에 이름
+    settings = _section(page, 'id="settings-panel"', "</dialog>")
+    assert 'id="settings-body"' in settings and 'id="warmup-btn"' in settings
+    records = _section(page, 'id="records-panel"', "</dialog>")
+    assert 'id="records-failed-only"' in records and 'id="records-all-body"' in records
+    assert '<span class="ko">캡처</span>' in records  # 실패 화면 캡처 칸
+    assert 'id="records-all" aria-haspopup="dialog" aria-controls="records-panel"' in page
+    for col in ("영상 탐색", "AI 분석과 댓글 초안", "실행 및 관리"):
+        assert f'<h2 tabindex="-1">{col}</h2>' in page  # 메뉴로 가면 칸 제목에 초점
+
+
+def test_panels_js_opens_closes_and_returns_focus(make_client):
+    client = make_client(key=None)
+    js = client.get("/static/js/panels.js").text
+    for snippet in ("panel.showModal();", "(title || panel).focus();",
+                    "panel.addEventListener('close'", "opener.focus()", "event.target === panel",
+                    "api.records(ALL_ROWS)", "has_screenshot",
+                    "/screenshot`", "'data-label': '댓글'", "실패 "):
+        assert snippet in js, snippet
+    # [모델 미리 불러오기]는 단추를 눌렀을 때만 부른다(패널을 연다고 부르지 않는다)
+    assert js.count("api.warmup()") == 1
+    assert "$('warmup-btn').addEventListener('click', warmup);" in js
+    settings_open = js.split("$('settings-open').addEventListener('click'", 1)[1].split("});", 1)[0]
+    assert "warmup" not in settings_open and "loadSettings();" in settings_open
+    api = client.get("/static/js/api.js").text
+    assert "settings: () => request('/api/settings')" in api
+    assert "warmup: () => request('/api/llm/warmup', { method: 'POST' })" in api
+    # 화면에 키 값을 그리지 않는다(있다/없다만)
+    assert "key_configured" in js and "api_key" not in js
+
+
+def test_next_action_highlights_one_thing_in_order(make_client):
+    client = make_client(key=None)
+    js = client.get("/static/js/next.js").text
+    order = ["'search-btn'", "'video-list'", "'job-primary'", "'approve-btn'", "'draft-edit'"]
+    for snippet in order + ["'resolve-btn'", "'transcript-paste'", "'transcript-save'", "'run-btn'",
+                            "classList.add('is-next')", "is-next-hint", "WAIT_HINT"]:
+        assert snippet in js, snippet
+    assert "1~2분" in js  # 오래 걸리는 일에는 예상 시간
+    app = client.get("/static/js/app.js").text
+    assert app.rstrip().splitlines()[-1].startswith("initNext();")  # 다른 칸이 다 그린 뒤
+    css = client.get("/static/css/style.css").text
+    assert "button.is-next:not(:disabled)" in css and "--btn-line:" in css
+    assert ".column.is-focus" in css
+
+
+def test_columns_scroll_inside_when_window_is_short(make_client):
+    client = make_client(key=None)
+    css = client.get("/static/css/style.css").text
+    assert ".workspace.is-capped .column" in css and "var(--col-max)" in css
+    layout = client.get("/static/js/layout.js").text
+    assert "(min-width: 1121px)" in layout and "--col-max" in layout and "ResizeObserver" in layout
+    topbar = client.get("/static/js/topbar.js").text
+    assert "aria-current" in topbar and "is-focus" in topbar and "preventScroll" in topbar
+
+
+def test_body_and_list_text_sizes(make_client):
+    css = make_client(key=None).get("/static/css/style.css").text
+
+    def rule(selector):
+        return css.split(selector, 1)[1].split("}", 1)[0]
+
+    assert "font-size: 14px" in rule("body {")
+    assert "font-size: 14px" in rule(".video-title { display")
+
+
+def test_empty_loading_and_error_texts_name_the_next_step(make_client):
+    client = make_client(key=None)
+    discover = client.get("/static/js/discover.js").text
+    for text in ("보통 1~2초 걸립니다", "[영상 찾기]를 다시 눌러 보세요", "[불러오기]",
+                 "영상을 하나 고르세요"):
+        assert text in discover, text
+    page = client.get("/").text
+    assert "아직 기록이 없습니다." in page

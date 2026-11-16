@@ -11,6 +11,8 @@
 8단계: 브라우저 연결(`app/browser/`). 통제된 테스트 페이지 `/sandbox/watch`와 게시 작업 `/api/jobs`.
 `GET /api/status`에 브라우저 상태. 자동 입력·게시·확인은 테스트 페이지에서만 한다.
 실제 유튜브 화면을 자동으로 조작하는 코드는 없다(DESIGN 6.1). assist는 크롬을 여는 것까지만.
+9단계: 대시보드 완성. 읽기 전용 `GET /api/settings`(SETTINGS 패널), 크롬 창 위치가 화면 밖이면
+주 모니터로 바꿔 띄운다(`app/browser/screens.py`). 화면은 다음 행동 하나만 강조한다.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from app.api import drafts as drafts_api
 from app.api import jobs as jobs_api
 from app.api import llm as llm_api
 from app.api import ops as ops_api
+from app.api import settings as settings_api
 from app.api import status as status_api
 from app.api import validate as validate_api
 from app.api import videos as videos_api
@@ -43,8 +46,8 @@ from app.youtube.quota import Clock, utc_now
 
 BASE_DIR = Path(__file__).resolve().parent
 mimetypes.add_type("font/woff2", ".woff2")  # 글꼴 파일을 올바른 형식으로 내려보낸다
-APP_VERSION = "0.8.0"  # 단계가 끝날 때마다 하나씩 올린다(실행 순서: 3 → P → 6 → 4 → 5 → 7 …)
-STAGE = 8
+APP_VERSION = "0.9.0"  # 단계가 끝날 때마다 하나씩 올린다(실행 순서: 3 → P → 6 → 4 → 5 → 7 …)
+STAGE = 9
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
@@ -81,6 +84,7 @@ def create_app(
 
     app = FastAPI(title="JG Marketing AI Agent", version=APP_VERSION, lifespan=lifespan)
     app.state.services = holder
+    app.state.stage = STAGE
     app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
     @app.exception_handler(AppError)
@@ -126,6 +130,7 @@ def create_app(
     app.include_router(drafts_api.router)
     app.include_router(ops_api.router)
     app.include_router(jobs_api.router)
+    app.include_router(settings_api.router)
     app.include_router(sandbox_page.router)
     return app
 

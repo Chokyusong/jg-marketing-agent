@@ -1,9 +1,54 @@
-// 위 줄: 메뉴 이동(해당 칸 잠깐 강조), 좁은 화면 메뉴 단추, 시스템 상태(AI·YOUTUBE·BROWSER), 할당량 표시.
+// 위 줄: 메뉴 이동(해당 칸 잠깐 강조, 지금 있는 칸 표시), 좁은 화면 메뉴 단추, 시스템 상태(AI·YOUTUBE·BROWSER),
+// 할당량 표시. SETTINGS 단추는 panels.js가 연다.
 import { api } from './api.js';
 import { setState, subscribe } from './state.js';
 
 const $ = (id) => document.getElementById(id);
 const STATUS_REFRESH_MS = 30000;
+
+const COLUMNS = ['col-discover', 'col-analyze', 'col-execute'];
+const FLASH_MS = 1400;
+let manual = null; // 메뉴로 고른 칸 { id, step }: 흐름 단계가 바뀔 때까지 그 칸을 「지금 있는 칸」으로
+
+function flowStep() {
+  const current = document.querySelector('.progress .step.is-current');
+  return current ? Number(current.dataset.step) : 1;
+}
+
+// 지금 있는 칸(9단계): 작업 기록이 화면 가운데까지 올라오면 기록, 한 열(좁은 화면)이면 스크롤 위치,
+// 여러 열이면 흐름 띠의 지금 단계 칸(메뉴로 다른 칸을 골랐으면 그 칸)
+export function currentSection() {
+  const mid = window.innerHeight * 0.45;
+  const history = $('activity');
+  if (history && history.getBoundingClientRect().top < mid) return 'activity';
+  if (window.matchMedia('(max-width: 750px)').matches) {
+    let at = 'top';
+    for (const id of COLUMNS) if ($(id).getBoundingClientRect().top < mid) at = id;
+    return at;
+  }
+  const step = flowStep();
+  if (manual && manual.step === step) return manual.id;
+  manual = null;
+  return COLUMNS[step - 1] || 'top';
+}
+
+function markMenu() {
+  const at = currentSection();
+  for (const link of $('nav').querySelectorAll('a')) {
+    const on = link.dataset.target === at;
+    link.classList.toggle('on', on);
+    if (on) link.setAttribute('aria-current', 'location');
+    else link.removeAttribute('aria-current');
+  }
+}
+
+function flash(target) {
+  target.classList.remove('is-focus');
+  void target.offsetWidth; // 같은 칸을 다시 눌러도 강조가 다시 보이게
+  target.classList.add('is-focus');
+  clearTimeout(target.flashTimer);
+  target.flashTimer = setTimeout(() => target.classList.remove('is-focus'), FLASH_MS);
+}
 
 function setupMenu() {
   const nav = $('nav');
@@ -14,26 +59,35 @@ function setupMenu() {
   };
   toggle.addEventListener('click', () => setOpen(!nav.classList.contains('is-open')));
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') setOpen(false);
+    if (event.key === 'Escape' && nav.classList.contains('is-open')) {
+      setOpen(false);
+      toggle.focus();
+    }
   });
 
   for (const link of nav.querySelectorAll('a')) {
     link.addEventListener('click', (event) => {
       event.preventDefault();
-      for (const other of nav.querySelectorAll('a')) {
-        other.classList.toggle('on', other === link);
-        if (other === link) other.setAttribute('aria-current', 'true');
-        else other.removeAttribute('aria-current');
-      }
-      const target = $(link.dataset.target);
+      const id = link.dataset.target;
+      const target = $(id);
+      manual = { id, step: flowStep() };
       target?.scrollIntoView({ block: 'start' });
-      if (target?.classList.contains('column')) {
-        target.classList.add('is-focus');
-        setTimeout(() => target.classList.remove('is-focus'), 1200);
+      if (target && target !== $('top')) {
+        flash(target);
+        target.querySelector('h2[tabindex]')?.focus({ preventScroll: true }); // 키보드로도 그 칸에서 이어 가게
       }
       setOpen(false);
+      requestAnimationFrame(markMenu);
     });
   }
+  let frame = 0;
+  const later = () => {
+    if (!frame) frame = requestAnimationFrame(() => { frame = 0; markMenu(); });
+  };
+  window.addEventListener('scroll', later, { passive: true });
+  window.addEventListener('resize', later);
+  subscribe(later); // 흐름 단계가 바뀌면 지금 칸도 바뀐다
+  markMenu();
 }
 
 // 다시 볼 때 달라진 것이 없으면 화면 전체를 다시 그리지 않는다(목록·글 상자가 흔들리지 않게)

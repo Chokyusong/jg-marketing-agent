@@ -89,4 +89,7 @@ export const api = {
   confirmJob: (id, posted) =>
     request(`/api/jobs/${encodeURIComponent(id)}/confirm`, { method: 'POST', body: JSON.stringify({ posted }) }),
   cancelJob: (id) => request(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+  // 9단계: SETTINGS 패널(읽기 전용)과 [모델 미리 불러오기]
+  settings: () => request('/api/settings'),
+  warmup: () => request('/api/llm/warmup', { method: 'POST' }),
 };

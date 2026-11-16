@@ -526,3 +526,73 @@ class JobOut(BaseModel):
             finished_at=v.finished_at,
             events=[JobEventOut(at=e.at, state=e.state, message=e.message) for e in v.events],
         )
+
+
+# ---------------------------------------------------------------- 9단계: SETTINGS 패널(읽기 전용)
+
+
+class SettingsCommentOut(BaseModel):
+    min_chars: int
+    max_chars: int
+    disclosure: str  # 홍보 표기([광고])
+    brand: str
+
+
+class SettingsProfileOut(BaseModel):
+    name: str  # 화면 이름(유튜브1)
+    folder: str  # 폴더 이름(profile-1). PC의 전체 경로는 싣지 않는다
+    ready: bool  # 프로필 폴더가 이미 있는지
+
+
+class SettingsLLMOut(BaseModel):
+    """지금 쓰는 LLM. 주소·키는 싣지 않는다(모델을 부르지 않고 설정만 읽는다)."""
+
+    active: str  # llm.active(공급자 이름)
+    type: str  # 공급자 종류(ollama 등). 모르는 이름이면 빈 글
+    model: str
+    local: bool  # 이 PC 안에서 도는지(거짓이면 「외부」 — 영상 자료가 그 회사로 간다)
+    timeout_seconds: float
+    keep_alive: str
+    context_chars: int
+    error: ProblemOut | None = None  # 설정이 틀려 공급자를 못 만들었을 때
+
+
+class SettingsBrowserOut(BaseModel):
+    default_target: Literal["sandbox", "youtube"]
+    default_target_label: str
+    headless: bool
+    window_position: str  # 설정값 "x,y"
+    window_position_used: str | None  # 실제로 띄울 위치(화면 밖이면 바꾼 값)
+    window_position_adjusted: bool
+    window_position_checked: bool  # 모니터 정보를 읽어 확인했는지
+    window_position_note: str
+    typing_delay_ms: list[int]
+    chrome_found: bool
+    playwright_ready: bool
+
+
+class SettingsYouTubeOut(BaseModel):
+    key_configured: bool  # 키는 있는지 없는지만(값은 절대 싣지 않는다)
+    quota: QuotaOut
+
+
+class SettingsDiscoverOut(BaseModel):
+    query: str
+    max_results: int
+    exclude_shorts: bool
+
+
+class SettingsOut(BaseModel):
+    """SETTINGS 패널(9단계). 비밀값(키)·PC의 경로·LLM 주소는 싣지 않는다."""
+
+    version: str
+    stage: int
+    comment: SettingsCommentOut
+    brand_facts: list[str]
+    daily_max_comments: int
+    profiles: list[SettingsProfileOut]
+    llm: SettingsLLMOut
+    browser: SettingsBrowserOut
+    youtube: SettingsYouTubeOut
+    discover: SettingsDiscoverOut
+    transcript_provider: str

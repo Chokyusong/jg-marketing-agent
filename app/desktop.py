@@ -50,6 +50,7 @@ INSTANCE_NAME = "Local\\JGMarketingAgent.Desktop"
 READY_TIMEOUT_SECONDS = 20.0
 STOP_TIMEOUT_SECONDS = 10.0
 # 개발·확인용: "x,y"를 주면 그 위치에 창을 띄운다(예: 2번 모니터). 평소에는 비워 두어 가운데에 뜬다.
+# 9단계: 그 좌표가 실제 모니터 밖이면(모니터 배치가 바뀐 PC) 버리고 가운데에 띄운다.
 WINDOW_POS_ENV = "JG_DESKTOP_WINDOW_POS"
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -275,6 +276,25 @@ def window_position_from_env(
         return None, None
 
 
+def checked_window_position(
+    position: tuple[int | None, int | None],
+    monitors: Any,
+) -> tuple[int | None, int | None]:
+    """개발용 위치(환경 변수)가 실제 모니터 밖이면 버리고 가운데에 띄운다(9단계).
+
+    모니터 정보를 읽지 못했으면(빈 목록) 확인하지 않고 그대로 쓴다.
+    """
+    if position[0] is None or position[1] is None:
+        return None, None
+    from app.browser.screens import check_window_position
+
+    check = check_window_position(position, monitors, fallback_center=True)
+    if check.adjusted:
+        log.warning("%s: %s", WINDOW_POS_ENV, check.note)
+        return None, None
+    return position
+
+
 def open_webview_window(spec: WindowSpec) -> None:
     """pywebview 창을 열고, 창이 닫힐 때까지 돌아오지 않는다(주 스레드에서 부른다)."""
     try:
@@ -434,6 +454,8 @@ def _route_output_to_log() -> None:
 
 
 def main() -> int:
+    from app.browser.screens import read_monitors
+
     _route_output_to_log()
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -441,7 +463,7 @@ def main() -> int:
     return run(
         open_window=open_webview_window,
         notify=notify_user,
-        window_pos=window_position_from_env(),
+        window_pos=checked_window_position(window_position_from_env(), read_monitors()),
         on_already_running=focus_existing_window,
     )
 

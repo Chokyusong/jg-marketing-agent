@@ -18,19 +18,20 @@
       <div class="brand-copy">MARKETING<br />AI AGENT</div>
       <span class="sr-only">JG Marketing AI Agent</span>
     </div>
-    <button type="button" class="menu-toggle" id="menu-toggle" aria-controls="nav" aria-expanded="false">MENU</button>
+    <button type="button" class="menu-toggle" id="menu-toggle" aria-controls="nav" aria-expanded="false">메뉴 <small>MENU</small></button>
+    <!-- 메뉴(9단계): 누르면 그 칸으로 이동하고 잠깐 강조. 지금 있는 칸에 표시(aria-current). 설정은 겹침 패널 -->
     <nav class="nav" id="nav" aria-label="메뉴">
-      <a href="#top" data-target="top" class="on" aria-current="true">DASHBOARD</a>
-      <a href="#col-discover" data-target="col-discover">DISCOVER</a>
-      <a href="#col-analyze" data-target="col-analyze">ANALYZE</a>
-      <a href="#col-execute" data-target="col-execute">EXECUTE</a>
-      <a href="#activity" data-target="activity">ACTIVITY</a>
-      <button type="button" disabled title="9단계에서 연결">SETTINGS</button>
+      <a href="#top" data-target="top"><span class="ko">대시보드</span><small class="en">DASHBOARD</small></a>
+      <a href="#col-discover" data-target="col-discover"><span class="ko">영상 탐색</span><small class="en">DISCOVER</small></a>
+      <a href="#col-analyze" data-target="col-analyze"><span class="ko">분석</span><small class="en">ANALYZE</small></a>
+      <a href="#col-execute" data-target="col-execute"><span class="ko">실행</span><small class="en">EXECUTE</small></a>
+      <a href="#activity" data-target="activity"><span class="ko">기록</span><small class="en">ACTIVITY</small></a>
+      <button type="button" id="settings-open" aria-haspopup="dialog" aria-controls="settings-panel"><span class="ko">설정</span><small class="en">SETTINGS</small></button>
     </nav>
     <ul class="system" aria-label="시스템 상태">
-      <li id="status-ai-item"><i class="dot is-wait" id="status-ai-dot" aria-hidden="true"></i><span class="sys-name">AI</span><span class="sys-text" id="status-ai">확인 중</span></li>
-      <li><i class="dot is-wait" id="status-youtube-dot" aria-hidden="true"></i><span class="sys-name">YOUTUBE</span><span class="sys-text" id="status-youtube">확인 중</span></li>
-      <li id="status-browser-item"><i class="dot is-wait" id="status-browser-dot" aria-hidden="true"></i><span class="sys-name">BROWSER</span><span class="sys-text" id="status-browser">확인 중</span></li>
+      <li id="status-ai-item"><i class="dot is-wait" id="status-ai-dot" aria-hidden="true"></i><span class="sys-ko">AI 모델</span><span class="sys-name">AI</span><span class="sys-text" id="status-ai">확인 중</span></li>
+      <li id="status-youtube-item"><i class="dot is-wait" id="status-youtube-dot" aria-hidden="true"></i><span class="sys-ko">유튜브</span><span class="sys-name">YOUTUBE</span><span class="sys-text" id="status-youtube">확인 중</span></li>
+      <li id="status-browser-item"><i class="dot is-wait" id="status-browser-dot" aria-hidden="true"></i><span class="sys-ko">브라우저</span><span class="sys-name">BROWSER</span><span class="sys-text" id="status-browser">확인 중</span></li>
     </ul>
   </header>
 
@@ -42,12 +43,13 @@
       <p class="desc">탐색부터 맥락 분석, 초안 검토와 실행 관리까지. 모든 댓글은 <span class="gold">{{ disclosure }}</span>로 시작하고 사람이 최종 검토합니다.</p>
     </div>
     <div class="hero-right">
-      <!-- 오늘 통계(7단계): GET /api/stats/today. 03칸에서 고른 작업 방식의 대상 기준 -->
+      <!-- 오늘 통계(7단계): GET /api/stats/today. 03칸에서 고른 작업 방식의 대상 기준.
+           9단계: 한글 이름표(dt.ko)를 영문 이름표 앞에 둔다(한 dd를 dt 두 개가 설명) -->
       <dl class="today" id="today-stats" aria-label="오늘 통계" aria-live="polite">
-        <div title="오늘 처리한 영상(예약 + 게시) / 하루 상한. 실패는 세지 않습니다"><dt>TODAY · VIDEOS</dt><dd id="stat-videos">–</dd></div>
-        <div title="오늘 만든 댓글 초안"><dt>DRAFTS</dt><dd id="stat-drafts">–</dd></div>
-        <div title="오늘 게시 완료"><dt>POSTED</dt><dd id="stat-posted">–</dd></div>
-        <div title="오늘 게시 성공률(게시 완료 ÷ 게시 시도). 시도가 없으면 –"><dt>SUCCESS</dt><dd id="stat-success">–</dd></div>
+        <div title="오늘 처리한 영상(예약 + 게시) / 하루 상한. 실패는 세지 않습니다"><dt class="ko">오늘 처리</dt><dt>TODAY · VIDEOS</dt><dd id="stat-videos">–</dd></div>
+        <div title="오늘 만든 댓글 초안"><dt class="ko">초안</dt><dt>DRAFTS</dt><dd id="stat-drafts">–</dd></div>
+        <div title="오늘 게시 완료"><dt class="ko">게시 완료</dt><dt>POSTED</dt><dd id="stat-posted">–</dd></div>
+        <div title="오늘 게시 성공률(게시 완료 ÷ 게시 시도). 시도가 없으면 –"><dt class="ko">성공률</dt><dt>SUCCESS</dt><dd id="stat-success">–</dd></div>
       </dl>
       <div class="record">
         <p class="off-note" id="today-note">오늘 통계 불러오는 중</p>
@@ -56,19 +58,19 @@
     </div>
   </section>
 
-  <!-- 흐름 띠 (UI_SPEC 2.3) -->
-  <section class="progress" aria-label="작업 흐름">
+  <!-- 흐름 띠 (UI_SPEC 2.3). 9단계: 지금 단계의 설명 줄에 다음 행동을 쓴다(next.js) -->
+  <section class="progress" aria-label="작업 흐름" id="progress">
     <div class="step is-current" data-step="1">
       <div class="focus-icon"><div class="corners"></div><span>01</span></div>
-      <div class="text"><div class="phase">DISCOVER</div><b>영상 탐색</b><p>영상의 맥락을 발견합니다.</p></div>
+      <div class="text"><div class="phase">DISCOVER</div><b>영상 탐색</b><p class="step-hint" data-default="영상의 맥락을 발견합니다.">영상의 맥락을 발견합니다.</p></div>
     </div>
     <div class="step" data-step="2">
       <div class="focus-icon"><div class="corners"></div><span>02</span></div>
-      <div class="text"><div class="phase">UNDERSTAND</div><b>AI 분석 · 초안</b><p>콘텐츠의 고민을 읽습니다.</p></div>
+      <div class="text"><div class="phase">UNDERSTAND</div><b>AI 분석 · 초안</b><p class="step-hint" data-default="콘텐츠의 고민을 읽습니다.">콘텐츠의 고민을 읽습니다.</p></div>
     </div>
     <div class="step" data-step="3">
       <div class="focus-icon"><div class="corners"></div><span>03</span></div>
-      <div class="text"><div class="phase">EXECUTE</div><b>실행 · 관리</b><p>검토 후 작업을 완료합니다.</p></div>
+      <div class="text"><div class="phase">EXECUTE</div><b>실행 · 관리</b><p class="step-hint" data-default="검토 후 작업을 완료합니다.">검토 후 작업을 완료합니다.</p></div>
     </div>
   </section>
 
@@ -76,7 +78,7 @@
 
     <!-- 01 영상 탐색 (2단계에서 연결) -->
     <div class="column" id="col-discover">
-      <div class="colhead"><h2>영상 탐색</h2><span class="number">01 / 03</span></div>
+      <div class="colhead"><h2 tabindex="-1">영상 탐색</h2><span class="number">01 / 03</span></div>
 
       <div class="tabs" role="tablist" aria-label="영상 불러오는 방법">
         <button type="button" class="tab" role="tab" id="tab-keyword" aria-controls="pane-keyword" aria-selected="true">키워드 검색</button>
@@ -141,7 +143,7 @@
 
     <!-- 02 AI 분석과 댓글 초안 (3단계: 자막 출처·붙여넣기, 6단계: 초안 직접 쓰기·규칙 검사, 5단계: 분석·AI 초안·승인) -->
     <div class="column" id="col-analyze">
-      <div class="colhead"><h2>AI 분석과 댓글 초안</h2><span class="number">02 / 03</span></div>
+      <div class="colhead"><h2 tabindex="-1">AI 분석과 댓글 초안</h2><span class="number">02 / 03</span></div>
 
       <div class="midinfo" id="selected-summary">
         <p class="empty-sm">01에서 영상을 고르면 여기에 표시됩니다.</p>
@@ -197,12 +199,12 @@
       <!-- 댓글 초안(6단계): 사람이 고치고, 입력이 멈추면 규칙 검사 V1~V12. AI 초안이 들어온다(5단계) -->
       <div class="draft" id="draft-box" data-disclosure="{{ disclosure }}" data-min="{{ min_chars }}" data-max="{{ max_chars }}">
         <div class="section-mini"><label for="draft-text">댓글 초안</label> <span class="draft-count" id="draft-count">0 / {{ max_chars }}자</span></div>
-        <div class="draft-edit">
+        <div class="draft-edit" id="draft-edit">
           <div class="draft-mirror" id="draft-mirror" aria-hidden="true"></div>
           <textarea class="draft-input" id="draft-text" rows="2" maxlength="1000" spellcheck="false" placeholder="[분석하고 초안 만들기]를 누르거나 {{ disclosure }}로 시작해 직접 써 보세요." aria-describedby="draft-checks" disabled></textarea>
         </div>
         <div class="draftfooter">
-          <span class="draft-labels"><span class="tag" id="draft-tag">DRAFT · REVIEW REQUIRED</span><span class="tone" id="draft-tone" title="말투 분류(댓글 본문에는 넣지 않습니다)"></span></span>
+          <span class="draft-labels"><span class="tag-ko" id="draft-tag-ko">검토 필요</span><span class="tag" id="draft-tag">DRAFT · REVIEW REQUIRED</span><span class="tone" id="draft-tone" title="말투 분류(댓글 본문에는 넣지 않습니다)"></span></span>
           <span class="draft-actions">
             <button type="button" class="line-btn" id="another-btn" disabled>다른 초안 생성 ↗</button>
             <button type="button" class="line-btn approve-btn" id="approve-btn" disabled>이 초안 승인</button>
@@ -217,7 +219,7 @@
 
     <!-- 03 실행 및 관리 (7단계: 설정 4줄, 8단계: 큰 버튼·진행 단계·승인·복사·확인) -->
     <div class="column" id="col-execute">
-      <div class="colhead"><h2>실행 및 관리</h2><span class="number">03 / 03</span></div>
+      <div class="colhead"><h2 tabindex="-1">실행 및 관리</h2><span class="number">03 / 03</span></div>
 
       <div class="exec-settings" data-target="{{ default_target }}" data-limit="{{ daily_max_comments }}">
         <div class="section-mini">브라우저 환경 <span>LOCAL CONTROL</span></div>
@@ -257,17 +259,19 @@
         <div class="taskstatus"><i class="dot is-wait" id="job-dot" aria-hidden="true"></i><span id="job-status">브라우저 확인 중</span></div>
       </div>
 
-      <div class="hint"><b>OPERATION NOTE</b><br />중복 작업 방지 · 활동 이력 기록 · 공개적 홍보 관계 표시<br />정책을 준수하는 사용자 승인 방식으로 설계</div>
+      <div class="hint"><b>운영 원칙</b> <small>OPERATION NOTE</small><br />중복 작업 방지 · 활동 이력 기록 · 공개적 홍보 관계 표시<br />정책을 준수하는 사용자 승인 방식으로 설계</div>
     </div>
   </section>
 
-  <!-- 작업 기록 (7단계): GET /api/records. 최신이 위, 최근 5줄(전체 보기는 9단계 VIEW ALL) -->
+  <!-- 작업 기록 (7단계): GET /api/records. 최신이 위, 최근 5줄. 9단계: [전체 보기 VIEW ALL]은 겹침 패널 -->
   <section class="history" id="activity">
-    <div class="history-top"><h2>작업 기록</h2><small id="records-meta">ACTIVITY ARCHIVE &nbsp;/&nbsp; 최근 5줄</small></div>
+    <div class="history-top"><h2 tabindex="-1">작업 기록</h2>
+      <span class="history-tools"><small id="records-meta">최근 5줄 · ACTIVITY ARCHIVE</small>
+        <button type="button" class="line-btn" id="records-all" aria-haspopup="dialog" aria-controls="records-panel">전체 보기 <small>VIEW ALL</small> ↗</button></span></div>
     <div class="table-wrap">
       <table>
         <colgroup><col class="c-time" /><col class="c-video" /><col class="c-action" /><col class="c-comment" /><col class="c-status" /><col class="c-profile" /><col class="c-link" /></colgroup>
-        <thead><tr><th>TIME</th><th>VIDEO</th><th>ACTION</th><th>COMMENT</th><th>STATUS</th><th>PROFILE</th><th><span class="sr-only">영상 보기</span></th></tr></thead>
+        <thead><tr><th><span class="ko">시간</span><small class="en">TIME</small></th><th><span class="ko">영상</span><small class="en">VIDEO</small></th><th><span class="ko">작업</span><small class="en">ACTION</small></th><th><span class="ko">댓글</span><small class="en">COMMENT</small></th><th><span class="ko">상태</span><small class="en">STATUS</small></th><th><span class="ko">프로필</span><small class="en">PROFILE</small></th><th><span class="sr-only">영상 보기</span></th></tr></thead>
         <tbody id="records-body"><tr><td colspan="7" class="empty-row">아직 기록이 없습니다. 분석 · 초안 생성 · 승인 · 게시가 여기에 시간순(최신이 위)으로 남습니다.</td></tr></tbody>
       </table>
     </div>
@@ -275,5 +279,39 @@
 
   <footer class="bottom"><span>JG MARKETING AGENT</span><span>V {{ version }} · STAGE {{ stage }}</span></footer>
 </main>
+
+<!-- SETTINGS 패널(9단계): 같은 화면의 겹침 패널, 읽기 전용. GET /api/settings.
+     Esc로 닫히고, 열 때 패널로 초점이 들어가며, 닫으면 연 단추로 초점이 돌아간다(panels.js) -->
+<dialog class="panel" id="settings-panel" aria-labelledby="settings-title">
+  <div class="panel-head">
+    <h2 id="settings-title" tabindex="-1">설정 <small>SETTINGS · 읽기 전용</small></h2>
+    <button type="button" class="line-btn panel-close" data-close aria-label="설정 닫기">닫기 ×</button>
+  </div>
+  <p class="panel-note">config.yaml과 .env에서 읽은 값입니다. 바꾸려면 파일을 고친 뒤 프로그램을 다시 켜세요. 키 값은 화면에 보이지 않습니다.</p>
+  <div class="panel-body" id="settings-body" aria-live="polite"><p class="empty">설정을 불러오는 중…</p></div>
+  <div class="panel-foot">
+    <button type="button" class="line-btn" id="warmup-btn">모델 미리 불러오기 ↗</button>
+    <p class="caption" id="warmup-note">시연 전에 한 번 누르면 첫 분석이 빨라집니다. 큰 모델은 1~2분 걸릴 수 있습니다.</p>
+  </div>
+</dialog>
+
+<!-- 작업 기록 전체(9단계 VIEW ALL): 실패 사유와 실패 화면 캡처 링크. GET /api/records?limit=200 -->
+<dialog class="panel panel-wide" id="records-panel" aria-labelledby="records-title">
+  <div class="panel-head">
+    <h2 id="records-title" tabindex="-1">작업 기록 전체 <small>ACTIVITY ARCHIVE</small></h2>
+    <button type="button" class="line-btn panel-close" data-close aria-label="전체 기록 닫기">닫기 ×</button>
+  </div>
+  <div class="panel-tools">
+    <p class="caption" id="records-all-meta" aria-live="polite">불러오는 중…</p>
+    <label class="check"><input type="checkbox" id="records-failed-only" /><i aria-hidden="true"></i>실패만 보기</label>
+  </div>
+  <div class="panel-body table-wrap">
+    <table class="records-all">
+      <colgroup><col class="c-time" /><col class="c-video" /><col class="c-action" /><col class="c-comment" /><col class="c-status" /><col class="c-profile" /><col class="c-shot" /><col class="c-link" /></colgroup>
+      <thead><tr><th><span class="ko">시간</span><small class="en">TIME</small></th><th><span class="ko">영상</span><small class="en">VIDEO</small></th><th><span class="ko">작업</span><small class="en">ACTION</small></th><th><span class="ko">댓글</span><small class="en">COMMENT</small></th><th><span class="ko">상태 · 사유</span><small class="en">STATUS</small></th><th><span class="ko">프로필</span><small class="en">PROFILE</small></th><th><span class="ko">캡처</span><small class="en">SHOT</small></th><th><span class="sr-only">영상 보기</span></th></tr></thead>
+      <tbody id="records-all-body"><tr><td colspan="8" class="empty-row">불러오는 중…</td></tr></tbody>
+    </table>
+  </div>
+</dialog>
 </body>
 </html>

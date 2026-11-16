@@ -4,7 +4,7 @@
 // - 03칸: 사용 프로필(자동 배정 = 가장 오래 안 쓴 프로필), 작업 방식(대상: youtube = 사람이 게시,
 //   sandbox = 테스트 페이지 자동 실행), 일일 제한(설정값 이하로만), 오늘 작업 n / 상한.
 //   고른 값은 화면 상태에만 둔다. 게시 실행(8단계)이 이 값으로 예약하고, 서버가 상한을 다시 강제한다.
-// - 기록 표는 최근 5줄만(전체 보기는 9단계 VIEW ALL). 바깥 글은 textContent로만 넣는다.
+// - 기록 표는 최근 5줄만(전체 보기는 9단계 VIEW ALL, panels.js). 바깥 글은 textContent로만 넣는다.
 import { api } from './api.js';
 import { el } from './format.js';
 import { getState, setState, subscribe } from './state.js';
@@ -135,7 +135,7 @@ function renderRecords(ops) {
     return;
   }
   if (!ops.records) return;
-  meta.textContent = `ACTIVITY ARCHIVE  /  최근 ${Math.min(RECENT_ROWS, ops.total)}줄 · 전체 ${ops.total}건`;
+  meta.textContent = `최근 ${Math.min(RECENT_ROWS, ops.total)}줄 · 전체 ${ops.total}건 · ACTIVITY ARCHIVE`;
   if (!ops.records.length) {
     body.replaceChildren(el('tr', {}, [el('td', { colspan: '7', class: 'empty-row', text: '아직 기록이 없습니다. 분석 · 초안 생성 · 승인 · 게시가 여기에 시간순(최신이 위)으로 남습니다.' })]));
     return;

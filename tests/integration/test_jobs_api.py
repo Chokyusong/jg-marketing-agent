@@ -16,8 +16,11 @@ from yt_helpers import YT, add_search_and_videos
 from app.browser import sandbox as sandbox_mod
 from app.browser.hooks import BrowserHooks
 from app.browser.sandbox_driver import DriverError
+from app.browser.screens import Monitor
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+# 대표 PC처럼 위쪽에 2번 모니터가 있는 배치(이 PC의 실제 모니터에 따라 결과가 바뀌지 않게 고정)
+UPPER_AND_MAIN = [Monitor(0, -1080, 1920, 0), Monitor(0, 0, 1920, 1080, primary=True)]
 
 
 class FakeDriver:
@@ -55,7 +58,7 @@ class FakeDriver:
 def setup(mock_http, fixture_json, fake_key, make_client, fake_llm, tmp_path):
     drivers: list[FakeDriver] = []
     launched: list[list[str]] = []
-    options = {"fail_on": ""}
+    options = {"fail_on": "", "screens": UPPER_AND_MAIN}
     chrome_exe = tmp_path / "chrome.exe"
     chrome_exe.write_bytes(b"")
 
@@ -82,6 +85,7 @@ def setup(mock_http, fixture_json, fake_key, make_client, fake_llm, tmp_path):
         driver_factory=factory,
         launcher=Proc,
         playwright_ready=lambda: True,
+        screens=lambda: options["screens"],
     )
     mock = mock_http()
     add_search_and_videos(mock, fixture_json)
@@ -198,6 +202,20 @@ def test_failed_job_has_reason_and_screenshot(setup):
     assert "error_screenshots" not in str(job)  # 캡처 경로(PC 경로)는 싣지 않는다
 
 
+def test_screenshot_of_past_job_is_found_in_capture_folder(setup):
+    # 9단계 전체 기록: 앱을 다시 켜서 메모리에 없는 지난 실패 작업도 캡처를 연다
+    client, services, *_ = setup
+    folder = Path(services.jobs.browser.screenshot_dir)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "20261117-010101-abcdef.png").write_bytes(PNG)
+    shot = client.get("/api/jobs/20261117-010101-abcdef/screenshot")
+    assert shot.status_code == 200 and shot.content == PNG
+    missing = client.get("/api/jobs/20261117-010101-000000/screenshot")
+    assert missing.status_code == 404 and missing.json()["error"]["kind"] == "screenshot_not_found"
+    odd = client.get("/api/jobs/bad.id/screenshot")  # 작업 ID 모양이 아니면 폴더를 보지 않는다
+    assert odd.status_code == 404 and odd.json()["error"]["kind"] == "job_not_found"
+
+
 def test_wrong_state_unknown_job_and_missing_screenshot(setup):
     client, services, approve_one, *_ = setup
     assert client.get("/api/jobs/nope").status_code == 404
@@ -227,6 +245,7 @@ def test_assist_job_over_the_api(setup):
     assert args[-1] == f"https://www.youtube.com/watch?v={VID}"
     assert any(a.startswith("--user-data-dir=") and a.endswith("profile-1") for a in args)
     assert "--window-position=60,-1060" in args
+    assert not any("화면 밖" in e["message"] for e in job["events"])  # 위쪽 모니터 안이라 그대로
     res = client.post(f"/api/jobs/{job['id']}/confirm", json={"posted": True})
     assert res.status_code == 200
     job = wait_state(client, job["id"], "posted")
@@ -325,3 +344,21 @@ def test_sandbox_assets_are_local(plain):
     assert "innerHTML" not in js and "youtube" not in js.lower()
     css = plain.get("/static/css/sandbox.css")
     assert css.status_code == 200 and "@import" not in css.text and "http" not in css.text
+
+
+def test_assist_window_moves_to_main_monitor_when_position_is_off_screen(setup):
+    """9단계: 모니터가 하나인 PC(심사자 PC)에서는 60,-1060이 화면 밖 → 주 모니터 60,60으로."""
+    client, services, approve_one, drivers, launched, options = setup
+    options["screens"] = [Monitor(0, 0, 1920, 1080, primary=True)]
+    d = approve_one()
+    job = client.post(
+        "/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": "assist"}
+    ).json()
+    job = wait_state(client, job["id"], "awaiting_confirm")
+    (args,) = launched
+    assert "--window-position=60,60" in args
+    assert "--window-position=60,-1060" not in args
+    notes = [e["message"] for e in job["events"] if "화면 밖" in e["message"]]
+    assert notes == ["크롬 창 위치(60,-1060)가 화면 밖이라 주 모니터(60,60)에 띄웁니다"]
+    client.post(f"/api/jobs/{job['id']}/cancel")
+    wait_state(client, job["id"], "failed")

@@ -159,8 +159,12 @@ function render(state) {
   const checked = Boolean(fresh && v.result.passed);
   const approved = isApproved(state);
   const tag = $('draft-tag');
-  tag.textContent = approved ? 'APPROVED · 승인됨' : checked ? 'CHECKED' : 'DRAFT · REVIEW REQUIRED';
+  tag.textContent = approved ? 'APPROVED' : checked ? 'CHECKED' : 'DRAFT · REVIEW REQUIRED';
   tag.classList.toggle('is-ok', checked || approved);
+  // 9단계: 한글 이름표를 영문 앞에(영문은 작게 남긴다)
+  const ko = $('draft-tag-ko');
+  ko.textContent = approved ? '승인됨' : checked ? '검사 통과' : '검토 필요';
+  ko.classList.toggle('is-ok', checked || approved);
   const d = state.draft && state.draft.video_id === state.selectedId ? state.draft : null;
   $('draft-tone').textContent = d && d.tone_label ? `말투 · ${d.tone_label}` : '';
 

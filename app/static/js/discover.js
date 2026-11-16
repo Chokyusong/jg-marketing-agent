@@ -117,10 +117,13 @@ function renderList(state) {
   const focusedId = document.activeElement?.dataset?.id;
   list.replaceChildren();
   if (!state.videos.length) {
-    const text = state.meta
-      ? '조건에 맞는 영상이 없습니다. 기간을 넓히거나 검색어를 바꿔 보세요.'
-      : null;
-    list.append(text ? el('p', { class: 'empty', text }) : emptyIntro());
+    // 9단계: 불러오는 중·결과 없음·처음 화면마다 문구와 다음 행동
+    const text = state.loading
+      ? (state.tab === 'url' ? '영상을 불러오는 중입니다… 보통 1~2초 걸립니다.' : '영상을 찾는 중입니다… 보통 1~2초 걸립니다.')
+      : state.meta
+        ? '조건에 맞는 영상이 없습니다. 업로드 기간을 넓히거나 검색어를 바꿔 [영상 찾기]를 다시 눌러 보세요.'
+        : null;
+    list.append(text ? el('p', { class: 'empty', text }) : emptyIntro(state.tab));
     return;
   }
   for (const video of state.videos) {
@@ -129,7 +132,14 @@ function renderList(state) {
   if (focusedId) list.querySelector(`[data-id="${CSS.escape(focusedId)}"]`)?.focus();
 }
 
-function emptyIntro() {
+function emptyIntro(tab) {
+  if (tab === 'url') {
+    return el('p', { class: 'empty' }, [
+      '유튜브 영상 주소를 넣고 ',
+      el('b', { text: '[불러오기]' }),
+      '를 누르면 그 영상 하나가 뜹니다.',
+    ]);
+  }
   return el('p', { class: 'empty' }, [
     '기본 검색어가 들어 있습니다. ',
     el('b', { text: '[영상 찾기]' }),
@@ -148,12 +158,13 @@ function renderMeta(state) {
       meta.append(el('span', { class: 'shorts-note', title: '61초 미만 영상과 길이 정보가 없는 영상은 목록에서 뺍니다', text: `쇼츠 ${state.meta.shortsExcluded}개 제외` }));
     }
     if (state.meta.cached) {
-      meta.append(el('span', { class: 'tag', title: '같은 검색은 10분 동안 저장한 결과를 씁니다(할당량 절약)', text: 'SAVED · 10분 저장 결과' }));
+      meta.append(el('span', { class: 'tag', title: '같은 검색은 10분 동안 저장한 결과를 씁니다(할당량 절약)', text: '10분 저장 결과 · SAVED' }));
     }
   } else {
     meta.append('링크로 불러온 영상');
   }
-  if (state.selectedId) meta.append(el('span', { class: 'tag', text: 'SELECTED · 1개 선택됨' }));
+  if (state.selectedId) meta.append(el('span', { class: 'tag', text: '1개 선택됨 · SELECTED' }));
+  else if (state.videos.length) meta.append(el('span', { class: 'pick-hint', text: '영상을 하나 고르세요' }));
 }
 
 function renderError(state) {

@@ -26,6 +26,9 @@ assist는 대기 → 프로필 실행 → 사람 게시 대기(awaiting_confirm)
 - **assist**: 크롬을 프로필 폴더와 영상 주소로 실행만 한다(`chrome.assist_args`, 셸 없이).
   실제 유튜브 화면은 건드리지 않는다. 사람이 [게시했어요]를 누르면
   YouTube 키가 있을 때만 Data API로 찾아본다.
+- **창 위치(9단계).** 창이 보이는 실행(assist, 또는 headless가 아닌 sandbox)은 띄우기 전에
+  `browser.window_position`이 실제 모니터 안인지 본다(`screens.check_window_position`). 밖이면
+  주 모니터의 안전한 위치로 바꿔 띄우고 작업 기록(job_events)에 그렇게 했다고 남긴다.
 """
 
 from __future__ import annotations
@@ -37,8 +40,8 @@ import random
 import secrets
 import threading
 import time
-from collections.abc import Callable
-from dataclasses import dataclass, field
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -61,6 +64,7 @@ from app.browser.sandbox_driver import (
     Stopped,
     require_sandbox_url,
 )
+from app.browser.screens import Monitor, check_window_position
 from app.config import BrowserSettings
 from app.errors import AppError, ErrorKind
 from app.ops.profiles import ProfileService
@@ -201,6 +205,7 @@ class Job:
     driver: Any = None  # sandbox: 아직 닫지 않은 실행기(닫으면 None)
     chrome: Path | None = None  # chrome.exe 위치
     profile_path: Path | None = None  # 프로필 폴더(API에는 싣지 않는다)
+    window_position: tuple[int, int] | None = None  # 실제로 띄운 창 위치(화면 밖이면 바꾼 값)
 
     @property
     def finished(self) -> bool:
@@ -268,8 +273,11 @@ class JobService:
         approval_timeout: float = APPROVAL_TIMEOUT_SECONDS,
         confirm_timeout: float = CONFIRM_TIMEOUT_SECONDS,
         rng: random.Random | None = None,
+        screens: Callable[[], Sequence[Monitor]] | None = None,
     ) -> None:
         self.db_path = db_path
+        # 모니터 목록을 읽는 함수(9단계). None이면 확인하지 않고 설정값 그대로 띄운다
+        self.screens = screens
         self.rules = rules
         self.profiles = profiles
         self.browser = browser
@@ -415,9 +423,15 @@ class JobService:
             return job.id if job is not None and not job.finished else None
 
     def screenshot_path(self, job_id: str) -> Path:
+        """실패 화면 캡처 파일. 메모리에 없는 지난 작업(앱을 다시 켠 뒤, 9단계 전체 기록)은
+        캡처 폴더의 `<작업ID>.png`를 찾는다(작업 ID 모양이 아니면 job_not_found)."""
         with self._lock:
-            job = self._require(job_id)
-            path = job.screenshot
+            job = self._jobs.get(job_id)
+            path = job.screenshot if job is not None else None
+        if job is None:
+            if not is_job_id(job_id):
+                raise AppError(ErrorKind.JOB_NOT_FOUND)
+            path = Path(self.browser.screenshot_dir) / f"{job_id}.png"
         if path is None or not path.is_file():
             raise AppError(ErrorKind.SCREENSHOT_NOT_FOUND)
         return path
@@ -551,7 +565,10 @@ class JobService:
             if job.cancel_flag.is_set():
                 raise JobCancelled
             if job.mode == "sandbox":
-                driver = job.driver = self.driver_factory(self.browser)
+                browser = self.browser
+                if not browser.headless:  # 창이 보일 때만 위치를 확인한다
+                    browser = replace(browser, window_position=self._place_window(job))
+                driver = job.driver = self.driver_factory(browser)
                 self._run_sandbox(job, driver)
             else:
                 self._run_assist(job)
@@ -566,6 +583,25 @@ class JobService:
             self._fail(job, f"예상하지 못한 오류: {type(exc).__name__}", driver=driver)
         finally:
             self._close_driver(job)
+
+    def _place_window(self, job: Job) -> tuple[int, int]:
+        """창을 띄울 위치. 설정값이 화면 밖이면 주 모니터의 안전한 위치로 바꾸고 기록에 남긴다."""
+        wanted = self.browser.window_position
+        if self.screens is None:
+            job.window_position = wanted
+            return wanted
+        try:
+            monitors = list(self.screens())
+        except Exception:  # 모니터를 못 읽어도 작업은 설정값으로 계속한다
+            log.exception("job %s: 모니터 정보를 읽지 못했습니다", job.id)
+            monitors = []
+        check = check_window_position(wanted, monitors)
+        position = check.position or wanted
+        job.window_position = position
+        if check.adjusted:
+            log.info("job %s: %s", job.id, check.note)
+            self._event(job, job.state, f"크롬 {check.note}", change=False)
+        return position
 
     @staticmethod
     def _close_driver(job: Job) -> None:
@@ -637,7 +673,7 @@ class JobService:
             job.chrome,  # type: ignore[arg-type]
             job.profile_path,  # type: ignore[arg-type]
             job.open_url,
-            self.browser.window_position,
+            self._place_window(job),
         )
         try:
             job.proc = self.launcher(args)
