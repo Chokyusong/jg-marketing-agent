@@ -77,6 +77,8 @@ def live_app(tmp_path, make_config) -> Iterator[LiveApp]:
     config = make_config(
         {
             "limits": {"daily_max_comments": 10},
+            # R3부터 기본은 [댓글 달기] 한 번으로 끝까지. 이 도우미의 시험은 [게시] 단계를 본다
+            "posting": {"confirm_before_post": True},
             "browser": {
                 "headless": True,  # 창 없이(주 모니터에 창을 띄우지 않는다)
                 "typing_delay_ms": [5, 15],

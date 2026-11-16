@@ -8,6 +8,7 @@
   app/browser/youtube_driver.py의 SELECTORS와 같은 요소 이름만 흉내 낸다.
   테스트가 https://www.youtube.com/watch 요청을 가로채 이 글을 돌려주고, 다른 요청은 모두 막는다.
   body의 data-mode: signed_in(기본) | signed_out | comments_off | no_post
+                  | no_submit(「댓글」 게시 단추 없음) | leave(열자마자 다른 영상으로 옮겨 감)
 -->
 <style>
   ytd-masthead, ytd-comments, ytd-commentbox, ytd-comment-thread-renderer { display: block; }
@@ -49,7 +50,8 @@
         '<div id="simplebox-placeholder" tabindex="0">댓글 추가...</div>' +
         '<ytd-commentbox hidden>' +
         '<div id="contenteditable-root" contenteditable="true"></div>' +
-        '<ytd-button-renderer id="submit-button"><button type="button">댓글</button></ytd-button-renderer>' +
+        (mode === 'no_submit' ? '' :
+          '<ytd-button-renderer id="submit-button"><button type="button">댓글</button></ytd-button-renderer>') +
         '</ytd-commentbox>' +
         '<div id="contents"></div>';
     }
@@ -63,6 +65,7 @@
       commentbox.hidden = false;
       editor.focus();
     });
+    if (mode === 'no_submit') return;
     box.querySelector('#submit-button').addEventListener('click', () => {
       if (mode === 'no_post') return;
       const thread = document.createElement('ytd-comment-thread-renderer');
@@ -73,6 +76,9 @@
       box.querySelector('#contents').prepend(thread);
       editor.textContent = '';
     });
+  }
+  if (mode === 'leave' && !location.search.includes('OTHERVID001')) {
+    setTimeout(() => { location.href = 'https://www.youtube.com/watch?v=OTHERVID001'; }, 30);
   }
   // 실제 페이지처럼 아래로 내려야 댓글을 불러온다
   window.addEventListener('scroll', () => setTimeout(loadComments, 150));

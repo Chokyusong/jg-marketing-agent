@@ -176,9 +176,9 @@
             </details>
           </div>
 
-          <div class="draft" id="draft-box" data-disclosure="{{ disclosure }}" data-min="{{ min_chars }}" data-max="{{ max_chars }}">
+          <div class="draft" id="draft-box" data-disclosure="{{ disclosure }}" data-disclose-default="{{ 'true' if disclose_default else 'false' }}" data-min="{{ min_chars }}" data-max="{{ max_chars }}">
             <div class="draft-head"><label for="draft-text">댓글 초안</label>
-              <label class="check disclose-toggle" id="disclose-toggle" title="내 채널 영상에서만 끌 수 있습니다"><input type="checkbox" id="disclose" checked disabled /><i aria-hidden="true"></i>광고 표기 붙이기</label>
+              <label class="check disclose-toggle" id="disclose-toggle" title="끄면 광고 표기 없이 댓글을 답니다. 처음 상태는 설정의 「광고 표기 기본값」입니다"><input type="checkbox" id="disclose"{% if disclose_default %} checked{% endif %} disabled /><i aria-hidden="true"></i>광고 표기 붙이기</label>
               <span class="draft-count" id="draft-count">0 / {{ max_chars }}자</span></div>
             <div class="draft-edit" id="draft-edit">
               <div class="draft-mirror" id="draft-mirror" aria-hidden="true"></div>
@@ -199,7 +199,7 @@
       <section class="column" id="col-execute" data-col="3" aria-labelledby="col-execute-title">
         <div class="colhead"><h2 id="col-execute-title" tabindex="-1">③ 댓글 달기</h2></div>
         <div class="col-body">
-          <div class="exec-settings" data-target="{{ default_target }}" data-limit="{{ daily_max_comments }}">
+          <div class="exec-settings" data-target="{{ default_target }}" data-limit="{{ daily_max_comments }}" data-confirm="{{ 'true' if confirm_before_post else 'false' }}">
             <fieldset class="settings" id="exec-settings">
               <legend class="sr-only">게시 설정</legend>
               <div class="setrow"><label for="profile">프로필</label>
@@ -207,7 +207,7 @@
               <div class="setrow"><span class="label" id="practice-label">연습 모드</span>
                 <label class="switch" title="켜면 실제 유튜브가 아니라 프로그램 안의 연습 페이지에 댓글을 답니다">
                   <input type="checkbox" id="practice-mode" role="switch" aria-labelledby="practice-label"{% if default_target == "sandbox" %} checked{% endif %} /><i aria-hidden="true"></i>
-                  <span id="practice-text">{% if default_target == "sandbox" %}켜짐 · 연습 페이지에 답니다{% else %}꺼짐 · 실제 유튜브{% endif %}</span></label></div>
+                  <span id="practice-text">{% if default_target == "sandbox" %}켜짐 · 연습 페이지에 답니다{% else %}꺼짐 · 실제 유튜브에 답니다{% endif %}</span></label></div>
               <div class="setrow"><label for="limit">하루 상한</label>
                 <select id="limit">{% for n in daily_limit_options %}<option value="{{ n }}"{% if n == daily_max_comments %} selected{% endif %}>{{ n }}개까지</option>{% endfor %}</select></div>
             </fieldset>
@@ -222,10 +222,8 @@
               <li data-phase="1">프로필 여는 중</li><li data-phase="2">입력 중</li><li data-phase="3">게시</li><li data-phase="4">확인</li>
             </ol>
             <div class="job-actions" id="job-actions" hidden>
-              <button type="button" class="btn btn-small" id="job-copy" hidden>댓글 복사</button>
-              <button type="button" class="btn btn-small" id="job-not-posted" hidden>게시 안 함</button>
               <button type="button" class="btn btn-small" id="job-cancel" hidden>그만두기</button>
-              <a class="btn btn-small" id="job-view" href="#" target="_blank" rel="noopener noreferrer" hidden>유튜브에서 내 댓글 보기</a>
+              <a class="btn btn-small" id="job-view" href="#" target="_blank" rel="noopener noreferrer" hidden>댓글 보기</a>
               <a class="btn btn-small" id="job-shot" href="#" target="_blank" rel="noopener" hidden>화면 캡처 보기</a>
             </div>
             <p class="job-error" id="job-error" role="alert" hidden></p>

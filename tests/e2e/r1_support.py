@@ -4,7 +4,12 @@
 - 가짜 LLM은 부른 횟수를 센다(저장된 초안이 있으면 다시 부르지 않는지 본다).
   영상마다 다른 분석을 돌려준다. `gate`에 영상 번호를 넣으면 그 영상의 분석을
   풀어 줄 때까지 붙잡는다(영상을 바꾸면 결과가 섞이지 않는지 본다).
-- 실제 유튜브용 크롬은 띄우지 않는다(`launcher`가 부르면 실패). 창도 띄우지 않는다(headless).
+- 실제 유튜브에 가지 않는다(R3). 실제 게시는 창 없는 크롬이 `https://www.youtube.com/watch?...`를
+  요청하면 테스트가 가로채 지어낸 페이지(`tests/fixtures/fake_youtube_watch.html`)를 돌려주고 나머지
+  요청은 모두 막는다(`fake_youtube_driver`). 로그인 창용 크롬(`launcher`)은 부르면 실패한다.
+  창도 띄우지 않는다(headless).
+- 기본은 설정 그대로(실제 게시 · 게시 직전 확인 끔). 옛 시험은 `default_target="sandbox"`,
+  `confirm_before_post=True`로 예전 흐름(연습 모드 · [게시]를 기다림)을 돌린다.
 - R2: `user_dir`을 주면 그 임시 폴더에 설정을 저장한다(키 암호화는 가짜 `FAKE_PROTECTOR`).
   로그인 창 실행기·로그인 확인기는 가짜로 바꿔 끼울 수 있다(진짜 로그인 창을 열지 않는다).
 """
@@ -23,6 +28,7 @@ import httpx
 from app.browser.hooks import BrowserHooks
 from app.browser.jobs import default_driver_factory
 from app.browser.screens import Monitor
+from app.browser.youtube_driver import PlaywrightYouTubeDriver
 from app.config import load_settings
 from app.desktop import ServerThread, open_listen_socket, wait_until_ready
 from app.llm.base import LLMHealth
@@ -202,14 +208,51 @@ def _no_real_chrome(args):
     raise AssertionError(f"실제 유튜브용 크롬을 띄우려 했다: {args!r}")
 
 
+FAKE_PAGE = Path(__file__).resolve().parents[1] / "fixtures" / "fake_youtube_watch.html"
+WATCH = "https://www.youtube.com/watch?v="
+
+
+def fake_youtube(mode: str, seen: list[str]):
+    """크롬 요청을 가로챈다: 영상 페이지는 가짜 페이지, 나머지는 모두 막는다."""
+    html = FAKE_PAGE.read_text(encoding="utf-8").replace("__MODE__", mode)
+
+    def prepare(ctx) -> None:
+        def handle(route) -> None:
+            url = route.request.url
+            seen.append(url)
+            if url.startswith(WATCH):
+                route.fulfill(status=200, content_type="text/html; charset=utf-8", body=html)
+            else:
+                route.abort()
+
+        ctx.route("**/*", handle)
+
+    return prepare
+
+
+def fake_youtube_driver(mode: str, seen: list[str], video_id: str, *,
+                        headless: bool = True) -> PlaywrightYouTubeDriver:
+    driver = PlaywrightYouTubeDriver(
+        video_id=video_id, headless=headless, window_position=(60, -1060),
+        prepare_context=fake_youtube(mode, seen),
+    )
+    driver.verify_timeout_ms = 1_500
+    return driver
+
+
 @contextmanager
 def r1_server(tmp_path: Path, make_config, fixture_json, *, user_dir: Path | None = None,
-              key: bool = True, launcher=None, login_checker=None) -> Iterator[dict]:
-    config = make_config({
-        "limits": {"daily_max_comments": 10},
-        "browser": {"headless": True, "typing_delay_ms": [2, 5],
-                    "screenshot_dir": str(tmp_path / "shots")},
-    })
+              key: bool = True, launcher=None, login_checker=None,
+              default_target: str | None = None,
+              confirm_before_post: bool | None = None) -> Iterator[dict]:
+    browser = {"headless": True, "typing_delay_ms": [2, 5],
+               "screenshot_dir": str(tmp_path / "shots")}
+    if default_target is not None:
+        browser["default_target"] = default_target
+    overrides: dict = {"limits": {"daily_max_comments": 10}, "browser": browser}
+    if confirm_before_post is not None:
+        overrides["posting"] = {"confirm_before_post": confirm_before_post}
+    config = make_config(overrides)
     environ = {"JG_PROFILES_DIR": str(tmp_path / "profiles")}
     if key:
         environ["YOUTUBE_API_KEY"] = "AIza" + "x" * 35  # 가짜 키(실행할 때 조립)
@@ -219,12 +262,22 @@ def r1_server(tmp_path: Path, make_config, fixture_json, *, user_dir: Path | Non
     )
     drivers: list = []
 
+    youtube = {"mode": "signed_in", "seen": [], "videos": []}
+
     def factory(browser_settings):
         driver = default_driver_factory(browser_settings)
         drivers.append(driver)
         return driver
 
-    hooks = BrowserHooks(driver_factory=factory, launcher=launcher or _no_real_chrome,
+    def youtube_factory(browser_settings, video):  # 가짜 유튜브 페이지만 연다
+        assert browser_settings.headless is True
+        youtube["videos"].append(video)
+        driver = fake_youtube_driver(youtube["mode"], youtube["seen"], video)
+        drivers.append(driver)
+        return driver
+
+    hooks = BrowserHooks(driver_factory=factory, youtube_driver_factory=youtube_factory,
+                         launcher=launcher or _no_real_chrome,
                          login_checker=login_checker,
                          screens=lambda: [Monitor(0, 0, 1920, 1080, primary=True),
                                           Monitor(0, -1080, 1920, 0)])  # 위쪽 모니터
@@ -242,12 +295,14 @@ def r1_server(tmp_path: Path, make_config, fixture_json, *, user_dir: Path | Non
     base = f"http://127.0.0.1:{server.port}"
     assert wait_until_ready(base, timeout=20, is_alive=server.is_alive)
     try:
-        yield {"base": base, "drivers": drivers, "llm": llm, "app": app}
+        yield {"base": base, "drivers": drivers, "llm": llm, "app": app, "youtube": youtube}
     finally:
         for gate in llm.gate.values():
             gate.set()
         app.state.services.get().jobs.shutdown(timeout=15)
         server.stop()
+        # 실제 유튜브 주소로 나간 요청은 모두 가짜 페이지가 받았다(그 밖은 막았다)
+        assert all(u.startswith(WATCH) for u in youtube["seen"] if "youtube.com" in u)
 
 
 @contextmanager

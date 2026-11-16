@@ -315,7 +315,7 @@ td.empty-row { padding: 14px 8px; color: var(--dim); white-space: normal; }
 .st.is-ok b { color: var(--ok); }
 .st.is-bad b { color: var(--bad); }
 .st.is-info b { color: var(--sub); }
-.st-reason { color: var(--dim); }
+.st-reason, .rec-mark { color: var(--dim); }
 td.wrap.st { white-space: normal; }
 .mini-records .c-time { width: 84px; }
 .mini-records .c-video { width: 30%; }

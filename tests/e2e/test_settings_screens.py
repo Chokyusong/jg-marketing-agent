@@ -110,9 +110,8 @@ def test_settings_save_shows_on_work_screen_survives_rebuild_and_resets(app_with
         assert "is-dirty" not in (page.get_attribute("#settings-save", "class") or "")
         assert page.input_value("#set-daily-max") == "10"
         assert page.input_value("#set-shorts-seconds") == "181"  # 쇼츠 길이 기본 181초
-        # 곧 적용(R3): 홍보 표기 기본 · 게시 직전 확인은 저장만
-        assert page.locator("#set-comment .tag-soon").count() == 1
-        assert page.locator("#set-post .tag-soon").count() == 1
+        # R3부터 광고 표기 기본값 · 게시 직전 확인도 바로 쓴다(「곧 적용」 표시 없음)
+        assert page.locator("#settings-body .tag-soon").count() == 0
         assert not page.is_checked("#set-confirm-before")  # 기본 꺼짐
         # 모니터는 고르기만(좌표 칸 없음). 위쪽 모니터를 골라 둔 상태
         page.wait_for_function("!document.getElementById('set-window-screen').disabled")

@@ -49,7 +49,9 @@ FULL = {(1920, 1009), (1600, 960)}  # 스크롤은 영상 목록 한 곳뿐이�
 
 @pytest.fixture
 def fit_app(tmp_path, make_config, fixture_json):
-    with r1_server(tmp_path, make_config, fixture_json) as app:
+    # 연습 모드 · [게시] 대기 화면까지 잰다(R3 기본 흐름의 화면 재기는 test_r3_post_flow.py)
+    with r1_server(tmp_path, make_config, fixture_json, default_target="sandbox",
+                   confirm_before_post=True) as app:
         yield app
 
 

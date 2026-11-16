@@ -1,13 +1,12 @@
-// ③ 댓글 달기(8단계, R1): 큰 단추 [댓글 달기] 한 번 → 고친 글 저장 → 초안 승인 → 게시 작업 시작.
+// ③ 댓글 달기(8단계, R1·R3): 큰 단추 [댓글 달기] 한 번 → 고친 글 저장 → 초안 승인 → 게시 작업 시작.
 // - 화면에 보이는 초안이 규칙 검사를 통과했을 때만 눌린다. 못 누르면 단추 아래에 이유를 쓴다(startBlocker).
-// - 연습 모드(켬)면 프로그램 안의 연습 페이지에 자동으로 입력·게시한다. 끄면 실제 유튜브:
-//   내 채널 영상(own_video)이면 그 영상 페이지에 자동 입력, 그 밖의 영상은 크롬을 프로필과 영상 주소로 열기만 한다.
-// - 서버는 지금처럼 게시 직전에 사람의 승인을 기다린다(R1에서 서버 동작은 바꾸지 않는다). 그때 큰 단추가
-//   금색 [게시]로 바뀐다. 사람이 직접 게시하는 경우에는 [게시했어요] · [게시 안 함].
+// - 연습 모드(끔, 기본)면 실제 유튜브: 고른 프로필의 크롬으로 그 영상 페이지를 열어 한 글자씩 입력하고
+//   「댓글」을 누르고 내 댓글을 확인한다(어떤 영상이든). 켜면 프로그램 안의 연습 페이지에 같은 순서로 단다.
+// - 설정 「게시 직전 확인」을 켠 경우에만 입력 뒤 멈추고 큰 단추가 금색 [게시]로 바뀐다. 끄면(기본) 한 번으로 끝까지.
 // - 진행 중에는 GET /api/jobs/{id}를 0.5초마다 물어 온다. 끝나면 오늘 숫자·기록·①의 「댓글 달았음」을 바로 고친다.
 // - 바깥 글은 textContent로만 넣는다.
 import { api } from './api.js';
-import { draftText, ownVideo } from './draft.js';
+import { draftText } from './draft.js';
 import { targetName } from './format.js';
 import { refreshOps } from './ops.js';
 import { ensureApproved, isRunning } from './report.js';
@@ -21,12 +20,8 @@ let timer = null;
 let lastFinishedId = null;
 
 const running = (job) => Boolean(job && !job.finished);
-// 연습 모드 → API 대상. 끄면 실제 유튜브(내 채널 영상이면 자동 게시 youtube_auto, 그 밖은 열기만 assist)
-const autoPost = (state, target) => target === 'youtube' && ownVideo(state);
-const apiTarget = (state, target) => {
-  if (target !== 'youtube') return 'sandbox';
-  return autoPost(state, target) ? 'youtube_auto' : 'assist';
-};
+// 연습 모드 → API 대상: 켬 = 연습 페이지(sandbox), 끔 = 실제 게시(youtube)
+const apiTarget = (target) => (target === 'sandbox' ? 'sandbox' : 'youtube');
 
 // 진행 상태 말(UI_SPEC 0절: 프로필 여는 중 → 입력 중 → 게시 완료)
 export const STATE_WORDS = {
@@ -34,7 +29,6 @@ export const STATE_WORDS = {
   launching: '프로필 여는 중',
   typing: '입력 중',
   awaiting_approval: '게시 대기',
-  awaiting_confirm: '직접 게시 대기',
   posting: '게시 중',
   verifying: '확인 중',
   posted: '게시 완료',
@@ -44,11 +38,41 @@ export const STATE_WORDS = {
 // 서버의 진행 칸(0~6) → 화면의 네 칸(프로필 여는 중 · 입력 중 · 게시 · 확인). 6은 모두 지남
 const PHASE_OF_STEP = [0, 1, 2, 3, 3, 4, 5];
 
-export function modeNote(target, auto = false) {
+// 설정 「게시 직전 확인」: GET /api/status로 바로 바뀐 값을 받고, 오기 전에는 화면에 넣어 둔 처음 값
+export function confirmBeforePost(state) {
+  if (state.browser && typeof state.browser.confirm_before_post === 'boolean') return state.browser.confirm_before_post;
+  const box = document.querySelector('.exec-settings');
+  return Boolean(box && box.dataset.confirm === 'true');
+}
+
+export function modeNote(target, confirm = false) {
   if (target === 'sandbox') return '연습 모드 · 실제 유튜브가 아니라 프로그램 안의 연습 페이지에 답니다';
-  return auto
-    ? '실제 유튜브 · 내 채널 영상이라 자동으로 입력하고 게시합니다'
-    : '실제 유튜브 · 크롬으로 영상을 열고 댓글을 복사해 둡니다. 게시는 직접 합니다';
+  return confirm
+    ? '실제 유튜브 · 입력을 마치면 멈춥니다. 크롬 창의 글을 보고 [게시]를 눌러 주세요'
+    : '실제 유튜브 · [댓글 달기]를 누르면 입력하고 바로 게시합니다';
+}
+
+// 최근 로그인 확인에서 「로그인 안 됨」으로 나온 프로필(서버의 시작 전 확인과 같은 기준)
+function signedOutRecently(p, browser) {
+  if (!p || p.signed_in !== false || !p.checked_at) return false;
+  const at = Date.parse(p.checked_at);
+  const trust = (browser && browser.login_trust_seconds) || 3600;
+  return !Number.isNaN(at) && Date.now() - at < trust * 1000;
+}
+
+function loginBlocker(state) {
+  const b = state.browser;
+  const ops = state.ops;
+  if (!b || !b.profiles || !b.profiles.length) return null;
+  if (ops && ops.profile) {
+    const p = b.profiles.find((x) => x.name === ops.profile);
+    return signedOutRecently(p, b)
+      ? `${ops.profile} 프로필이 유튜브에 로그인돼 있지 않습니다. 프로필 화면에서 [로그인하기]를 눌러 주세요.`
+      : null;
+  }
+  return b.profiles.every((p) => signedOutRecently(p, b))
+    ? '로그인된 프로필이 없습니다. 프로필 화면에서 [로그인하기]를 눌러 주세요.'
+    : null;
 }
 
 function checkFor(state) {
@@ -77,8 +101,13 @@ export function startBlocker(state) {
   if (ops && ops.stats && ops.stats.remaining <= 0) return '오늘 올릴 수 있는 댓글을 다 썼습니다. 자정(한국 시각)이 지나면 다시 됩니다.';
   const b = state.browser;
   if (b && !b.chrome_found) return '이 PC에서 크롬을 찾지 못했습니다. 크롬을 설치해 주세요.';
-  if (b && target === 'sandbox' && !b.playwright_ready) return '자동 입력 도구가 설치되지 않아 연습 모드를 쓸 수 없습니다.';
-  if (b && autoPost(state, target) && !b.playwright_ready) return '자동 입력 도구가 설치되지 않아 자동 게시를 할 수 없습니다.';
+  if (b && !b.playwright_ready) return '자동 입력 도구가 설치되지 않아 댓글을 달 수 없습니다.';
+  if (target !== 'sandbox') {
+    const ctx = state.context && state.context.video_id === state.selectedId ? state.context : null;
+    if (ctx && ctx.comments_disabled) return '이 영상은 댓글이 막혀 있어 달 수 없습니다. 다른 영상을 골라 주세요.';
+    const login = loginBlocker(state);
+    if (login) return login;
+  }
   return null;
 }
 
@@ -150,34 +179,15 @@ function start() {
       videoId,
       draftId: draft.id,
       profile: ops.profile,
-      target: apiTarget(now, ops.target),
+      target: apiTarget(ops.target),
       dailyLimit: ops.dailyLimit,
     });
   });
 }
 
-async function copyDraft() {
-  const job = getState().job;
-  if (!job) return;
-  const button = $('job-copy');
-  try {
-    await navigator.clipboard.writeText(job.comment_text);
-  } catch {
-    const area = document.createElement('textarea');
-    area.value = job.comment_text;
-    document.body.append(area);
-    area.select();
-    document.execCommand('copy');
-    area.remove();
-  }
-  button.textContent = '복사했어요';
-  setTimeout(() => { button.textContent = '댓글 복사'; }, 1500);
-}
-
 function onPrimary() {
   const { job } = getState();
   if (job && job.waiting_for === 'approve') act(() => api.approveJob(job.id));
-  else if (job && job.waiting_for === 'confirm') act(() => api.confirmJob(job.id, true));
   else start();
 }
 
@@ -210,7 +220,7 @@ function paintSteps(job) {
 function idleTitle(state, video, blocker) {
   if (!video) return ['영상 선택 대기', '①에서 영상을 고르면 댓글 초안이 나오고, [댓글 달기]를 누르면 끝까지 진행합니다.'];
   if (isRunning(state)) return ['초안 만드는 중', `${video.title} — 초안이 나오면 [댓글 달기]를 누를 수 있습니다.`];
-  if (!blocker) return ['댓글 달 준비 완료', `${video.title} — [댓글 달기]를 누르면 프로필을 열고 입력해 게시합니다.`];
+  if (!blocker) return ['댓글 달 준비 완료', `${video.title} — [댓글 달기]를 누르면 프로필을 열고 입력해 게시하고 내 댓글을 확인합니다.`];
   return ['아직 달 수 없음', video.title];
 }
 
@@ -223,11 +233,10 @@ function paint(state) {
   $('job-box').dataset.state = job ? job.state : 'idle';
   paintSteps(job);
 
-  // 큰 단추 하나가 상태에 따라 [댓글 달기] → [게시] / [게시했어요] → (실패하면) [다시 시도]
+  // 큰 단추 하나가 상태에 따라 [댓글 달기] → (게시 직전 확인을 켰으면) [게시] → (실패하면) [다시 시도]
   let label = '댓글 달기';
   let disabled = state.jobBusy || Boolean(blocker);
   if (job && job.waiting_for === 'approve') { label = '게시'; disabled = state.jobBusy; }
-  else if (job && job.waiting_for === 'confirm') { label = '게시했어요'; disabled = state.jobBusy; }
   else if (running(job)) { label = `${STATE_WORDS[job.state] || job.state_label}…`; disabled = true; }
   else if (state.jobBusy) label = '준비 중…';
   else if (job && job.state === 'failed' && video && job.video_id === video.video_id) label = '다시 시도';
@@ -236,15 +245,12 @@ function paint(state) {
   const why = !job || job.finished ? (state.jobBusy ? '' : blocker || '') : '';
   $('job-why').textContent = why && video && !isRunning(state) ? why : '';
 
-  // 작은 단추 줄: 필요한 것만
-  const waitingConfirm = Boolean(job && job.waiting_for === 'confirm');
-  show('job-copy', waitingConfirm);
-  show('job-not-posted', waitingConfirm);
+  // 작은 단추 줄: 필요한 것만([그만두기] · 게시 완료면 [댓글 보기] · 실패면 [화면 캡처 보기])
   show('job-cancel', running(job));
   const view = show('job-view', Boolean(job && job.state === 'posted'));
   if (job) {
     view.href = job.view_url;
-    view.textContent = job.target === 'sandbox' ? '댓글 보기' : '유튜브에서 내 댓글 보기';
+    view.title = job.target === 'sandbox' ? '연습 페이지에서 내 댓글 보기' : '유튜브 영상 페이지에서 내 댓글 보기';
   }
   const shot = show('job-shot', Boolean(job && job.has_screenshot));
   if (job && job.screenshot_url) shot.href = job.screenshot_url;
@@ -265,9 +271,10 @@ function paint(state) {
     const where = job.target === 'sandbox' ? '연습' : '유튜브';
     const left = job.seconds_left !== null && job.seconds_left !== undefined ? ` (남은 시간 ${Math.ceil(job.seconds_left / 60)}분)` : '';
     title.textContent = job.state === 'posted'
-      ? (job.verified ? '게시 완료 · 확인됨' : '게시 완료 · 확인 못 함')
+      ? (job.verified ? '게시 완료 · 내 댓글 확인됨' : '게시 완료 · 확인 못 함')
       : job.state === 'failed' ? '게시 실패' : `${where} · ${STATE_WORDS[job.state] || job.state_label}`;
-    desc.textContent = `${job.profile} · ${job.message}${left}`;
+    const mark = job.disclosed === false ? ' · 광고 표기 없음' : '';
+    desc.textContent = `${job.profile}${mark} · ${job.message}${left}`;
   } else {
     const [t, d] = idleTitle(state, video, blocker);
     title.textContent = t;
@@ -278,10 +285,10 @@ function paint(state) {
   const dot = $('job-dot');
   dot.classList.remove('is-ok', 'is-bad', 'is-wait', 'is-off');
   let tone = 'is-ok';
-  let text = modeNote(target, autoPost(state, target));
+  let text = modeNote(target, confirmBeforePost(state));
   if (job && job.state === 'failed') { tone = 'is-bad'; text = `${targetName(job.target)} · 실패`; }
   else if (job && job.state === 'posted') text = `${targetName(job.target)} · 게시 완료${job.verified ? '' : '(확인 못 함)'}`;
-  else if (running(job)) { tone = 'is-wait'; text = modeNote(job.mode === 'sandbox' ? 'sandbox' : 'youtube', job.mode === 'auto'); }
+  else if (running(job)) { tone = 'is-wait'; text = modeNote(job.mode === 'sandbox' ? 'sandbox' : 'youtube', job.confirm_before_post); }
   else if (!state.browser) tone = 'is-wait';
   else if (!state.browser.chrome_found) tone = 'is-bad';
   dot.classList.add(tone);
@@ -290,11 +297,6 @@ function paint(state) {
 
 export function initJob() {
   $('job-primary').addEventListener('click', onPrimary);
-  $('job-copy').addEventListener('click', copyDraft);
-  $('job-not-posted').addEventListener('click', () => {
-    const { job } = getState();
-    if (job) act(() => api.confirmJob(job.id, false));
-  });
   $('job-cancel').addEventListener('click', () => {
     const { job } = getState();
     if (job) act(() => api.cancelJob(job.id));

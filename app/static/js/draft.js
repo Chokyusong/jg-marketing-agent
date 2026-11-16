@@ -2,6 +2,8 @@
 // 검사해 글자 수·통과 요약·실패 목록을 그린다. AI 초안(5단계, loadDraft)은 서버가 검사한 결과를
 // 그대로 보이고, 사람이 고치면 같은 검사를 다시 한다.
 // 높이를 아끼려고 통과한 항목은 한 줄 요약으로 접고, 실패한 항목만 문구와 함께 펼친다.
+// R3: 「광고 표기 붙이기」는 모든 영상에서 켜고 끈다. 처음 상태는 설정의 「광고 표기 기본값」.
+// 초안이 있으면 서버가 저장된 글에서 표기만 붙이거나 떼고 다시 검사한다(AI를 다시 부르지 않는다).
 import { api } from './api.js';
 import { el } from './format.js';
 import { getState, setState, subscribe } from './state.js';
@@ -19,16 +21,19 @@ let waitingForContext = false; // 맥락을 모으는 중이라 검사를 미뤘
 const box = () => $('draft-box');
 const disclosure = () => box().dataset.disclosure || '[광고]';
 
-// 「광고 표기 붙이기」 체크(내 채널 영상에서만 끌 수 있다 — 맥락 응답의 own_video). 그 밖의 영상은 늘 켬.
+// 「광고 표기 붙이기」 체크
 export function discloseOn() {
   const c = $('disclose');
   return !c || c.checked;
 }
 
-export function ownVideo(state) {
-  const ctx = state.context && state.context.video_id === state.selectedId ? state.context : null;
-  return Boolean(ctx && ctx.own_video);
+// 새 영상을 고를 때의 처음 상태: 설정의 「광고 표기 기본값」(바꾸면 GET /api/status로 바로 온다)
+export function discloseDefault(state = getState()) {
+  if (state.browser && typeof state.browser.disclose_default === 'boolean') return state.browser.disclose_default;
+  return box().dataset.discloseDefault !== 'false';
 }
+
+let toggleSeq = 0;
 
 // 체크를 바꾸면 글 상자 맨 앞의 표기를 붙이거나 뗀다(그 뒤 다시 검사).
 function applyDisclosure(on) {
@@ -110,7 +115,7 @@ async function runCheck() {
   const mine = ++seq;
   if (!state.validationLoading) setState({ validationLoading: true });
   try {
-    const result = await api.validate(videoId, text);
+    const result = await api.validate(videoId, text, discloseOn());
     if (mine !== seq || getState().selectedId !== videoId) return;
     setState({ validation: { videoId, text, result }, validationLoading: false, validationError: null });
   } catch (error) {
@@ -187,16 +192,7 @@ function render(state) {
   const d = state.draft && state.draft.video_id === state.selectedId ? state.draft : null;
   $('draft-tone').textContent = d && d.tone_label ? `말투 · ${d.tone_label}` : '';
   $('draft-tone').hidden = !(d && d.tone_label);
-  const toggle = $('disclose');
-  const own = ownVideo(state);
-  toggle.disabled = !own || input.disabled;
-  if (!own && !toggle.checked) {
-    toggle.checked = true; // 내 채널 영상이 아니면 늘 붙인다
-    applyDisclosure(true);
-  }
-  $('disclose-toggle').title = own
-    ? '내 채널 영상 · 끄면 광고 표기 없이 초안을 만듭니다'
-    : '내 채널 영상에서만 끌 수 있습니다(다른 영상에는 늘 붙입니다)';
+  $('disclose').disabled = input.disabled; // 어떤 영상이든 켜고 끌 수 있다(게시 중에는 잠근다)
 
   const checks = $('draft-checks');
   checks.replaceChildren(...checksView(state).filter(Boolean));
@@ -207,8 +203,10 @@ function render(state) {
 function resetFor(videoId) {
   clearTimeout(timer);
   seq += 1;
-  $('disclose').checked = true; // 영상을 바꾸면 표기를 켠 상태로 시작한다
-  $('draft-text').value = videoId ? `${disclosure()} ` : '';
+  toggleSeq += 1;
+  const on = discloseDefault(); // 영상을 바꾸면 설정의 「광고 표기 기본값」으로 시작한다
+  $('disclose').checked = on;
+  $('draft-text').value = videoId && on ? `${disclosure()} ` : '';
   paintMirror();
   fitHeight();
   paintCount();
@@ -237,6 +235,41 @@ export function draftText() {
   return $('draft-text').value;
 }
 
+// 켬/끔을 바꿨다: 글 상자에서 바로 붙이거나 떼고, 초안이 있으면 서버에도 알린다
+// (저장된 글에서 표기만 바꾸고 다시 검사 — AI를 다시 부르지 않는다. 길이가 넘치면 검사에 걸린 채로 온다)
+async function onDiscloseChange(on) {
+  const before = $('draft-text').value;
+  applyDisclosure(on);
+  paintMirror();
+  fitHeight();
+  paintCount();
+  render(getState());
+  const state = getState();
+  const d = state.draft && state.draft.video_id === state.selectedId ? state.draft : null;
+  if (!d || d.status === 'superseded') {
+    schedule();
+    return;
+  }
+  const mine = ++toggleSeq;
+  const videoId = d.video_id;
+  const applied = $('draft-text').value;
+  try {
+    const next = await api.setDisclosure(d.id, on);
+    if (mine !== toggleSeq || getState().selectedId !== videoId) return;
+    // 사람이 고친 글이 아직 저장 전이면(켜기 전에 고쳤거나, 저장을 기다리는 사이에 고쳤으면)
+    // 글 상자의 글을 그대로 둔다
+    const edited = before !== d.body || $('draft-text').value !== applied;
+    if (!edited) loadDraft(next);
+    else {
+      setState({ draft: next });
+      schedule();
+    }
+  } catch (error) {
+    if (mine !== toggleSeq || getState().selectedId !== videoId) return;
+    setState({ validationError: error });
+  }
+}
+
 export function initDraft() {
   const input = $('draft-text');
   input.addEventListener('input', () => {
@@ -246,14 +279,7 @@ export function initDraft() {
     render(getState()); // 이름표·흐림을 바로 바꾼다(검사는 입력이 멈추면)
     schedule();
   });
-  $('disclose').addEventListener('change', (event) => {
-    applyDisclosure(event.target.checked);
-    paintMirror();
-    fitHeight();
-    paintCount();
-    render(getState());
-    schedule();
-  });
+  $('disclose').addEventListener('change', (event) => { onDiscloseChange(event.target.checked); });
   paintMirror();
   paintCount();
   // 창 너비가 바뀌면 줄바꿈이 달라지므로 높이를 다시 맞춘다(높이 변화에는 반응하지 않는다).

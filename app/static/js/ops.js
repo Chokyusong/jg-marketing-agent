@@ -2,7 +2,7 @@
 // ③칸 아래 최근 게시 기록(4줄), 아래 줄 「오늘 게시 n/상한」.
 // - 숫자·기록은 GET /api/stats/today · /api/records. 분석·초안·승인·게시가 끝나면 refreshOps()를 부르고,
 //   그 밖에는 30초마다 다시 본다(한국 자정이 지나면 오늘 수가 0으로 돌아온다).
-// - 연습 모드 켬 = 연습 페이지(sandbox), 끔 = 실제 유튜브(youtube). 처음 값은 기본 작업 대상(browser.default_target).
+// - 연습 모드 켬 = 연습 페이지(sandbox), 끔 = 실제 게시(youtube, 기본). 처음 값은 기본 게시 방식(browser.default_target).
 //   고른 값은 화면 상태에만 둔다. 게시 작업이 이 값으로 예약하고, 서버가 상한을 다시 강제한다.
 // - 바깥 글은 textContent로만 넣는다.
 import { api } from './api.js';
@@ -147,7 +147,7 @@ function recordRow(r) {
     el('td', { class: 'nowrap', text: formatKst(r.at), title: r.at }),
     el('td', { class: 'clip', text: r.video_title || r.video_id || '–', title: r.video_title || null }),
     el('td', { class: 'nowrap', text: r.profile || '–', title: whereText(r) || null }),
-    el('td', { class: 'clip', text: r.comment_text || '–', title: r.comment_text || null }),
+    el('td', { class: 'clip', text: r.comment_text || '–', title: r.comment_text ? `${r.comment_text}${r.disclosed === false ? ' (광고 표기 없음)' : ''}` : null }),
     status,
   ]);
 }

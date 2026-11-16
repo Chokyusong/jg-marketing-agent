@@ -490,7 +490,6 @@ async function loadScreens() {
 export function settingsView(s) {
   initial = {};
   const b = s.browser;
-  const c = s.comment;
   return [
     group('유튜브 연결', 'set-youtube', keyRows(s), keyActions(s)),
     group('AI 모델', 'set-ai', modelRows(s), [
@@ -500,22 +499,19 @@ export function settingsView(s) {
     ]),
     group('댓글 규칙', 'set-comment', [
       numberField('comment.min_chars', '최소 글자 수', { unit: '자' }),
-      numberField('comment.max_chars', '최대 글자 수', { unit: '자 (홍보 표기 포함)' }),
+      numberField('comment.max_chars', '최대 글자 수', { unit: '자 (광고 표기 포함)' }),
       textField('comment.brand', '홍보하는 곳', { maxlength: 30 }),
       factsField(s),
-      textField('comment.disclosure', '홍보 표기', { maxlength: 20, note: '댓글이 이 글로 시작합니다' }),
-      switchField('comment.disclose_default', '홍보 표기 기본', '켜짐 · 새 초안에 붙입니다', '꺼짐 · 내 채널 영상에서만 뺍니다'),
-      readRow('내 채널 영상', c.own_video_count
-        ? `${c.own_video_count}개 · 이 영상에서만 홍보 표기를 끌 수 있습니다`
-        : '등록된 영상 없음 · 모든 영상에 홍보 표기를 붙입니다'),
+      textField('comment.disclosure', '광고 표기 문구', { maxlength: 20, note: '켜면 댓글이 이 글로 시작합니다' }),
+      switchField('comment.disclose_default', '광고 표기 기본값', '켜짐 · 새 초안에 광고 표기를 붙입니다', '꺼짐 · 새 초안을 광고 표기 없이 만듭니다'),
     ]),
     group('게시', 'set-post', [
       numberField('limits.daily_max_comments', '하루 상한', { unit: '개 (1~50)', note: '③에서는 낮추기만 됩니다' }),
-      switchField('posting.confirm_before_post', '게시 직전 확인', '켜짐 · 한 번 더 묻습니다', '꺼짐'),
+      switchField('posting.confirm_before_post', '게시 직전 확인', '켜짐 · 입력 뒤 [게시]를 한 번 더 누릅니다', '꺼짐 · [댓글 달기] 한 번으로 게시까지'),
       selectField('browser.typing_speed', '타자 속도', s.edit.typing_speeds, s.edit.values['browser.typing_speed']),
       screenField(s),
       readRow('크롬', flag(b.chrome_found, '찾음', '못 찾음 · 크롬을 설치해 주세요')),
-      readRow('자동 입력', flag(b.playwright_ready, '준비됨', '설치되지 않음 · 연습 모드를 쓸 수 없습니다')),
+      readRow('자동 입력', flag(b.playwright_ready, '준비됨', '설치되지 않음 · 댓글을 달 수 없습니다')),
       readRow('처음 연습 모드', b.default_target === 'sandbox' ? '켜짐' : '꺼짐'),
     ]),
     group('영상 찾기', 'set-discover', [
@@ -743,6 +739,14 @@ export function applyWorkDefaults(s) {
 
   const box = $('draft-box');
   box.dataset.disclosure = s.comment.disclosure;
+  const values = (s.edit && s.edit.values) || {};
+  if (typeof values['comment.disclose_default'] === 'boolean') {
+    box.dataset.discloseDefault = String(values['comment.disclose_default']);
+  }
+  const exec = document.querySelector('.exec-settings');
+  if (exec && typeof values['posting.confirm_before_post'] === 'boolean') {
+    exec.dataset.confirm = String(values['posting.confirm_before_post']);
+  }
   box.dataset.min = String(s.comment.min_chars);
   box.dataset.max = String(s.comment.max_chars);
 

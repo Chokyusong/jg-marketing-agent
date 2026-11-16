@@ -40,7 +40,10 @@ function fullRow(r) {
     el('td', { class: 'nowrap', text: formatKst(r.at), title: r.at }),
     el('td', { class: 'wrap', text: r.video_title || r.video_id || '–' }),
     el('td', { class: 'nowrap', text: whereText(r) || '–' }),
-    el('td', { class: 'wrap', text: r.comment_text || (r.action === 'analyze' ? r.reason : '') || '–' }),
+    el('td', { class: 'wrap' }, [
+      r.comment_text || (r.action === 'analyze' ? r.reason : '') || '–',
+      r.disclosed === false ? el('span', { class: 'rec-mark', text: ' · 광고 표기 없음' }) : null,
+    ]),
     status,
     el('td', {}, [el('span', { class: 'links' }, links)]),
   ]);

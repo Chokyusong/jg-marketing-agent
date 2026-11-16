@@ -34,7 +34,6 @@ export function nextAction(state) {
       const where = job.target === 'sandbox' ? '연습 페이지에' : '유튜브에';
       return { id: 'job-primary', hint: `다음: [게시]를 누르면 ${where} 댓글을 올립니다` };
     }
-    if (job.waiting_for === 'confirm') return { id: 'job-primary', hint: '크롬에서 직접 게시한 뒤 [게시했어요]를 누르세요' };
     return { id: null, hint: `댓글 다는 중 · ${STATE_WORDS[job.state] || job.state_label}` };
   }
   if (state.jobBusy) return { id: null, hint: '댓글 달 준비 중…' };

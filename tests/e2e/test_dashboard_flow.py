@@ -9,6 +9,8 @@
 - 단계마다 금색으로 강조한 요소(.is-next)가 **정확히 하나**이고 그것이 다음 행동인지 본다.
 - 유튜브는 저장해 둔 가짜 응답(httpx.MockTransport), AI는 가짜 LLM. 인터넷·키·Ollama 없이 돈다.
 - 실제 유튜브를 여는 크롬 실행(launcher)은 막아 둔다. 크롬이 간 주소는 이 서버의 `/sandbox/`뿐.
+- R3부터 설정 기본은 실제 게시 · 게시 직전 확인 끔이다. 이 시험은 연습 모드와 [게시] 단계를 보려고
+  설정을 연습 모드(`default_target: sandbox`) · 게시 직전 확인 켬으로 바꿔 돈다.
 - 창을 띄우지 않는다(headless). 주 모니터에 창이 뜨지 않는다.
 """
 
@@ -100,7 +102,8 @@ def _no_real_chrome(args):
 def dashboard(tmp_path: Path, make_config, fixture_json) -> Iterator[dict]:
     config = make_config({
         "limits": {"daily_max_comments": 10},
-        "browser": {"headless": True, "typing_delay_ms": [3, 8],
+        "posting": {"confirm_before_post": True},
+        "browser": {"headless": True, "typing_delay_ms": [3, 8], "default_target": "sandbox",
                     "screenshot_dir": str(tmp_path / "shots")},
     })
     settings = load_settings(

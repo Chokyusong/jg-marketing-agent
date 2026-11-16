@@ -61,17 +61,20 @@ export const api = {
   clearTranscript: (videoId) =>
     request(`/api/videos/${encodeURIComponent(videoId)}/transcript`, { method: 'DELETE' }),
   // 6단계: 규칙 검사 V1~V12
-  validate: (videoId, text) =>
-    request('/api/validate', { method: 'POST', body: JSON.stringify({ video_id: videoId, text }) }),
+  validate: (videoId, text, disclose = true) =>
+    request('/api/validate', { method: 'POST', body: JSON.stringify({ video_id: videoId, text, disclose }) }),
   // 5단계: 분석과 초안
   analyze: (videoId) => request(`/api/analysis/${encodeURIComponent(videoId)}`, { method: 'POST' }),
   storedAnalysis: (videoId) => request(`/api/analysis/${encodeURIComponent(videoId)}`),
-  // disclose=false(홍보 표기 끔)는 내 채널 영상에서만 된다
+  // disclose: 광고 표기를 붙일지(R3: 모든 영상에서 켜고 끈다)
   createDraft: (videoId, { another = false, disclose = true } = {}) =>
     request('/api/drafts', { method: 'POST', body: JSON.stringify({ video_id: videoId, another, disclose }) }),
   listDrafts: (videoId) => request(`/api/drafts?video_id=${encodeURIComponent(videoId)}`),
   updateDraft: (id, body) => request(`/api/drafts/${id}`, { method: 'PATCH', body: JSON.stringify({ body }) }),
   approveDraft: (id) => request(`/api/drafts/${id}/approve`, { method: 'POST' }),
+  // R3: 광고 표기 켬/끔(저장된 글에서 표기만 바꾸고 다시 검사)
+  setDisclosure: (id, disclose) =>
+    request(`/api/drafts/${id}/disclosure`, { method: 'POST', body: JSON.stringify({ disclose }) }),
   // 7단계: 운영 규칙과 기록
   profiles: (target) => request(`/api/profiles?target=${encodeURIComponent(target)}`),
   records: (limit) => request(`/api/records?limit=${encodeURIComponent(limit)}`),
@@ -80,7 +83,7 @@ export const api = {
     if (dailyLimit) params.set('daily_limit', String(dailyLimit));
     return request(`/api/stats/today?${params}`);
   },
-  // 8단계: 게시 작업(테스트 페이지 자동 실행 · 실제 유튜브 열기)
+  // 8단계·R3: 게시 작업(실제 게시 · 연습 모드). approveJob은 게시 직전 확인(설정 켬)의 [게시]
   startJob: ({ videoId, draftId, profile, target, dailyLimit }) =>
     request('/api/jobs', {
       method: 'POST',
@@ -88,8 +91,6 @@ export const api = {
     }),
   getJob: (id) => request(`/api/jobs/${encodeURIComponent(id)}`),
   approveJob: (id) => request(`/api/jobs/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
-  confirmJob: (id, posted) =>
-    request(`/api/jobs/${encodeURIComponent(id)}/confirm`, { method: 'POST', body: JSON.stringify({ posted }) }),
   cancelJob: (id) => request(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
   // 9단계: SETTINGS 패널(읽기 전용)과 [모델 미리 불러오기]
   settings: () => request('/api/settings'),
