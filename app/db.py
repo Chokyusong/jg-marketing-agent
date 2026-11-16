@@ -12,7 +12,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-# 2단계: videos, quota_usage, search_cache(같은 검색 10분 저장, DESIGN 7절)
+# 1번 덩어리(2단계): videos, quota_usage, search_cache(같은 검색 10분 저장, DESIGN 7절)
 MIGRATIONS: list[str] = [
     """
     CREATE TABLE videos (
@@ -38,6 +38,22 @@ MIGRATIONS: list[str] = [
         cache_key  TEXT PRIMARY KEY,
         video_ids  TEXT NOT NULL,          -- JSON 배열(검색 결과 순서)
         created_at TEXT NOT NULL
+    );
+    """,
+    # 3단계: video_context(영상당 1행, DESIGN 4절 · PLAYBOOK 3단계)
+    # - 붙여 넣은 자막만 먼저 저장하면 built_at이 비어 있다(인기 댓글을 아직 부르지 않음).
+    # - built_at이 있으면 comments_json은 그때 받은 인기 댓글이다(다시 만들 때만 새로 부른다).
+    """
+    CREATE TABLE video_context (
+        video_id           TEXT PRIMARY KEY REFERENCES videos(video_id) ON DELETE CASCADE,
+        transcript_source  TEXT NOT NULL DEFAULT 'none'
+                           CHECK (transcript_source IN ('manual', 'unofficial', 'none')),
+        transcript_text    TEXT NOT NULL DEFAULT '',
+        comments_json      TEXT NOT NULL DEFAULT '[]',   -- [{text, like_count, published_at}]
+        comments_disabled  INTEGER NOT NULL DEFAULT 0 CHECK (comments_disabled IN (0, 1)),
+        body_source        TEXT NOT NULL DEFAULT 'title_description'
+                           CHECK (body_source IN ('transcript', 'title_description')),
+        built_at           TEXT
     );
     """,
 ]

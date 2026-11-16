@@ -50,4 +50,11 @@ export const api = {
     return request(`/api/videos${qs ? `?${qs}` : ''}`);
   },
   resolveVideo: (url) => request('/api/videos/resolve', { method: 'POST', body: JSON.stringify({ url }) }),
+  // 3단계: 영상 맥락
+  buildContext: (videoId, { refresh = false } = {}) =>
+    request(`/api/videos/${encodeURIComponent(videoId)}/context${refresh ? '?refresh=true' : ''}`, { method: 'POST' }),
+  saveTranscript: (videoId, text) =>
+    request(`/api/videos/${encodeURIComponent(videoId)}/transcript`, { method: 'PUT', body: JSON.stringify({ text }) }),
+  clearTranscript: (videoId) =>
+    request(`/api/videos/${encodeURIComponent(videoId)}/transcript`, { method: 'DELETE' }),
 };

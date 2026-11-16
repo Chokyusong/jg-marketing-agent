@@ -21,6 +21,7 @@ DEFAULT_ENV_PATH = ROOT / ".env"
 DEFAULT_DB_PATH = ROOT / "data" / "app.sqlite3"
 
 SECRET_ENV_NAMES = ("YOUTUBE_API_KEY",)
+DEFAULT_CONTEXT_CHARS = 6000
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,8 @@ class Settings:
     daily_max_comments: int
     rules: dict[str, Any] = field(repr=False)
     db_path: Path = DEFAULT_DB_PATH
+    transcript_provider: str = "manual"  # manual | unofficial (D1 기본: manual만)
+    context_chars: int = DEFAULT_CONTEXT_CHARS  # 모델에 넣을 영상 자료 길이 한도
     youtube_api_key: str | None = field(default=None, repr=False)
 
     @property
@@ -90,6 +93,8 @@ def load_settings(
         max_results=int(discover_raw.get("max_results") or DiscoverSettings.max_results),
     )
     limits = rules.get("limits") or {}
+    transcript = rules.get("transcript") or {}
+    llm = rules.get("llm") or {}
 
     if db_path is None:
         env_db = _clean(env.get("APP_DB_PATH"))
@@ -100,5 +105,7 @@ def load_settings(
         daily_max_comments=int(limits.get("daily_max_comments", 10)),
         rules=rules,
         db_path=db_path,
+        transcript_provider=str(transcript.get("provider") or "manual").strip().lower(),
+        context_chars=int(llm.get("context_chars") or DEFAULT_CONTEXT_CHARS),
         youtube_api_key=_clean(env.get("YOUTUBE_API_KEY")),
     )

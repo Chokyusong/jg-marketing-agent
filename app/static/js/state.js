@@ -9,6 +9,10 @@ const state = {
   selectedId: null,
   quota: null,           // { used_today, daily_limit }
   youtubeKey: null,      // true | false | null(모름)
+  // 3단계: 선택한 영상의 맥락 요약(POST /api/videos/{id}/context 응답)
+  context: null,         // { video_id, transcript_source, transcript_chars, comment_count, comments_disabled, ... }
+  contextLoading: false, // 맥락을 만들거나 자막을 저장하는 중
+  contextError: null,    // { kind, message, action }
 };
 
 const listeners = new Set();

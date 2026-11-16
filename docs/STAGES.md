@@ -57,11 +57,23 @@ FastAPI 앱, 읽기 전용 3열 화면, `/api/health`, 테스트 2개.
 - 화면은 작업 중에 바뀐 UI_SPEC 세 번째 판(검정·금색 에디토리얼 목업)을 따랐다. 제목 명조는 함께 들어온 `app/static/fonts/fonts.css`(Noto Serif KR)를 불러 쓴다.
 - 설계와 다르게 둔 것: 같은 검색 10분 저장을 위해 `search_cache` 표를 더했다. 서비스 묶음은 `app/youtube/service.py`, 라우터 공용 준비는 `app/api/deps.py`에 두었다(DESIGN 3.1·4절에는 아직 없음).
 
-### [ ] 3단계 — 영상 맥락 수집
+### [-] 3단계 — 영상 맥락 수집
 
 - `app/transcript/`(수동 붙여넣기, 비공식 조회는 꺼진 채로 규격만), `app/analysis/context.py`.
 - 자막 → 없으면 제목·설명, 인기 댓글 20개, 댓글 막힌 영상 처리, 출처 표시, `video_context` 저장.
 - 완료 기준: 자막 있음·없음·댓글 막힘 세 경우의 맥락 묶음 테스트. 너무 긴 자막을 모델 입력 길이에 맞게 자르는 규칙과 테스트.
+
+**진행 상황 (2026-11-16)** — 코드와 자동 테스트는 끝났고, 사람이 화면에서 확인할 것이 남아 `[-]`로 둔다.
+- [x] 자막 있음·없음(제목·설명 대체)·댓글 막힘(오류가 아니라 빈 목록) 세 경우 (`tests/integration/test_context_api.py`)
+- [x] 길이 맞추기: 설명 1,500자, 댓글 200자 × 20개, 자막은 앞 절반 + 뒤 절반(`…(중략)…`), 짧음·딱 맞음·넘침, 결과는 항상 한도 이하 (`tests/unit/test_context_fit.py`)
+- [x] 붙여넣기 정리(공백·빈 줄 줄이기, 시간 표시 유지, NFC, 20,000자 한도) (`tests/unit/test_transcript_manual.py`)
+- [x] 인기 댓글 조회가 할당량 1단위로 기록되고, 저장된 맥락은 댓글을 다시 부르지 않음(`refresh=true`일 때만)
+- [x] API 3개(`POST /api/videos/{id}/context`, `PUT`·`DELETE /api/videos/{id}/transcript`), 응답·로그에 API 키 없음
+- [x] `video_context` 표(MIGRATIONS 2번째 덩어리), 2단계 DB에서 올려도 기존 자료 유지 (`tests/unit/test_db.py`)
+- [x] D1(자막 출처)은 기본값 "수동 붙여넣기만". `transcript.provider: unofficial`이면 "켜져 있지 않다" 오류만 내고 `unofficial.py`는 만들지 않았다
+- [ ] 화면: 영상을 고르면 자막 출처가 뜨고, 자막을 붙여 넣으면 출처가 바뀐다 — 대표 확인. (가짜 응답 서버 + 창 없는 크롬으로 선택·붙여넣기·저장·지우기·댓글 막힘·선택 해제·390px 배치는 개발 중에 눌러 봤다)
+- [ ] 실제 YouTube 키로 인기 댓글을 받아 보는 확인(2단계 `live` 확인과 함께)
+- PLAYBOOK과 다르게 둔 것: `build(video_id, refresh=False)`에 `refresh`를 더했다(저장된 댓글 재사용, PLAYBOOK "함정"의 할당량 규칙). 응답에 `transcript_text`(글 상자를 다시 채우려고)와 `transcript_truncated`·`context_chars`를 더했다. `config.yaml`에 `llm.context_chars: 6000`을 적었다.
 
 ### [ ] 4단계 — Ollama 연동
 

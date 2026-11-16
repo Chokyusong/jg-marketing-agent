@@ -9,6 +9,7 @@ import httpx
 from fastapi import Request
 
 from app import db
+from app.analysis.context import ContextService
 from app.config import Settings, load_settings
 from app.youtube.client import YouTubeClient
 from app.youtube.quota import Clock, QuotaTracker, SearchCache, utc_now
@@ -20,6 +21,7 @@ class Services:
     settings: Settings
     quota: QuotaTracker
     videos: VideoService
+    context: ContextService
 
     def close(self) -> None:
         self.videos.client.close()
@@ -41,7 +43,14 @@ def build_services(
         cache=SearchCache(settings.db_path, clock=clock),
         clock=clock,
     )
-    return Services(settings=settings, quota=quota, videos=videos)
+    context = ContextService(
+        videos,
+        db_path=settings.db_path,
+        clock=clock,
+        transcript_provider=settings.transcript_provider,
+        context_chars=settings.context_chars,
+    )
+    return Services(settings=settings, quota=quota, videos=videos, context=context)
 
 
 class ServiceHolder:

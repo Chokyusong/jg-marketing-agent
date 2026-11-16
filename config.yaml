@@ -25,3 +25,4 @@ browser:
   typing_delay_ms: [60, 160]
 llm:
   provider: ollama
+  context_chars: 6000   # 모델에 넣을 영상 자료 길이 한도(3단계)

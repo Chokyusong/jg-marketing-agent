@@ -135,7 +135,7 @@
       <p class="note" id="quota-note">YouTube 할당량 오늘 <b id="quota-used">–</b> / <span id="quota-limit">10,000</span> 단위 · 검색 1회 100단위 · 같은 검색은 10분 동안 저장한 결과를 씁니다.</p>
     </div>
 
-    <!-- 02 AI 분석과 댓글 초안 (3·5·6단계에서 연결) -->
+    <!-- 02 AI 분석과 댓글 초안 (3단계: 자막 출처·붙여넣기 연결, 5·6단계: 분석·초안·검사) -->
     <div class="column" id="col-analyze">
       <div class="colhead"><h2>AI 분석과 댓글 초안</h2><span class="number">02 / 03</span></div>
 
@@ -151,9 +151,34 @@
           <dt>영상 톤</dt><dd>5단계에서 연결</dd>
           <dt>시청자 니즈</dt><dd>5단계에서 연결</dd>
           <dt>분석 근거</dt><dd>근거 문장과 출처 · 5단계에서 연결</dd>
-          <dt>자막 출처</dt><dd>3단계에서 연결</dd>
         </dl>
+      </div>
 
+      <!-- 영상 자료: 자막 출처와 인기 댓글, 자막 붙여넣기 (3단계) -->
+      <div class="context" id="context-box" aria-live="polite">
+        <dl class="analysis">
+          <dt>자막 출처</dt><dd id="ctx-transcript">영상을 고르면 표시됩니다.</dd>
+          <dt>인기 댓글</dt><dd id="ctx-comments">–</dd>
+        </dl>
+        <p class="caption" id="ctx-note" hidden></p>
+        <div class="alert" id="context-error" role="alert" hidden>
+          <p class="alert-msg" id="context-error-msg"></p>
+          <p class="alert-action" id="context-error-action"></p>
+        </div>
+        <details class="paste" id="transcript-paste">
+          <summary>자막 붙여넣기</summary>
+          <p class="caption">유튜브 영상 아래 '스크립트 표시'에서 복사해 붙여 넣으세요.</p>
+          <label class="sr-only" for="transcript-text">붙여 넣을 자막</label>
+          <textarea class="field" id="transcript-text" rows="6" spellcheck="false" placeholder="0:01 자막 내용…" data-max="{{ max_transcript_chars }}" disabled></textarea>
+          <div class="paste-actions">
+            <span class="paste-count" id="transcript-count">0 / {{ "{:,}".format(max_transcript_chars) }}자</span>
+            <button type="button" class="line-btn" id="transcript-clear" hidden disabled>붙여 넣은 자막 지우기</button>
+            <button type="button" class="line-btn" id="transcript-save" disabled>저장</button>
+          </div>
+        </details>
+      </div>
+
+      <div class="is-off">
         <div class="section-mini">댓글 초안 <span>– / 120자</span></div>
         <div class="comment" aria-disabled="true"><span class="disclosure">{{ disclosure }}</span> 초안 생성은 5단계, 규칙 검사는 6단계에서 연결합니다.</div>
         <div class="draftfooter">

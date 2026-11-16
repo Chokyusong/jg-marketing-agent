@@ -2,6 +2,7 @@
 
 1단계의 `/`(대시보드)와 `/api/health`는 그대로 둔다.
 2단계: YouTube 영상 불러오기(①칸)와 시스템 상태 API를 붙였다.
+3단계: 영상 맥락(자막 붙여넣기·인기 댓글) API를 붙였다(②칸 자막 출처).
 실제 유튜브 화면을 자동으로 조작하는 코드는 없다(DESIGN 6.1).
 """
 
@@ -23,12 +24,13 @@ from app.api import videos as videos_api
 from app.api.deps import ServiceHolder
 from app.config import Settings
 from app.errors import AppError
+from app.transcript.manual import MAX_TRANSCRIPT_CHARS
 from app.youtube.quota import Clock, utc_now
 
 BASE_DIR = Path(__file__).resolve().parent
 mimetypes.add_type("font/woff2", ".woff2")  # 글꼴 파일을 올바른 형식으로 내려보낸다
-APP_VERSION = "0.2.0"
-STAGE = 2
+APP_VERSION = "0.3.0"
+STAGE = 3
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
@@ -71,6 +73,7 @@ def create_app(
                 "daily_max_comments": current.daily_max_comments,
                 "profiles": list(current.rules.get("profiles") or []),
                 "disclosure": (current.rules.get("comment") or {}).get("disclosure", "[광고]"),
+                "max_transcript_chars": MAX_TRANSCRIPT_CHARS,
             },
         )
 

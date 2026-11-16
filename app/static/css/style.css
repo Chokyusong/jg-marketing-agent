@@ -171,6 +171,26 @@ select { background: var(--panel); color: #cfcac3; border: 1px solid var(--line)
 .draftfooter { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; }
 .tag { color: var(--gold); font-size: 11px; letter-spacing: 0.05em; }
 .line-btn { border: 1px solid #6f6b63; background: none; color: #eee9e1; padding: 8px 13px; font-size: 11.5px; white-space: nowrap; }
+.line-btn:disabled { opacity: 0.45; }
+.line-btn[hidden] { display: none; }
+/* 02 영상 자료(3단계): 자막 출처·인기 댓글·자막 붙여넣기 */
+.context { border-top: 1px solid var(--line); padding-top: 12px; margin-bottom: 4px; }
+.context .analysis { margin-bottom: 8px; }
+.context .is-warn { color: var(--gold); }
+.context .caption { margin-top: 4px; }
+.context .caption[hidden] { display: none; }
+.context .alert { margin: 8px 0; }
+.paste { border: 1px solid var(--line-soft); margin-top: 8px; }
+.paste > summary { cursor: pointer; padding: 9px 12px; font-size: 12.5px; color: var(--text); list-style: none; }
+.paste > summary::-webkit-details-marker { display: none; }
+.paste > summary::before { content: "+"; display: inline-block; width: 14px; color: var(--gold); }
+.paste[open] > summary::before { content: "−"; }
+.paste > .caption { margin: 0 12px 8px; }
+.paste textarea { display: block; width: calc(100% - 24px); margin: 0 12px; resize: vertical; min-height: 110px; font-size: 12.5px; line-height: 1.6; }
+.paste textarea:disabled { opacity: 0.6; }
+.paste-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 9px 12px 12px; flex-wrap: wrap; }
+.paste-count { margin-right: auto; color: var(--dim); font-size: 11.5px; }
+.paste-count.is-over { color: var(--bad); }
 
 /* 03 */
 .settings { border: 0; border-top: 1px solid var(--line-soft); margin: 0; padding: 12px 0 0; display: grid; gap: 11px; min-width: 0; }

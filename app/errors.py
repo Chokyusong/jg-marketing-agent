@@ -23,6 +23,10 @@ class ErrorKind(StrEnum):
     # 그 밖
     YOUTUBE_ERROR = "youtube_error"  # 위 6종에 들지 않는 YouTube 오류
     INVALID_URL = "invalid_url"
+    # 3단계: 자막
+    TRANSCRIPT_EMPTY = "transcript_empty"
+    TRANSCRIPT_TOO_LONG = "transcript_too_long"
+    TRANSCRIPT_PROVIDER_OFF = "transcript_provider_off"
 
 
 @dataclass(frozen=True)
@@ -72,6 +76,22 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
         "유튜브 영상 주소로 읽을 수 없습니다.",
         "https://www.youtube.com/watch?v=... 또는 https://youtu.be/... 형태로 넣어 주세요.",
         422,
+    ),
+    ErrorKind.TRANSCRIPT_EMPTY: ErrorText(
+        "붙여 넣은 자막이 비어 있습니다.",
+        "유튜브 영상 아래 '스크립트 표시'에서 자막을 복사해 붙여 넣어 주세요.",
+        422,
+    ),
+    ErrorKind.TRANSCRIPT_TOO_LONG: ErrorText(
+        "붙여 넣은 자막이 너무 깁니다(최대 20,000자).",
+        "앞뒤의 필요 없는 부분을 지우고 20,000자 안으로 줄여 다시 저장해 주세요.",
+        422,
+    ),
+    ErrorKind.TRANSCRIPT_PROVIDER_OFF: ErrorText(
+        "설정한 자막 출처를 쓸 수 없습니다. 비공식 자막 조회는 켜져 있지 않습니다.",
+        "config.yaml의 transcript.provider를 manual로 바꾸고 서버를 다시 켜 주세요. "
+        "자막은 02칸 「자막 붙여넣기」로 넣을 수 있습니다.",
+        503,
     ),
 }
 

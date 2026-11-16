@@ -5,7 +5,7 @@ import re
 import pytest
 
 JS_FILES = ["app.js", "api.js", "state.js", "format.js", "discover.js", "analysis.js", "flow.js",
-            "topbar.js"]
+            "topbar.js", "context.js"]
 
 
 @pytest.fixture
@@ -52,9 +52,9 @@ def test_discover_column_is_wired(page):
 
 
 def test_unconnected_parts_are_off_and_labelled(page):
-    for label in ("3단계에서 연결", "4단계에서 연결", "5단계에서 연결", "7단계에서 연결",
-                  "8단계에서 연결"):
+    for label in ("4단계에서 연결", "5단계에서 연결", "7단계에서 연결", "8단계에서 연결"):
         assert label in page
+    assert "3단계에서 연결" not in page  # 3단계에서 켠 요소는 문구도 지운다
     assert '<dl class="today is-off"' in page
     assert '<fieldset class="settings" disabled>' in page
     assert '<button type="button" class="primary" disabled>' in page
@@ -134,3 +134,53 @@ def test_broken_thumbnail_falls_back_to_empty_box(make_client):
         js = client.get(f"/static/js/{name}").text
         assert "thumbnail(video)" in js
         assert "el('img'" not in js  # 썸네일 그림은 thumbnail()만 만든다
+
+
+# ---------------------------------------------------------------- 3단계: 02칸 자막 출처·붙여넣기
+
+
+def test_context_rows_are_on(page):
+    analyze = _section(page, 'id="col-analyze"', 'id="col-execute"')
+    box = _section(analyze, 'id="context-box"', '<div class="is-off">')
+    assert 'class="is-off"' not in box  # 켠 요소: 꺼짐 표시 없음
+    assert "<dt>자막 출처</dt>" in box and 'id="ctx-transcript"' in box
+    assert "<dt>인기 댓글</dt>" in box and 'id="ctx-comments"' in box
+    assert 'id="context-error"' in box and 'role="alert"' in box
+    # 분석(5단계)과 초안(5·6단계)은 그대로 꺼져 있다
+    off_blocks = analyze.split('<div class="is-off">')[1:]
+    assert len(off_blocks) == 2
+    assert "CONTEXT REPORT · 5단계에서 연결" in off_blocks[0]
+    assert "자막 출처" not in off_blocks[0].split("</dl>", 1)[0]
+    assert "DRAFT · 5단계에서 연결" in off_blocks[1]
+
+
+def test_transcript_paste_box(page):
+    box = _section(page, 'id="transcript-paste"', "</details>")
+    assert page.count('<details class="paste" id="transcript-paste">') == 1  # 접어 둔 채(open 없음)
+    assert "<summary>자막 붙여넣기</summary>" in box
+    assert "유튜브 영상 아래 '스크립트 표시'에서 복사해 붙여 넣으세요." in box
+    assert '<textarea class="field" id="transcript-text"' in box
+    assert 'data-max="20000"' in box
+    assert "0 / 20,000자" in box
+    assert 'id="transcript-save" disabled>저장</button>' in box
+    assert 'id="transcript-clear" hidden disabled>' in box
+
+
+def test_context_js_wires_the_three_apis(make_client):
+    client = make_client(key=None)
+    api = client.get("/static/js/api.js").text
+    for snippet in ("/context${refresh ? '?refresh=true' : ''}", "method: 'PUT'",
+                    "method: 'DELETE'"):
+        assert snippet in api
+    js = client.get("/static/js/context.js").text
+    for text in ("붙여 넣은 자막 ", "자막 없음 · 제목과 설명으로 대신", "인기 댓글 ",
+                 "댓글이 막힌 영상"):
+        assert text in js
+    assert "api.buildContext(videoId)" in js
+    assert "api.saveTranscript(videoId, text)" in js
+    assert "initContext" in client.get("/static/js/app.js").text
+
+
+def test_version_shows_stage3(page):
+    assert "V 0.3.0 — LOCAL · 3단계" in page
+    assert "STAGE 3" in page
