@@ -16,7 +16,7 @@
 4. API 키·토큰·프로필 폴더가 코드, 테스트 자료, 로그, 커밋에 없다.
 5. 실제 유튜브 화면을 자동으로 조작하는 코드는 이번 작업의 영상 주소 하나만 여는 실행기(`youtube_driver.py`) 하나뿐이고, 규칙 검사를 통과한 초안에 사람이 [댓글 달기]를 눌러야 돈다. 자동 테스트는 실제 유튜브에 접속하지 않는다(DESIGN 6.1, R3).
 6. 끝낼 때 "구현함 / 자동 검증함 / 사람이 확인함 / 안 함"을 나눠 보고한다. 안 한 것을 했다고 쓰지 않는다.
-7. README와 이 문서의 상태 표기를 실제대로 고친다.
+7. 이 문서의 상태 표기를 실제대로 고친다. 단계별로 바뀐 내용은 `docs/CHANGELOG.md`(예전 README)에, 설치·쓰는 법·요구사항 표처럼 심사자가 볼 것이 바뀌면 README(3분 요약)도 고친다.
 
 ## 단계
 
@@ -194,7 +194,7 @@ FastAPI 앱, 읽기 전용 3열 화면, `/api/health`, 테스트 2개.
 - [x] 프로필 폴더 `%LOCALAPPDATA%\JGMarketingAgent\profiles\profile-N`(환경 변수 `JG_PROFILES_DIR`로 바꿈, 저장소 밖). 크롬 `lockfile`이 잡혀 있으면 `profile_in_use` 「그 프로필의 크롬 창을 닫아 주세요」. 설정 `browser.headless`(기본 false, 테스트 true)·`window_position`(기본 60,-1060)·`typing_delay_ms`·`chrome_path`·`default_target`
 - [x] API: `POST /api/jobs`, `GET /api/jobs/{id}`, `POST /api/jobs/{id}/approve`·`confirm`·`cancel`, `GET /api/jobs/{id}/screenshot`. `GET /api/status`에 `browser{chrome_found, playwright_ready, profiles[{name, folder, exists}], active_job_id}`(기존 필드 그대로, 폴더 전체 경로는 싣지 않음). 오류 종류 7개 더함
 - [x] 화면 03칸: 큰 버튼은 승인한 초안 + 그 대상에서 댓글 안 단 영상 + 오늘 남은 횟수가 있을 때만 켜짐. 한 버튼이 [브라우저에서 영상 열기] → [게시 승인 — 「댓글」 누르기](sandbox) / [게시했어요](assist)로 바뀜. 진행 단계 6개 0.5초마다, 작은 단추는 그 상태에 필요한 것만(승인 대기: 작업 취소 / assist 확인 대기: 초안 복사·게시 안 함·작업 취소 / 실패: 화면 캡처 / 완료: 댓글 보기), 실패 사유 한 줄, 작업 방식 안내 「통제된 테스트 페이지에서 실행 · 실제 유튜브가 아닙니다」. 위 줄 BROWSER 실제 상태. 「8단계에서 연결」 문구 지움. 끝나면 통계·작업 기록·01칸 「댓글 단 영상」을 바로 고침. 새로 고쳐도 진행 중인 작업을 이어 봄
-- [x] 프로그램 창을 닫으면 작업을 취소하고 크롬을 닫은 뒤 서버를 멈춘다(`app/desktop.py`). README·`run.ps1`에 8단계부터 `--reload`를 쓰지 않는다고 적었다
+- [x] 프로그램 창을 닫으면 작업을 취소하고 크롬을 닫은 뒤 서버를 멈춘다(`app/desktop.py`). README(지금은 `docs/CHANGELOG.md`)·`run.ps1`에 8단계부터 `--reload`를 쓰지 않는다고 적었다
 - [x] `scripts/setup_profile.ps1`(ASCII): 그 프로필 폴더로 크롬을 Google 로그인 화면에 연다. **만들기만 하고 실행하지 않았다**
 - [x] 화면 높이(1920×1080, 가짜 YouTube·가짜 LLM, 창 없는 크롬): 3열 끝 첫 화면 981px, 초안 승인 뒤 1014px, **승인 대기 1014px**, 게시 완료 1014px, 실패 1007px — 모두 스크롤 없이 3열이 보인다. 가로 스크롤 없음. 이 측정에서 작은 단추가 `hidden`인데도 보이던 CSS 문제를 찾아 고쳤다(테스트 추가)
 - [x] e2e(이 PC에서 실제로 돌림, 창 없는 크롬 + 임시 포트 앱 서버 + 임시 프로필): 전 과정 성공(입력된 글 = 초안, 입력 이벤트 수 = 글자 수), 승인 전에는 댓글이 달리지 않음, `fail=hide_button` 사유와 캡처 파일, `fail=reject` 사유, 같은 영상 두 번째 시작 거절, 하루 상한, 프로필 사용 중, 간 주소가 `/sandbox/`뿐
@@ -355,6 +355,7 @@ FastAPI 앱, 읽기 전용 3열 화면, `/api/health`, 테스트 2개.
 ### [ ] 11단계 — 시연 준비
 
 - 한국어 README(설치·실행·설정·테스트), `docs/DEVIATIONS.md`(원문과 다른 점), `docs/INTENT.md`(제작 의도), 시연 순서 대본, 시연용 저장 데이터.
+- [x] README를 심사자가 3분 안에 읽게 다시 썼다(2026-11-17): 한 줄 소개와 화면 한 장(가짜 자료) · 실행하기 · 세 칸 쓰는 법 · 과제 요구사항과 확인할 곳(화면·파일·테스트) · 설계 요점과 한계 · 테스트 · 오픈소스 출처(설치된 패키지 정보로 확인). 예전 README는 지우지 않고 `docs/CHANGELOG.md`로 옮겼다. 원문과 다른 점은 `docs/DEVIATIONS.md` 대신 DESIGN 2절에 있다.
 - 완료 기준: 새 폴더에 내려받아 README대로 실행된다. 공개 저장소에 비밀값이 없다. 시연 대본대로 2~3분 안에 끝난다.
 
 ### [-] 12단계 — 다른 LLM 물리기 (제출 뒤, 또는 로컬 모델 품질이 모자랄 때 앞당김)

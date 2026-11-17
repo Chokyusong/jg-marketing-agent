@@ -1,250 +1,165 @@
 # JG 마케팅 에이전트
 
-유튜브 영상을 분석해 댓글 초안(광고 표기 `[광고]` 켬/끔)을 만들고, 사람이 검토하고 [댓글 달기]를 누르면 고른 크롬 프로필로 그 영상에 한 글자씩 입력·게시·확인하는 내 PC용 프로그램(FastAPI + 자체 창). 제이지그룹 AI PM 채용 과제 TRACK 2 「마케팅 AI 에이전트 개발」.
+유튜브 연애 고민 영상을 AI가 읽고 댓글 초안을 만들면, 사람이 검토하고 [댓글 달기]를 눌러 크롬 프로필로 그 영상에 한 글자씩 달아 주는 내 PC용 프로그램입니다.
+제이지그룹 AI PM 채용 과제 TRACK 2 「마케팅 AI 에이전트 개발」 제출물입니다.
 
-## 지금 되는 것 / 아직 안 되는 것 (2026-11-17, 3단계 + P단계 + 6단계 + 4단계 + 5단계 + 7단계 + 8단계 + 9단계 + R1 + R2 + R3 + R4 + R5)
+![작업 화면 — ① 영상 불러오기 · ② 영상 선택(고민 한 줄과 댓글 초안) · ③ 댓글 달기(게시 완료)](docs/images/dashboard.png)
 
-**되는 것**
-- **설정에서 AI 바꾸기 (R5, 2026-11-17)** — 파일을 열지 않고 [저장]하면 다음 분석·초안부터 그 AI로 쓴다(다시 켜지 않음)
-  - 설정 「AI 모델」: 왼쪽 목록에서 고른다 — 이 PC에서(Ollama) · API 키로(ChatGPT(OpenAI) · Claude(Anthropic) · Gemini(Google) · Grok(xAI) · 직접 입력) · 로그인된 프로그램으로(Codex · Claude Code. Gemini 프로그램은 아직 연결 안 함)
-  - API 키 AI: 키를 넣고 [키 저장](AI마다 따로 Windows가 암호화, 「저장됨」만 보임) → 「모델」 목록에서 고르기(키가 있으면 그 회사의 목록을 저절로 받아 오고, 못 받으면 `config.yaml` `llm.providers.<이름>.models`의 추천 목록 — 공식 문서로 확인한 이름만. 맨 아래 「직접 입력…」, [목록 다시 받기]) → [연결 확인](모델 목록만 읽어 요금이 들지 않음) → [이 AI 쓰기] → [저장]
-  - 이 PC 밖으로 보내는 AI는 「영상 제목·설명·자막·댓글이 ○○(으)로 전송됩니다. 요금이 들 수 있습니다」를 보이고 한 번 더 확인한다
-  - 로그인된 프로그램은 이 PC에 이미 로그인된 Codex·Claude Code를 대신 실행한다: 빈 임시 폴더, 도구 끔(읽기 전용), 한 번 실행, 시간 제한, 영상 자료는 표준 입력으로, 창 없음. 그 프로그램의 로그인 파일은 읽지 않는다
-  - 모델: Codex는 그 프로그램의 `codex debug models`에서 그 계정이 고를 수 있는 것(`visibility: list`)만 받아 온다(못 받으면 「기본값」·「직접 입력…」만). Claude Code는 목록 명령이 없어 별칭(fable·opus·sonnet). 그 계정에서 못 쓰는 모델을 고르면 「이 계정에서는 ○○ 모델을 쓸 수 없습니다」. API 키 AI의 추천 목록은 계정에 따라 못 쓰는 것이 있을 수 있어, 키를 넣으면 쓸 수 있는 목록을 받아 온다
-  - 위 줄 오른쪽 칩과 아래 줄에 「AI 이름 · 모델 · 이 PC/외부」. 미리 불러오기·추천 모델 안내는 Ollama만
-  - 확인: Codex는 짧은 시험 문장으로 한 번 실행해 JSON 답을 받았다. Claude Code는 이 PC의 로그인이 만료돼 실패했다(「로그인이 풀렸습니다」로 보인다). API 키 AI는 진짜 키로 불러 보지 않았다(대표가 키를 넣은 뒤 확인)
-- **자막 자동 읽기 · 뜨기 직전 영상 · 첫 분석 시간 (R4, 2026-11-17)**
-  - 영상을 고르면 **자막을 자동으로 읽는다**(`youtube-transcript-api`, 설정 「자막 자동으로 읽기」 기본 켬). 고르는 순서: 한국어 올린 자막 → 한국어 자동 생성 → 다른 언어. ②칸 「자동으로 읽은 자막 3,210자(한국어, 자동 생성)」. 줄마다 시간 표시(「1:23 …」), 2만 자가 넘으면 앞부분과 뒷부분만. 한 번 읽은 자막은 저장해 두고 다시 부르지 않는다
-  - 못 읽으면(자막 없음·막아 둠·유튜브가 막음·10초 넘음·오류) 조용히 넘어가 「자막을 읽지 못해 제목과 설명으로 대신합니다(이유)」. 잠깐 막힌 경우는 30분 뒤에 다시 해 본다. 「자막 직접 넣기」는 그대로 남아 있고, 붙여 넣은 자막이 늘 먼저다(붙여 넣은 자막 > 자동 > 없음)
-  - ① **[뜨기 직전 영상]**: 올린 지 34시간 안, 검색어 「연애」(설정), 최신순 50개 중 **조회수 1,000~5,000이면서 시간당 150회 이상**을 시간당 조회수가 큰 순서로. 줄마다 「뜨기 직전 · 시간당 n회」. 없으면 「지금 조건에 맞는 영상이 없습니다(조회수 1,000~5,000 · 시간당 150회 이상)」. 쇼츠 빼기는 ①의 체크를 따른다. 같은 요청은 10분 저장
-  - 뜨기 직전 목록에서 고른 영상은 **초안까지만** 만든다: ③ [댓글 달기]가 「뜨기 직전 영상은 초안까지만 만듭니다」로 막히고 서버도 게시 작업을 거절한다(`rising_draft_only`). 같은 영상을 [영상 불러오기]나 링크로 다시 불러오면 평소처럼 달 수 있다
-  - **첫 분석 시간 초과 막기**: 모델이 아직 메모리에 없으면(Ollama 불러온 모델 목록) 그 요청만 420초까지 기다리고 ②칸에 「AI 모델을 불러오는 중입니다. 처음에는 1~3분 걸립니다」. 설정 「켤 때 미리 불러오기」(기본 켬)는 프로그램을 켤 때 뒤에서 모델을 불러 둔다(실패해도 조용히)
-  - 시작 준비 상자: 지금 모델이 추천 모델(`qwen3.8:27b`)이 아니고 추천 모델이 설치돼 있으면 「지금 ○○ — 추천 모델 △△로 바꾸기 [바꾸기]」. [바꾸기]는 프로그램 설정에 저장한다(`.env`는 건드리지 않는다)
-- **실제 게시가 기본 (R3, 2026-11-17)** — 아래 8단계의 「수동 승인 후 게시(assist)」·「내 채널 영상 자동 게시」 설명은 이 방식으로 바뀌었다
-  - ③ [댓글 달기] **한 번**: 지금 초안을 승인하고(규칙 검사 통과 필수) → 프로필 여는 중 → 입력 중(그 영상 페이지에서 댓글 상자까지 내려 한 글자씩) → 「댓글」 → 내 댓글 확인 → 「게시 완료 · [댓글 보기]」(그 영상의 유튜브 주소). **어떤 영상이든** 된다(`own_video_ids` 구분 없음, 설정에 키가 남아 있어도 무시). 실패하면 이유 · [화면 캡처 보기] · [다시 시도]
-  - 게시 방식은 둘: **실제 게시**(기본, ③ 「연습 모드」 끔)와 **연습 모드**(프로그램 안의 연습 페이지). 「크롬만 열어 주고 사람이 붙여넣기」와 그 단추([댓글 복사]·[게시했어요]·[게시 안 함])는 없앴다. 옛 API 대상 이름 `assist`·`youtube_auto`는 실제 게시로 받는다
-  - 설정 「게시 직전 확인」(기본 끔): 켜면 입력 뒤 「게시 대기」에서 [게시]를 한 번 더 눌러야 게시한다(5분 안에 안 누르면 실패)
-  - 시작 전 확인(걸리면 크롬을 열지 않고 쉬운 말로 이유와 할 일): 한 번에 작업 하나 · 댓글이 막힌 영상 · 자동 입력 도구와 크롬 · 프로필 로그인(1시간 안에 「로그인 안 됨」으로 확인된 프로필이면 「프로필 화면에서 [로그인하기]」, 자동 배정은 그 프로필을 건너뜀. 확인한 적이 없으면 크롬이 영상 페이지에서 직접 보고, 로그인 안 됨이면 입력 전에 멈추고 프로필 상태를 고쳐 둔다) · 그 프로필 창이 열려 있지 않은지 · 영상당 1개 · 오늘 상한
-  - **광고 표기 켬/끔을 모든 영상에서**: ② 「광고 표기 붙이기」, 처음 상태는 설정 「광고 표기 기본값」(켬). 끄면 V4는 「표기 끔」으로 통과, 켜면 `[광고] `로 시작해야 한다. 글자 수는 늘 전체 글. 켬/끔을 바꾸면 모델을 다시 부르지 않고 저장된 초안에서 표기만 붙이거나 떼고 다시 검사한다(길어져 넘치면 걸린 채로 보인다). 작업 기록에 표기를 붙였는지 남는다(기록에 「광고 표기 없음」)
-  - 유튜브 화면 요소 이름은 `app/browser/youtube_driver.py`의 `SELECTORS` 한곳(언어와 상관없는 요소 이름). 못 찾으면 사유에 「찾지 못한 요소: 「댓글」 게시 단추(요소 이름 …)」와 화면 캡처
-  - `scripts/check_youtube_page.py <영상 주소|ID> [--profile 유튜브1] [--show]`: 영상 페이지에서 요소가 잡히는지 **읽기만** 해서 표로 보여 준다(입력·누르기 없음, 기본 창 없이)
-- 프로그램으로 실행 (P단계): `JG-Marketing-Agent.cmd`를 더블클릭하면 브라우저 탭·주소창 없는 자체 창(「JG Marketing Agent」)이 뜬다. 창을 닫으면 프로그램이 끝난다. 이미 떠 있으면 새로 띄우지 않고 알린다. 창 안의 바깥 링크("YouTube에서 보기")는 기본 브라우저로 열린다
-- **프로그램형 화면 (R1, 2026-11-17)** — [docs/UI_SPEC.md](docs/UI_SPEC.md) 4판. 아래 단계별 설명의 옛 단추 이름은 이렇게 바뀌었다: [영상 찾기] → [영상 불러오기], [분석하고 초안 만들기] → 없음(영상을 고르면 저절로), [다른 초안 생성] → [다른 댓글 만들기], [이 초안 승인]·[브라우저에서 영상 열기] → [댓글 달기] 하나, [게시 승인] → [게시], 「홍보 표기」 → 「광고 표기 붙이기」, 「테스트 페이지 자동 실행」 → 「연습 모드」 켬, SETTINGS·VIEW ALL 패널 → 설정·기록 화면. 영어 이름표는 화면에서 모두 뺐다
-  - 틀: 왼쪽 줄(JG · 작업 · 기록 · 프로필 · 설정, 아이콘 + 한글 이름, 지금 화면은 금색, 준비가 안 된 화면에는 붉은 점), 위 줄(화면 이름 · ① 영상 불러오기 → ② 영상 선택 → ③ 댓글 달기 · 「다음: …」 안내), 아래 줄(AI 모델 · 유튜브 연결 · 프로필 · 오늘 게시 n/상한, 누르면 해당 화면 · 오른쪽 끝 버전). 페이지는 스크롤하지 않는다. 화면 네 개는 한 페이지 안에서 바꾸므로 기록·설정에 갔다 와도 작업 화면의 고른 영상·초안·게시 진행이 그대로다
-  - 작업 화면 세 칸(30:38:32): ① 큰 [영상 불러오기] · 검색어 · 기간·정렬·개수·쇼츠 빼기 · [뜨기 직전 영상](R4에서 연결) · 「영상 링크로 불러오기」 · 목록(올린 날짜 11.17 + n시간 전, 「댓글 달았음」 표시, 스크롤은 이 목록 한 곳). ② 영상을 고르면 단추 없이 「영상 자료 읽는 중 → 고민 정리 중 → 댓글 쓰는 중」(처음에는 1분쯤 걸릴 수 있습니다)으로 고민 한 줄·근거·댓글 초안·글자 수·규칙 검사(통과면 한 줄, 걸린 것만 펼침)를 채운다. 다른 영상으로 바꾸면 하던 결과는 버린다. 이미 만든 초안이 있으면 모델을 다시 부르지 않고 보여 준다. 「자막 직접 넣기」는 접어 둠. ③ 프로필 · 연습 모드 스위치 · [댓글 달기] 한 번이 고친 글 저장 → 초안 승인 → 게시 작업 시작까지 한다(규칙 검사에 걸리면 꺼지고 이유가 보인다). (R3부터 게시 직전 확인을 켰을 때만 금색 [게시]를 기다린다.) 진행 「프로필 여는 중 → 입력 중 → 게시 → 확인」, 끝나면 「게시 완료 · [댓글 보기]」, 실패면 사유와 [화면 캡처 보기] · [다시 시도]. 아래에 최근 게시 4줄과 [기록 전체 보기]
-  - 기록 화면(오늘 숫자 4개, 전체 기록 표, 전체·게시·실패 거르기), 프로필 화면(카드 3장, 로그인 단추는 「곧 연결」), 설정 화면(유튜브 연결·AI 모델·댓글 규칙·게시·영상 찾기 묶음을 읽기 전용으로, 저장 단추는 「곧 연결」, [미리 불러오기]는 동작)
-  - 크기: 1920×1009(1080 모니터에서 최대화한 창)·1903×1009·1600×960(기본 창)에서는 세 칸이 다 보이고 스크롤은 영상 목록 한 곳뿐. 1366×720에서는 ②·③ 칸 안에서만 스크롤. 1100px 아래에서는 왼쪽 줄이 아이콘만 남고 세 칸을 ①②③ 탭으로 하나씩. 가장 작은 글자 12px, 단추·입력 칸 높이 36px 이상, 금색 단추는 한 번에 하나
-  - 연습 모드는 R3부터 꺼진 채로 시작한다(`browser.default_target: youtube`, UI_SPEC과 같음)
-- **설정과 프로필 로그인을 프로그램 안에서 (R2, 2026-11-17)** — `.env`나 `config.yaml`을 열지 않아도 된다
-  - 설정 화면: 유튜브 연결(API 키를 넣고 [키 저장] → 「저장됨」만 보이고 값은 다시 보이지 않음, [바꾸기]·[지우기]·[연결 확인], 접어 둔 키 받는 법, 오늘 사용량) · AI 모델(이 PC의 모델 고르기, [모델 확인]·[미리 불러오기], 문제면 고치는 법) · 댓글 규칙(글자 수·홍보하는 곳·써도 되는 사실 줄 더하기/빼기·홍보 표기·홍보 표기 기본) · 게시(하루 상한·게시 직전 확인·타자 속도·크롬 창 띄울 모니터) · 영상 찾기(기본 검색어·개수·쇼츠 빼기·쇼츠 길이 181초). 바꾸면 [저장]이 금색, 누르면 바로 적용(작업 화면의 기본 검색어·하루 상한도 따라 바뀜), 틀린 칸은 옆에 이유. [기본값으로]는 두 번 눌러 되돌림(키는 남김). 광고 표기 기본값·게시 직전 확인도 R3부터 바로 적용
-  - 프로필 화면: 카드 3장(로그인 상태와 채널 이름 · 확인한 때 · 마지막으로 쓴 때), [로그인하기](보통 크롬 창이 구글 로그인 화면으로 열림, 로그인은 사람이 직접, 창을 닫으면 저절로 한 번 확인) · [로그인 확인](창 없이 읽기만) · [유튜브 열기]. 로그인 상태는 아래 줄 「프로필」과 ③ 프로필 고르기에도 보인다
-  - 작업 화면 위 「시작 준비」 한 줄: 유튜브 연결 [API 키 넣기] · AI 모델 [모델 확인] · 프로필 로그인 [유튜브1 로그인]. 누르면 고칠 곳으로 가고, 셋 다 되면 사라진다([닫기]도 됨). 연습 모드는 키와 로그인 없이도 된다
-- 01 영상 탐색 (2단계): [영상 찾기] 한 번으로 `config.yaml`의 기본 검색어(`discover.query`) 최신 영상 목록(썸네일·길이·제목·채널·조회수·올린 때). 검색어, 업로드 기간·정렬(최신·관련성·조회수)·표시 개수 거르기, 「쇼츠 제외」 체크(기본 켬 — 길이 61초 미만·길이 정보가 없는 영상을 빼고 표시 개수를 채운다. 결과 줄에 「쇼츠 n개 제외」. 검색 1회 100단위는 같다), URL 직접 입력, 영상 선택, 오류마다 문구와 다음 행동
-- YouTube Data API 연동: 검색·영상 상세·인기 댓글, 오류 6종 분류(키 없음·키 거부·할당량 초과·댓글 막힘·영상 없음·네트워크), 같은 검색 10분 저장, 오늘 사용 단위 기록(SQLite `data/app.sqlite3`)
-- 위 줄 시스템 상태: YouTube 키가 있는지 없는지(값은 보이지 않음). 01칸 아래에 오늘 할당량 사용량. 영상을 고르면 흐름 띠가 02로 넘어가고 02칸에 선택한 영상이 보인다
-- 02 영상 자료 (3단계): 영상을 고르면 맥락을 모으고 「자막 출처」(붙여 넣은 자막 n자 / 자막 없음 · 제목과 설명으로 대신)와 「인기 댓글」(n개 / 댓글이 막힌 영상) 줄을 보인다. 「자막 붙여넣기」(접어 둠)에 유튜브 '스크립트 표시'에서 복사한 자막을 넣고 [저장]하면 출처가 바뀐다. 붙여 넣은 자막은 지울 수 있다. 자막은 수동 붙여넣기만 쓴다(비공식 조회는 만들지 않았다)
-- 02 댓글 초안과 규칙 검사 (6단계): 영상을 고르면 「댓글 초안」 글 상자가 켜지고 `[광고] `가 미리 들어간다(표기는 금색). 사람이 직접 쓰고 입력을 0.4초 멈추면 V1~V14(길이 40~120자·한 줄, 링크, 해시태그, 표기 맨 앞, 브랜드 1~2번, 근거가 영상 자료에 있음, 영상의 핵심 말을 담음, 이용 후기 표현(써 본 척), 지어낸 연애 사연(내 애인 이야기), 효능·최상급, 이전 글·과제 예시 댓글과 유사, 한글·영문·숫자·기본 문장부호만(`ㅠㅠ`·`ㅋㅋ`·`...`는 됨) — 한자·일본어 글자·이모지가 있으면 걸린 글자를 알려 줌, 영상 글을 13자 이상 이어서 베끼지 않음·제목을 따옴표로 통째로 옮기지 않음, 운명원을 들은 얘기(「~다던데」)로 꺼내고 바람(「~보고 싶다」)으로 맺음)을 검사해 글자 수와 결과를 보인다. 통과한 항목은 「14개 중 n개 통과」 한 줄로 접고, 걸린 항목만 무엇이 걸렸고 어떻게 고치면 되는지 펼친다. 모두 통과하면 이름표가 `DRAFT · REVIEW REQUIRED`에서 `CHECKED`로 바뀌고 흐름 띠가 03으로 넘어간다. 대조 자료는 3단계 맥락(제목·설명·붙여 넣은 자막·인기 댓글)이다
-- 02 「홍보 표기」 켬/끔 (2026-11-17, **R3에서 모든 영상으로 바뀜 — 맨 위 R3 참고**): 초안 제목 줄의 「홍보 표기」 체크. 기본은 켬(`[광고] `로 시작). `config.yaml`의 `own_video_ids`(내 채널 영상 ID 목록, 기본 빈 목록)에 든 영상을 고르면 체크가 풀려 끌 수 있고, 끄면 글 상자 맨 앞 표기가 빠지며 V4는 「내 채널 영상 · 표기 끔」으로 통과한다. 그 밖의 영상은 켜진 채 잠긴다(API로 `disclose: false`를 보내도 422 `disclosure_required`). SETTINGS에 「내 채널 영상 n개」
-- 02 AI 분석과 초안 (5단계): 영상을 고르고 [분석하고 초안 만들기]를 누르면 「맥락 수집 → 분석 → 초안 → 검사」 진행과 걸린 초를 보이며(큰 모델은 처음에 1분쯤 걸린다) 주요 주제·핵심 고민·영상 톤·시청자 니즈·분석 근거(근거 문장과 출처: 자막·제목·설명·댓글) 다섯 줄과 AI 댓글 초안을 채운다. 영상을 고르기만 해서는 AI를 부르지 않는다(저장된 분석·초안이 있으면 불러온다). AI가 내놓은 근거 문장은 영상 자료에 실제로 있는지 V6과 같은 방법으로 대조해 없는 것은 버린다. 분석은 영상의 **연애 고민**을 찾는 것이 목적이라 설명란·댓글의 광고·협찬·상품 소개·이벤트 응모 글은 무시하고 근거로도 받지 않는다. 사연이 없는 연애 심리·강의·팁 영상도 시청자 입장의 연애 고민으로 정리한다(과제 예시와 같은 방식). 자료가 광고·협찬뿐이거나 연애와 관계없어 연애 고민을 찾지 못하면 초안을 만들지 않고 「이 영상 자료에서 연애 고민을 찾지 못했습니다」와 다음 행동(자막을 붙여 넣고 다시 분석하거나 다른 영상 고르기)을 띄우고 「자막 붙여넣기」를 연다. 초안은 운명원만 권하고 영상 자료에 나오는 다른 상품·브랜드 이름을 쓰지 않게 한다. 초안은 근거 문장 하나를 골라 AI가 본문만 쓰고 `[광고] `는 코드가 붙인다. 권하는 문장은 그 영상의 핵심 고민에 맞춰 쓰게 하고, 다른 영상에서 승인한 초안의 권유 문장은 되풀이하지 말라고 알려 준다. 규칙 검사에 걸리면 걸린 항목을 알려 주고 최대 3번 다시 쓰게 하며, 3번 모두 걸리면 가장 덜 걸린 초안을 남겨 사람이 고치게 한다. 초안은 글 상자에서 바로 고칠 수 있고(고친 글도 같은 검사), 말투 이름표(C1부터 혼잣말형·한탄형·유쾌형·공감형, 직전 영상과 같은 말투는 고르지 않게 한다)가 붙는다. C1(2026-11-17)부터 분석이 그 영상의 **핵심 말**(자료에 그대로 있는 짧은 말)을 뽑아 ②칸 「핵심 말」 줄에 보이고, 초안은 과제 예시처럼 「영상 반응 → 내 처지 한마디 → 운명원은 들은 얘기로 꺼내고 내 고민에 맞춘 바람 → 짧은 생각」 짜임의 시청자 말투로 쓰며(ㅠㅠ·ㅋㅋ·... 허용), 영상 글은 핵심 말만 그대로 쓰고 13자 이상 이어서 베끼지 않는다. [다른 초안 생성]은 이미 쓴 근거를 피해 새로 쓰고, [이 초안 승인]은 검사를 모두 통과한 초안만 승인한다(서버가 다시 검사하고 걸리면 거절). 승인하면 흐름 띠가 03으로 넘어간다. 「이전 글과 유사」(V11)는 다른 영상에서 승인한 초안·과제 예시 댓글과 비교한다
-- 운영 규칙과 기록 (7단계): **영상당 댓글 1개·하루 상한(기본 10개)·기록**을 코드와 DB로 강제한다(`app/ops/`). 게시 자리는 `BEGIN IMMEDIATE` 거래 안에서 「오늘(한국 날짜) 예약+게시 수 세기 → 상한이면 거절 → 넣기」를 한 번에 하고, 같은 영상은 `posts`의 `UNIQUE(target, video_id)`가 막는다(버튼을 연달아 누르거나 두 요청이 동시에 와도 하나만 된다). 승인한 초안만 예약할 수 있다. 실패한 게시는 상한에 세지 않고 다시 시도할 수 있으며 기록에는 남는다. 테스트 페이지(sandbox)와 실제 유튜브(youtube)는 따로 센다. 분석·초안 생성·승인·게시는 지우지 않는 작업 기록(`runs`)에 시간순으로 남는다. 화면: 제목 영역 오늘 통계 4개(처리한 영상 n/상한 · 초안 · 게시 완료 · 성공률, 게시 시도가 없으면 `–`), 아래 작업 기록 표(시간·영상·작업·댓글·상태·프로필, 최근 3줄, 실패는 사유와 함께), 03칸 설정(사용 프로필 — 자동 배정은 가장 오래 안 쓴 프로필 / 작업 방식 — 수동 승인 후 게시(실제 유튜브, 사람이 게시)·테스트 페이지 자동 실행 / 일일 제한 — 설정값 이하로만 / 오늘 작업 n/상한), 01칸 목록의 「댓글 단 영상」 표시
-- 브라우저 연결 (8단계): 03칸 큰 버튼 [브라우저에서 영상 열기]가 실제로 동작한다. 승인한 초안이 있고, 그 대상에서 댓글을 안 단 영상이고, 오늘 남은 횟수가 있을 때만 켜진다. 한 번에 작업 하나(`app/browser/jobs.py` 작업 서비스), 진행 단계 6개(대기 → 프로필 실행 → 댓글 입력 → 승인 대기 → 게시 완료 → 확인)를 0.5초마다 다시 그린다. 작업이 끝나면 오늘 통계·작업 기록·01칸 「댓글 단 영상」을 바로 고친다. 위 줄 BROWSER는 실제 상태(크롬 · 프로필 n/3 / 크롬 · 작업 중 / 크롬 없음)
-  - **테스트 페이지 자동 실행(sandbox)**: 이 앱 안의 통제된 테스트 페이지(`/sandbox/watch`, 맨 위에 「통제된 테스트 페이지 — 실제 유튜브가 아닙니다」)를 설치된 Google Chrome으로 연다(Playwright, 브라우저를 내려받지 않음). 프로필 폴더로 크롬을 열고 → 승인한 초안을 한 글자씩(글자마다 60~160밀리초 무작위) 입력하고 → **사람이 [게시 승인]을 누를 때까지 기다린다**(5분 넘으면 「승인 시간 초과」로 실패) → 「댓글」을 누르고 → 페이지에 내 댓글이 보이는지 확인한다. 실패하면 사유와 화면 캡처(`error_screenshots/<작업 ID>.png`)가 남고 작업 기록에서 볼 수 있다. 일부러 실패를 내는 스위치 `fail=hide_button|slow|reject`
-  - (R3에서 없앰) **수동 승인 후 게시(실제 유튜브, assist)**: 크롬을 그 프로필과 영상 주소로 **열기만** 한다(명령 인자 목록, 셸 없음). 대시보드에 [초안 복사]·[게시했어요]·[게시 안 함]이 뜨고, 붙여넣기와 게시는 사람이 직접 한다. [게시했어요]를 누르면 YouTube 키가 있을 때만 Data API로 댓글을 찾아보고, 못 찾거나 키가 없으면 「게시됨(확인 못 함)」으로 남긴다. 10분 안에 답이 없으면 「확인 시간 초과」. 내 채널 영상이 아니면 실제 유튜브 화면의 요소를 찾거나 누르거나 입력하는 코드는 돌지 않는다(테스트가 확인한다)
-  - (R3에서 모든 영상의 실제 게시로 바뀜) **내 채널 영상 자동 게시(youtube_auto, 2026-11-17)**: `config.yaml`의 `own_video_ids`에 넣은 영상을 골라 「수동 승인 후 게시」로 시작하면, 테스트 페이지와 같은 순서로 **실제 YouTube 영상 페이지**에서 돈다 — 프로필로 크롬을 열고 → 댓글 상자까지 내려 → 한 글자씩 입력하고 → **사람이 [게시 승인]을 누를 때까지 기다린 뒤** → 「댓글」을 누르고 → 페이지에서 내 댓글을 찾는다(못 찾으면 Data API로 한 번 더). 「댓글」을 누른 뒤에는 못 찾아도 실패로 되돌리지 않고 「게시됨(확인 못 함)」으로 남긴다(같은 댓글이 두 번 달리지 않게). 프로필이 YouTube에 로그인돼 있지 않거나 댓글을 끈 영상이면 입력하기 전에 멈추고 사유를 보인다. 실행기(`app/browser/youtube_driver.py`)는 그 영상 하나의 주소만 열고, 페이지가 다른 곳으로 옮겨 가면 멈춘다. 03칸 아래 줄에 「내 채널 영상 · 자동으로 입력하고 [게시 승인]을 눌러야 게시합니다」. 다른 영상은 지금처럼 열기만 한다. 자동 테스트는 가짜 YouTube 페이지(`tests/fixtures/fake_youtube_watch.html`)로만 돌고 실제 YouTube에 접속하지 않는다
-  - 프로필 폴더는 저장소 밖 `%LOCALAPPDATA%\JGMarketingAgent\profiles\profile-N`. 그 프로필의 크롬 창이 이미 열려 있으면 「그 프로필의 크롬 창을 닫아 주세요」. 실제 유튜브에 로그인해 두는 준비는 `.\scripts\setup_profile.ps1 -Profile 1`(크롬이 그 프로필로 Google 로그인 화면을 연다. 로그인은 사람이 직접)
-  - 프로그램 창을 닫으면 진행 중인 작업을 취소하고 자동 실행 크롬을 닫는다
-  - 크롬 창 위치는 자동이다(2026-11-17, 「자동 (권장)」이 기본): 작업을 시작할 때마다 모니터를 읽어 프로그램 창이 없는 모니터의 작업 영역 가운데, 모니터가 하나면 그 왼쪽 60% 안쪽(③칸이 보이게)에 1280×900 이하로 띄운다. 설정 「크롬 창 띄울 화면」에서 모니터를 고를 수 있고, 고른 모니터가 빠져 있으면 자동으로 띄우고 작업 기록에 한 줄 남긴다. 게시용 크롬은 연 뒤 실제 위치를 재서 바로잡는다. 프로그램 창(1600×1000)은 주 모니터 작업 영역에 맞춰 줄이고 작은 노트북에서는 최대화한다. 예전 판이 저장한 좌표(`browser.window_position`)는 그대로 읽는다
-  - (옛 좌표를 쓸 때) 9단계부터 크롬을 띄우기 전에 실제 모니터 배치(Windows API)를 읽어, 설정한 창 위치가 어느 모니터에도 없으면 주 모니터 `60,60`에 띄우고 작업 기록에 「크롬 창 위치(…)가 화면 밖이라 주 모니터(60,60)에 띄웁니다」를 남긴다(`app/browser/screens.py`). 프로그램 창 확인용 `JG_DESKTOP_WINDOW_POS`도 같은 확인을 거쳐 밖이면 가운데에 띄운다
-- AI 연결 (4단계): 로컬 Ollama에 「이 모양의 JSON으로 답해라」를 시키고 받는 통로(`app/llm/`). 위 줄 AI 상태가 실제 값을 보인다 — 정상이면 「ollama · 모델 이름 · 로컬」(연두), Ollama가 꺼져 있으면 「ollama · 꺼짐」, 모델이 없으면 「모델 이름 · 모델 없음」(붉은 점, 마우스를 올리면 할 일). 30초마다 다시 확인한다. 생각 출력 기능이 있는 모델(qwen3.x)은 생각을 끄고 부른다. 답이 JSON이 아니거나 모양이 틀리면 한 번 다시 시킨다. LLM은 설정(`llm.active`)으로 고르는 틀이라 나중에 다른 공급자(OpenAI 호환·Claude·로그인된 CLI, 12단계)를 끼울 수 있다. 지금 구현한 공급자는 Ollama 하나다. 설치된 모델 시험과 5단계 초안 비교 결과: [docs/MODEL_EVAL.md](docs/MODEL_EVAL.md)
-- 대시보드 완성 (9단계): 화면 전체에서 **다음에 누를 것 하나만 금색**으로 채운다([영상 찾기] → 목록에서 고르기 → [분석하고 초안 만들기] → [이 초안 승인] → [브라우저에서 영상 열기] → [게시 승인]). 흐름 띠의 지금 단계 줄에 같은 안내와 예상 시간이 뜬다. 메뉴·시스템 상태·오늘 통계·작업 기록 열은 한국어 이름이 먼저(영어는 작게), 본문 14px·가장 작은 글자 11.5px. 메뉴를 누르면 그 칸으로 가서 잠깐 밝게 하고, 지금 있는 칸을 메뉴에 표시한다. 한 화면 배치(2026-11-17): 프로그램 창을 최대화한 화면(1080 모니터에서 1920×1009)과 기본 창(안쪽 1600×960), 1366×720에서 **페이지 스크롤 없이** 위 줄·제목 영역·흐름 띠·3열·작업 기록(최근 3줄 띠)이 한 화면에 다 보인다. 칸 제목은 고정되고 넘치는 것은 그 칸 안에서만 스크롤하며, 01칸은 영상 목록 한 곳만 스크롤한다. 1600px 이상에서는 본문·목록 제목 15px, 보조 글 13px. 영상 제목 끝의 `#태그`는 흐리게 보인다(원문은 그대로). 폭 1121px 미만은 세로로 쌓는다(UI_SPEC 부록 A). 위 줄 [설정 SETTINGS]는 지금 설정을 읽기 전용으로 보여 주는 패널(글자 수·홍보 표기·브랜드 사실·하루 상한·프로필 3개와 폴더 준비·AI 모델·크롬 창 위치·YouTube 키 있음/없음·할당량, 키 값과 PC 경로는 보이지 않음)과 [모델 미리 불러오기] 단추, 작업 기록 [전체 보기 VIEW ALL]은 전체 기록(최대 200건·실패 사유·실패 화면 캡처·실패만 보기) 패널을 연다. 두 패널은 Esc로 닫히고 연 단추로 초점이 돌아온다
-- 설정: `config.yaml`(규칙)과 `.env`(비밀값)를 앱이 읽는다. 키가 없어도 화면은 뜨고 불러오기 때 안내가 나온다
-- 0단계 하네스: 작업 규칙(`AGENTS.md`), 검증 스크립트(`scripts/verify.ps1`), pytest 설정과 테스트 도우미, 비밀값 검사(`scripts/check_secrets.py` + pre-commit 훅)
+<sub>가짜 자료(지어낸 영상 제목·채널, 임시 DB, 가짜 AI 답)로 창 없이 찍은 화면입니다. 실제 키·채널·계정은 들어 있지 않습니다.</sub>
 
-**아직 안 되는 것**
-- R4 자막 자동 읽기는 비공식 방법(유튜브가 공개하지 않은 경로)이라 유튜브가 바꾸거나 막으면 못 읽을 수 있다. 그때는 제목·설명으로 대신하고 「자막 직접 넣기」를 쓰면 된다. 실제 키 확인(2026-11-17)에서는 고른 영상 5개 모두 한국어 자동 생성 자막을 읽었다
-- R4 「AI 모델을 불러오는 중」 안내와 420초 기다림은 가짜 Ollama로만 시험했다. 실제 큰 모델을 처음 불러오는 화면은 대표 확인 전이다
-- [모델 미리 불러오기] 단추는 연결만 했고 실제 모델로 눌러 보지 않았다(이 PC의 그래픽 카드를 다른 작업이 쓰는 중)
-- 실제 데이터 보정(연애 고민 없으면 멈춤·쇼츠 제외, 2026-11-17)은 코드·자동 테스트와 실제 키 검색 1회까지 했다. 보정 뒤 실제 모델(qwen3.8:27b)로 다시 재는 일은 이 PC의 메모리가 모자라(다른 프로그램이 그래픽 메모리·메모리를 차지) 아직 못 했다 — [docs/MODEL_EVAL.md](docs/MODEL_EVAL.md) 「실제 데이터 보정」
-- **실제 유튜브에 게시해 본 적이 아직 없다.** 실제 게시는 가짜 YouTube 페이지로만 자동 시험했다(자동 테스트는 실제 YouTube에 접속하지 않는다). 2026-11-17 로그인하지 않은 임시 프로필로 공개 영상 하나를 **읽기만** 해서(`scripts/check_youtube_page.py`, 창 없이) 로그인 안 된 상태에서 보이는 요소(「로그인」 단추·댓글 영역·댓글 입력 자리·달린 댓글)가 `SELECTORS`와 맞는 것은 확인했다. 로그인해야 보이는 요소(오른쪽 위 내 사진·글 입력 칸·「댓글」 게시 단추)와 실제 게시·확인은 대표가 프로필에 Google 로그인한 뒤 첫 게시에서 확인한다(처음에는 본인 영상이나 시험용 계정을 권한다 — 유튜브가 자동 입력을 감지하면 계정이 제한될 수 있다)
-- 공식 API로 댓글을 다는 기능은 만들지 않았다
-- 실제 YouTube 키로 한 번 불러 보는 확인(`live` 테스트)은 아직 하지 않았다. 3단계 02칸 화면, 6단계 초안 글 상자, 5단계 AI 분석·초안 화면, 7단계 통계·작업 기록·03칸 설정, 8단계 03칸 작업 화면, 9단계 대시보드 전체 흐름도 대표 확인 전이다. 8단계 창이 보이는 실행(2번 모니터)은 개발 PC에서 한 번 해 봤다
-- 프로그램 창은 개발 PC에서 띄우고 닫아 봤다. 대표가 직접 더블클릭해 보는 확인은 아직이다
-- 실행 파일 한 개(`.exe`)로 묶기는 11단계다. 지금은 Python 가상환경(`.venv`)을 한 번 준비해야 한다
+## 1. 실행하기
 
-## 과제 원문대로 하는 것과 더한 것 (R3)
+**필요한 것**
 
-과제 원문의 흐름대로 ③ [댓글 달기]를 누르면 고른 프로필의 크롬이 열려 그 영상에 한 글자씩 입력하고 게시하고 내 댓글을 확인한다(어떤 영상이든). 여기에 더한 것:
-
-- **광고 표기 켬/끔**(기본 켬). 광고주가 게시 계정을 운영하면 표기가 필요하고(표시광고법·공정위 추천·보증 심사지침), 그렇지 않으면 운영자가 고른다.
-- **사람이 검토하고 누른 댓글만** 게시한다. 규칙 검사를 통과한 초안이어야 [댓글 달기]가 눌리고, 서버는 승인한 초안만 받는다.
-- 시작 전 확인, 「게시 직전 확인」(기본 끔), 그 영상 주소만 여는 실행기, 「게시됨(확인 못 함)」, 연습 모드.
-
-자세한 표와 남는 위험(유튜브 약관·스팸 처리)은 [docs/DESIGN.md 2절](docs/DESIGN.md#2-원문대로-하는-것과-더한-것-r3-2026-11-17-고침), 이유는 [docs/INTENT.md](docs/INTENT.md).
-
-## 설치와 실행 (Windows 11)
-
-필요: Python 3.12(`py -3.12`), Microsoft Edge WebView2 Runtime(Windows 11에는 기본으로 들어 있다). YouTube API 키(2단계부터), [Ollama](https://ollama.com)와 모델 하나(4단계부터). 기본은 `qwen3.8:27b`(5단계 초안 비교에서 규칙 통과율이 가장 높았다, [docs/MODEL_EVAL.md](docs/MODEL_EVAL.md)). 다른 모델을 쓰려면 `ollama pull <모델>` 후 프로그램 설정 화면의 「AI 모델」에서 고른다(R2). YouTube API 키도 설정 화면의 「유튜브 연결」에 넣는다.
-
-**처음 한 번 준비** (PowerShell, 저장소 폴더)
-
-```powershell
-cd "E:\Projects\JG\JG-Marketing-Agent-Stage1"
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt     # 개발까지 하려면 requirements-dev.txt
-# (개발용, 선택) Copy-Item .env.example .env   # 키·모델은 보통 프로그램 설정 화면에서 넣는다. .env는 커밋 금지
-```
-
-### 실제 유튜브에 댓글을 달기 전에 (R3)
-
-1. 설정 화면 「유튜브 연결」에 API 키를 넣는다(영상 불러오기용).
-2. 프로필 화면에서 쓸 프로필의 [로그인하기]를 눌러 구글 로그인을 직접 하고 창을 닫는다 → 「로그인됨 · 채널 이름」.
-3. (선택) 영상 페이지 요소가 잡히는지 읽기만 해서 본다(입력·누르기 없음):
-
-```powershell
-.\.venv\Scripts\python.exe scripts\check_youtube_page.py <영상 주소 또는 ID> --profile 유튜브1
-```
-
-4. 작업 화면에서 영상을 고르고 초안을 본 뒤 [댓글 달기]. 처음에는 설정 「게시 직전 확인」을 켜 두고 크롬 창의 글을 본 뒤 [게시]를 눌러도 된다. 연습만 하려면 ③ 「연습 모드」를 켠다(키·로그인 없이).
-
-### 1. 더블클릭으로 프로그램 실행 (평소)
-
-저장소 폴더의 **`JG-Marketing-Agent.cmd`**를 더블클릭한다.
-
-- 자체 창이 화면 가운데에 뜬다(기본 1600×1000, 최소 1100×720). 브라우저 탭·주소창이 없다.
-- 창을 닫으면 안쪽 서버도 멈추고 프로그램이 끝난다.
-- 이미 떠 있을 때 다시 더블클릭하면 새로 띄우지 않고 "이미 실행 중"이라고 알린 뒤 떠 있는 창을 앞으로 가져온다.
-- `.venv`가 없으면 위 준비 방법을 안내하고 멈춘다. WebView2 런타임이나 pywebview가 없으면 설치 방법을 알린다.
-- 콘솔 없이 돈다(`.cmd`를 여는 순간 콘솔 창이 잠깐 보였다가 닫힐 수 있다). 서버 기록은 `data/desktop.log`에 남는다(커밋하지 않는 폴더).
-- 안쪽 동작: 한 프로세스에서 FastAPI 서버를 스레드로 띄우고(127.0.0.1의 빈 포트), pywebview 창이 그 화면을 담는다(`app/desktop.py`). 명령으로 띄우려면 `.\.venv\Scripts\pythonw.exe -m app.desktop`.
-
-### 2. 개발용: 브라우저로 실행
-
-```powershell
-git config core.hooksPath .githooks      # 커밋 전 비밀값 검사 훅 (처음 한 번)
-.\scripts\run.ps1                        # http://127.0.0.1:8765 를 브라우저로 연다
-```
-
-8단계부터 `--reload`를 붙이지 않는다. 파일이 바뀔 때 서버가 다시 시작되면 진행 중인 크롬 작업(전용 스레드)이 정리되지 않고 남을 수 있다.
-
-## 검증과 테스트
-
-```powershell
-.\scripts\verify.ps1                     # ruff check → pytest -q, 실패하면 0이 아닌 종료 코드
-.\.venv\Scripts\python.exe -m pytest tests\unit -q
-.\.venv\Scripts\python.exe -m pytest -m e2e      # 창 없는 크롬으로 테스트 페이지 전 과정(8단계)·대시보드 전체 흐름(9단계)
-$env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env:RUN_LIVE
-.\.venv\Scripts\python.exe scripts\check_secrets.py --all
-.\.venv\Scripts\python.exe scripts\ollama_smoke.py           # 설치된 일반 모델마다 한국어 JSON 한 번(시간·성공 표)
-```
-
-- 기본 테스트는 인터넷·API 키·Ollama 없이 돈다.
-- `live`(진짜 YouTube·Ollama 호출)는 `RUN_LIVE=1`일 때만 돈다.
-- 자동 테스트는 실제 YouTube에 접속하지 않는다. 실제 게시 실행기는 가짜 YouTube 페이지(`tests/fixtures/fake_youtube_watch.html`)를 끼워 넣은 것만 돌고, `tests/conftest.py`가 그렇지 않은 실제 실행기와 실제 로그인 확인을 막는다. R3 흐름은 `tests/e2e/test_r3_post_flow.py`(불러오기 → 고르기 → [댓글 달기] 한 번 → 게시 완료 → [댓글 보기] → 기록, 다른 영상에서 광고 표기 끔, 연습 모드 한 번, 실패 화면, 게시 직전 확인, 1920×1009·1600×960 스크롤 없음)
-- `e2e`는 임시 포트로 앱 서버를 띄우고, 설치된 Google Chrome을 창 없이(headless) 임시 프로필로 열어 테스트 페이지 전 과정(한 글자씩 입력·승인 전에는 안 달림·실패 캡처·두 번째 거절·하루 상한·프로필 사용 중)을 돈다. 9단계 `tests/e2e/test_dashboard_flow.py`는 가짜 YouTube·가짜 LLM으로 대시보드를 [영상 찾기]부터 게시 완료·기록·통계·두 패널까지 눌러 보며 단계마다 금색 강조가 하나뿐이고 그것이 다음 행동인지 본다. Playwright나 크롬이 없으면 건너뛴다. `verify.ps1`의 `pytest -q`에 들어 있다.
-
-## API
-
-| 주소 | 내용 |
+| 항목 | 내용 |
 |---|---|
-| `GET /api/health` | 서버 확인 (1단계부터 그대로) |
-| `GET /api/status` | 시스템 상태: `youtube`(키가 있는지 `key_configured`와 오늘 할당량, 키 값은 싣지 않는다), `ai`(`provider`·`model`·`reachable` 서버에 닿는지·`installed` 모델이 있는지·`local` 이 PC 안인지, 문제가 있으면 `error{kind, message, action}`), `browser`(8단계: `chrome_found`·`playwright_ready`·`profiles[{name, folder, exists}]`·`active_job_id`, PC의 폴더 경로는 싣지 않는다) |
-| `POST /api/llm/warmup` | 고른 모델을 미리 불러 둔다(`keep_alive` 동안 메모리에 머문다). 응답 `provider`·`model`·`seconds`. 큰 모델은 몇 분 걸릴 수 있다 |
-| `GET /api/videos` | 최신 영상 목록. 입력 없이 부르면 기본 검색어. 선택 입력 `q`, `period`(day·week·month·any, 기본 week), `order`(date·relevance·viewCount), `max_results`(1~50), `exclude_shorts`(비우면 `config.yaml`의 `discover.exclude_shorts` = 기본 참: 50개를 받아 길이 61초 미만·길이 없음을 빼고 원래 순서대로 `max_results`개). 응답에 `exclude_shorts`·`shorts_excluded`(뺀 수)가 붙는다(기존 필드는 그대로). 같은 검색 10분 저장의 키에 `exclude_shorts`도 든다 |
-| `POST /api/videos/resolve` | `{"url": "..."}` 유튜브 링크 → 영상 한 개 |
-| `GET /api/videos/{video_id}` | 영상 상세(10분 안이면 저장된 값) |
-| `POST /api/videos/{video_id}/context` | 영상 맥락을 만들고 요약을 돌려준다: 본문 출처(`transcript`·`title_description`), 자막 출처(`manual`·`none`), 자막 글자 수, 인기 댓글 수, 댓글 막힘 여부, 모델 입력 한도에 맞추느라 줄였는지. 저장된 인기 댓글이 있으면 다시 부르지 않는다(`?refresh=true`면 새로, 1단위) |
-| `PUT /api/videos/{video_id}/transcript` | `{"text": "..."}` 붙여 넣은 자막 저장(공백 정리, 최대 20,000자) 후 같은 요약 |
-| `DELETE /api/videos/{video_id}/transcript` | 붙여 넣은 자막 지우기 후 같은 요약 |
-| `POST /api/validate` | `{"video_id": "...", "text": "..."}` 글 하나를 규칙 V1~V14로 검사한다. 응답: `passed`, `char_count`(표기 포함, NFC 코드 포인트), `min_chars`·`max_chars`, `evidence_quote`(영상 자료와 겹치는 가장 긴 구절), `passed_count`·`total`, `checks`(항목마다 `code`·`name`·`passed`·`message`). 맥락이 없으면 만들어서 쓰고(인기 댓글 1단위), 있으면 YouTube를 다시 부르지 않는다. 글은 2,000자까지 받는다. V11은 다른 영상에서 승인한 초안·과제 예시 댓글과 비교한다. 그 영상의 분석이 있으면 저장된 핵심 말(V7)·고민 한 줄(V13)과 지금 초안의 근거 구절(V6)로 본다 |
-| `POST /api/analysis/{video_id}` | 영상 맥락을 AI로 분석해 저장하고 돌려준다: `topic`·`concern`·`tone`·`viewer_needs`, `evidence`(근거 문장 `quote`·출처 `source`·`source_label`, 자료에 있는 것만 최대 4개), `dropped_count`(자료에 없거나 광고·협찬·응모 글이라 버린 근거 수), `fallback`(예전 필드, 이제 늘 `false`), `model`, `has_love_concern`(늘 `true`)·`love_reason`(모델이 적은 판단 까닭). 연애 고민을 찾지 못하면 422 `no_love_concern`(초안을 만들지 않는다) |
-| `GET /api/analysis/{video_id}` | 저장된 분석(없으면 `null`). AI를 부르지 않는다 |
-| `POST /api/drafts` | `{"video_id", "another": false, "avoid_quotes": []}` AI 초안을 만든다(분석이 없으면 먼저 분석). 검사에 걸리면 걸린 항목을 넣어 최대 3번, 다 걸리면 가장 덜 걸린 것을 저장. `another: true`면 이 영상에서 쓴 근거를 피한다. 응답: `id`·`body`(`[광고] ` 포함)·`evidence_quote`·`evidence_source`·`evidence_label`·`tone_label`·`attempts`·`first_passed`·`passed`·`status`(draft·approved·superseded)·`edited_by_human`·`validation`(`POST /api/validate`와 같은 모양) |
-| `GET /api/drafts?video_id=` | 초안 목록(새것부터) |
-| `PATCH /api/drafts/{id}` | `{"body": "..."}` 사람이 고친 글 저장 후 다시 검사. 승인한 글을 고치면 승인이 풀린다 |
-| `POST /api/drafts/{id}/disclosure` | R3: `{"disclose": true\|false}` 광고 표기를 켜거나 끈다. 모델을 부르지 않고 저장된 글에서 표기만 붙이거나 떼고 다시 검사(글이 바뀌면 승인은 풀림). 응답은 초안(`disclosed` 포함) |
-| `POST /api/drafts/{id}/approve` | 다시 검사해 모두 통과하면 승인(같은 영상의 다른 초안은 superseded). 걸리면 409 `draft_not_passed`와 `failures`(걸린 항목마다 `code`·`name`·`message`) |
-| `GET /api/profiles?target=` | 프로필 목록(`name` 유튜브1 ↔ `folder` profile-1, `last_used_at`)과 `auto`(자동 배정이 지금 고를 프로필 = 그 대상에서 가장 오래 안 쓴 것). `target`은 sandbox(기본)·youtube. PC의 전체 폴더 경로는 싣지 않는다 |
-| `GET /api/records?limit=` | 작업 기록(최신이 위, `limit` 1~200, 기본 20)과 `total`. 줄마다 `at`·`action`(analyze·draft·approve·post)·`action_label`·`video_id`·`video_title`·`video_url`·`profile`·`comment_text`·`target`·`result`(success·failure·info)·`status_label`·`reason`·`has_screenshot` |
-| `GET /api/stats/today?target=&daily_limit=` | 오늘(한국 날짜) 통계: `videos`(예약+게시, 상한에 세는 수)·`daily_limit`·`remaining`·`drafts`·`posted`·`failed`·`success_rate`(0~1, 게시 시도가 없으면 `null`). `daily_limit`으로 상한을 낮춰 볼 수 있다(설정값보다 높일 수 없다) |
+| 운영체제 | Windows 11 (자체 창은 Windows에 들어 있는 Edge WebView2로 그립니다. Windows 10은 WebView2 Runtime 설치가 필요할 수 있습니다) |
+| 파이썬 | Python 3.12 (`py -3.12`로 부를 수 있어야 합니다) |
+| 브라우저 | Google Chrome (설치된 크롬을 그대로 씁니다. 따로 내려받는 브라우저는 없습니다) |
+| AI 하나 | 이 PC의 [Ollama](https://ollama.com)(기본 모델 `qwen3.8:27b`), 또는 설정 화면에서 고르는 다른 AI(ChatGPT·Claude·Gemini·Grok API 키, 로그인된 Codex·Claude Code) |
+| 유튜브 API 키 | 영상을 불러올 때 씁니다. 프로그램 설정 화면에 넣습니다 |
 
-| `POST /api/jobs` | 게시 작업 시작 `{"video_id", "draft_id", "profile"(비면 자동 배정), "target": "youtube"(실제 게시)·"sandbox"(연습 모드, 비우면 이것), "daily_limit", "fail"(연습 페이지 시험용)}`. R3: 옛 이름 `assist`·`youtube_auto`도 받아 실제 게시(`mode: youtube`)로 처리한다. 한 번에 하나(진행 중이면 409 `job_busy`), 이미 단 영상·상한·승인 안 된 초안·댓글 막힌 영상(409 `comments_disabled`)·최근 로그인 안 됨으로 확인된 프로필(409 `profile_not_signed_in`)은 시작 전에 거절. 응답에 `confirm_before_post`·`disclosed` |
-| `GET /api/jobs/{id}` | 작업 상태: `state`·`state_label`·`step`(0~6)·`waiting_for`(approve — 게시 직전 확인을 켰을 때만)·`seconds_left`·`message`·`reason`·`verified`·`has_screenshot`·`screenshot_url`·`view_url`·`events`(상태가 바뀔 때마다 한 줄, `job_events` 표에도 남음) |
-| `POST /api/jobs/{id}/approve` | 게시 직전 확인(설정 켬)에서 입력을 마친 뒤 사람이 [게시](그 전에는 「댓글」을 누르지 않는다) |
-| `POST /api/jobs/{id}/confirm` | 옛 API(assist의 「게시했어요」). R3부터 받을 작업이 없어 늘 409 `job_wrong_state` |
-| `POST /api/jobs/{id}/cancel` | 작업 취소(크롬을 닫고 예약을 실패로 푼다) |
-| `GET /api/jobs/{id}/screenshot` | 실패 화면 캡처(PNG). 앱을 다시 켜서 메모리에 없는 지난 작업도 캡처 폴더의 `<작업 ID>.png`를 찾는다(9단계) |
-| `GET /api/settings` | 9단계 SETTINGS 패널: 지금 설정을 읽기 전용으로. `comment`(글자 수·표기·브랜드), `brand_facts`, `daily_max_comments`, `profiles[{name, folder, ready}]`, `llm`(`active`·`type`·`model`·`local`·`timeout_seconds`·`keep_alive`), `browser`(창 위치 설정값·실제로 쓸 위치·조정 여부·확인 문구·크롬 찾음 등), `youtube`(`key_configured`·`quota`), `discover`. 키 값·PC 경로·LLM 주소는 싣지 않고 모델을 부르지 않는다 |
-| `PUT /api/settings` | R2: 바꾼 칸만 저장(`{"values": {"limits.daily_max_comments": 7}}`). 칸 이름은 DESIGN 8.1. 틀리면 422 `settings_invalid` + `fields`(칸 → 이유), 게시 중이면 409 `settings_busy`. 저장하면 바로 적용. `GET /api/settings`의 `edit`에 지금 값·기본값·바꾼 칸·범위 |
-| `POST /api/settings/reset` | R2 [기본값으로]: 프로그램에서 바꾼 값을 모두 지운다(저장한 API 키는 남김) |
-| `PUT`·`DELETE /api/settings/youtube-key` | R2: API 키를 암호화해 저장(`{"key": "…"}`) / 지우기. 응답은 `key_configured`·`key_source`(`program`·`dev_file`)·`can_store_key`뿐, 키 값은 없다 |
-| `POST /api/settings/youtube-key/test` | R2 [연결 확인]: 1단위짜리 호출. `result`: ok·no_key·rejected·quota·network·error와 쉬운 말 한 줄 |
-| `GET /api/llm/loaded` | R4: 모델이 지금 메모리에 올라가 있는지(`loaded`: 참·거짓·모름 null)와 처음 불러올 때 기다리는 초(`cold_timeout_seconds`). 모델을 부르지 않는다 |
-| `GET /api/videos/rising` | R4: 뜨기 직전 영상(초안까지만). 선택 입력 `exclude_shorts`. 영상마다 `views_per_hour`·`rising`, 응답에 `mode: rising`·`rising`(조건)·`checked`(본 영상 수). 검색 100 + 상세 1단위, 같은 요청 10분 저장 |
-| `GET /api/llm/models` | R2: 이 PC의 Ollama 모델(일반 → 코드용 → 임베딩용), 지금 모델과 설치 여부. R5: `?provider=<이름>`이면 그 AI의 모델 목록(API 키 AI는 그 회사의 목록, 프로그램은 `manual_only`). 2026-11-17: 받아 오지 못하면 추천 목록(`recommended`·`source`·`note` 추가), Codex는 `codex debug models`의 `visibility: list`만 |
-| `GET /api/llm/providers` | R5: 고를 수 있는 AI 목록(이름 · 종류 · 보내는 곳 · 키 있음 · 모델 · 준비 안 된 이유). 바깥에 묻지 않는다. 2026-11-17: 추천 모델(`recommended_models`)과 프로그램의 「기본값」 이름(`default_label`) 추가 |
-| `POST /api/llm/providers/{name}/test` | R5 [연결 확인]: API 키 AI는 모델 목록(글을 만들지 않음), 프로그램은 버전·로그인 상태. `result`: ok·no_key·rejected·rate_limited·network·not_installed·not_logged_in·no_url·not_wired·error |
-| `PUT`·`DELETE /api/settings/llm-key/{name}` | R5: AI별 API 키 저장(`{"key"}`)·지우기. 응답은 있는지와 출처만 |
-| `GET /api/screens` | R2: 크롬 창을 띄울 모니터 목록(이름 · 고르면 쓸 안전한 위치). 2026-11-17: 지금 고른 것(`screen`: auto · 모니터 ID)과 「지금은 모니터 2(위쪽)에 뜹니다」(`where`·`auto_where`·`note`) 추가 |
-| `POST /api/profiles/{name}/login` | R2 [로그인하기]: 그 프로필로 보통 크롬 창을 구글 로그인 화면으로 연다(로그인은 사람이). 창을 닫으면 한 번 저절로 확인 |
-| `POST /api/profiles/{name}/check` | R2 [로그인 확인]: 창 없이 유튜브에서 로그인 상태·채널 이름만 읽어 저장. 게시 중이면 409 `profile_check_busy`. 같은 프로필 확인이 이미 돌고 있으면(창을 닫아 저절로 시작한 확인 등) 오류 대신 그 결과를 기다려 돌려주고, 다른 프로필 확인 중이면 끝난 뒤 이어서 확인한다. 프로필 항목의 `login_checking`·`login_checking_auto`가 지금 확인 중인지 알려 준다 |
-| `POST /api/profiles/{name}/open` | R2 [유튜브 열기]: 그 프로필로 유튜브 첫 화면 |
-| `GET /sandbox/watch?v=&profile=&fail=` | 통제된 테스트 페이지(실제 유튜브가 아님). `GET`·`POST /sandbox/api/comments`가 `sandbox_comments` 표에 댓글을 저장한다 |
+**설치 (처음 한 번, PowerShell)**
 
-영상 목록·영상 항목 응답(`GET /api/videos`, `POST /api/videos/resolve`, `GET /api/videos/{id}`)의 영상마다 `commented: {sandbox, youtube}`(그 대상에 게시 완료했는지)가 붙는다(7단계, 기존 필드는 그대로).
+```powershell
+git clone https://github.com/Chokyusong/jg-marketing-agent.git
+cd jg-marketing-agent
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+ollama pull qwen3.8:27b        # Ollama를 쓸 때만
+```
 
-오류는 `{"error": {"kind", "message", "action"}}` 모양이다. AI 오류 종류: `llm_auth`(R5, API 키를 받아 주지 않음·프로그램 로그인 안 됨), `llm_rate_limited`(R5, 사용량 한도), `llm_down`(Ollama 꺼짐 → `ollama serve`), `llm_model_missing`(→ `ollama pull <모델>`), `llm_timeout`, `llm_bad_output`(한 번 다시 시켜도 JSON이 아님), `llm_error`, `llm_provider_unknown`(`llm.active`가 없거나 아직 지원하지 않는 종류). 분석 오류: `no_love_concern`(422, 영상 자료에서 연애 고민을 찾지 못함 — 자막을 붙여 넣고 다시 분석하거나 다른 영상을 고른다. `detail`에 모델이 적은 까닭). 초안 오류: `draft_not_found`(404), `draft_not_passed`(409, 검사에 걸려 승인 불가), `draft_superseded`(409, 새 초안이나 승인으로 밀려난 초안). 운영 규칙 오류(7단계, 8단계 게시 실행에서 보인다): `already_commented`(409, 이미 댓글을 단 영상), `daily_limit_reached`(429, 오늘 상한 — 한국 자정에 풀림), `draft_not_approved`(409, 승인하지 않은 초안), `profile_unknown`(422). 작업 오류(8단계): `job_busy`(409), `job_not_found`(404), `job_wrong_state`(409), `chrome_not_found`(503), `playwright_missing`(503), `profile_in_use`(409, 그 프로필의 크롬 창을 닫아 주세요), `screenshot_not_found`(404). 검색은 100단위, 상세·댓글은 1단위를 쓴다(하루 10,000단위). 댓글이 막힌 영상은 오류가 아니라 빈 목록으로 진행한다.
+**실행**: 폴더의 **`JG-Marketing-Agent.cmd`를 더블클릭**합니다. 주소창 없는 프로그램 창이 뜨고, 창을 닫으면 끝납니다.
 
-## 설정
+처음 켜면 작업 화면 위에 **「시작 준비」** 상자가 보입니다. 세 줄이 모두 초록이 되면 상자가 사라집니다.
 
-**프로그램 안에서 설정한다(R2).** 설정 화면에서 바꾸고 [저장]하면 바로 적용된다. 값은 `%LOCALAPPDATA%\JGMarketingAgent\settings.json`에, YouTube API 키는 Windows가 암호화해 같은 폴더의 `youtube_key.bin`에 둔다(저장소 밖, 평문 없음). 읽는 순서는 프로그램에서 저장한 값 → `.env`(개발용, 선택) → `config.yaml`(기본값). 자세한 것은 [DESIGN 8.1절](docs/DESIGN.md#81-프로그램-안에서-설정-r2-2026-11-17).
+| 시작 준비 | 할 일 |
+|---|---|
+| 유튜브 연결 | [API 키 넣기] → 설정 화면에서 키를 넣고 [연결 확인]. 키는 Windows가 암호화해 내 PC 사용자 폴더에 둡니다 |
+| AI 모델 | [모델 확인] → 설정 「AI 모델」에서 쓸 AI를 고르고 [저장] |
+| 프로필 로그인 | [유튜브1 로그인] → 크롬 창에서 구글 로그인을 직접 하고 창을 닫으면 저절로 확인합니다 |
 
-| 파일 | 내용 | 커밋 |
-|---|---|---|
-| `%LOCALAPPDATA%\JGMarketingAgent\` | 설정 화면에서 저장한 값(`settings.json`)과 암호화한 API 키(`youtube_key.bin`). [기본값으로]는 `settings.json`만 지운다 | 저장소 밖 |
-| `config.yaml` | 프로필(`profiles`, 순서대로 폴더 profile-1…), 기본 게시 방식(`browser.default_target`: youtube → 실제 게시(기본), sandbox → 연습 모드. 옛 assist·youtube_auto도 youtube), 게시 직전 확인(`posting.confirm_before_post`, 기본 false), 광고 표기 기본값(`comment.disclose_default`, 기본 true), 브라우저(`browser.headless` 기본 false — 테스트는 true, `browser.window_screen` 기본 `auto`(크롬 창 띄울 화면 자동, 좌표 `browser.window_position`은 예전 판이 저장한 값만 읽음), `browser.typing_delay_ms` 기본 `[60, 160]`, `browser.chrome_path` 비면 자동으로 찾음. 프로필 폴더는 환경 변수 `JG_PROFILES_DIR`로 바꿀 수 있음), 댓글 글자 수·브랜드·홍보 표기, 하루 상한, 자막 출처(`transcript.provider: manual`), 모델에 넣을 영상 자료 길이(`llm.context_chars`, 기본 6,000자), 운명원에 대해 쓸 수 있는 사실 문장(`brand.facts`, 기본 「운명원은 연애 사주 상담을 하는 곳이다」 한 줄), 규칙 검사에 더할 표현(`validator.extra_patterns`, 항목 모양 `{code: V8·V9·V10, pattern: 정규식}`, 기본 빈 목록), AI 설정(`llm.active`: `llm.providers`에서 고른 이름, 기본 `ollama` · `timeout_seconds` 180 · `num_ctx` 8192 · `keep_alive` 30m. 옛 키 `llm.provider`도 읽는다. 공급자 항목의 `api_key_env`에는 환경 변수 **이름**만 적고, 그 이름은 자동으로 비밀값·로그 가리기 대상이 된다) 등 규칙 ([DESIGN 8절](docs/DESIGN.md#8-설정)) | 함 |
-| `.env` | **개발용, 선택.** `YOUTUBE_API_KEY`(2단계부터 사용), `OLLAMA_BASE_URL`(기본 `http://127.0.0.1:11434`), `OLLAMA_MODEL`(기본 `qwen3.8:27b` — 5단계 비교로 정함. 초안을 읽어 보고 바꿔도 된다). 선택: `APP_DB_PATH`(기본 `data/app.sqlite3`) | 금지 |
+구글 로그인 없이 게시 흐름만 보고 싶으면 ③의 **「연습 모드」**를 켭니다. 실제 유튜브 대신 프로그램 안의 연습 페이지에 똑같이 답니다(영상 불러오기에는 유튜브 API 키가 필요합니다).
 
-## 단계
+## 2. 쓰는 법 — 세 칸
 
-| 단계 | 내용 | 상태 |
-|---|---|---|
-| 1 | 뼈대 (GPT 초안) | 완료 |
-| 0 | 하네스 | 완료 |
-| 2 | YouTube API 연동, 화면 골격 | 진행 중 (코드·자동 테스트 완료, 실제 키 확인·화면 확인 남음) |
-| 3 | 영상 맥락 수집 | 진행 중 (코드·자동 테스트 완료, 화면 확인 남음) |
-| P | 프로그램으로 실행 (자체 창) | 진행 중 (코드·자동 테스트·개발 PC 창 확인 완료, 대표 더블클릭 확인 남음) |
-| 4 | Ollama 연동 (초안 품질 비교는 5단계) | 진행 중 (코드·자동 테스트·실제 모델 시험 완료, Ollama를 끄고 켜며 위 줄 AI 상태를 보는 화면 확인 남음) |
-| 5 | 분석과 초안, 모델 비교 | 진행 중 (코드·자동 테스트·실제 모델 비교 완료, 화면 확인과 대표의 초안 읽기 남음) |
-| 6 | 규칙 검사 | 진행 중 (코드·자동 테스트 완료, 화면 확인 남음. 실행 순서상 4·5단계보다 먼저 했다) |
-| 7 | 운영 규칙과 기록 | 진행 중 (코드·자동 테스트 완료, 승인하면 기록 줄과 통계가 바뀌는지 보는 화면 확인 남음) |
-| 8 | 브라우저 연결 | 진행 중 (코드·자동 테스트·e2e·2번 모니터 창 실행 1회 완료, 대표 화면 확인과 실제 유튜브 열기(assist) 확인 남음) |
-| 9 | 대시보드 완성 | 진행 중 (코드·자동 테스트·화면 흐름 e2e·4가지 화면 크기 측정 완료, 대표가 처음부터 끝까지 한 번 써 보는 확인 남음) |
-| R1 | 프로그램형 화면 (프로그램화 2차) | 진행 중 (코드·자동 테스트·흐름 e2e·5가지 화면 크기 측정 완료, 대표가 프로그램 창에서 써 보는 확인 남음) |
-| R2 | 설정과 프로필 로그인을 프로그램 안에서 | 진행 중 (코드·자동 테스트·화면 e2e 완료, 대표가 실제 키 저장·구글 로그인을 해 보는 확인 남음) |
-| R3 | 실제 게시를 기본으로 | 진행 중 (코드·자동 테스트·가짜 유튜브 e2e·실제 유튜브 읽기 확인 1회 완료, 대표가 로그인한 뒤 첫 실제 게시 확인 남음) |
-| R5 | 설정에서 AI 바꾸기 (12단계를 앞당김) | 진행 중 (코드·자동 테스트·화면 e2e·Codex 진짜 실행 1회 완료, API 키 AI 진짜 호출과 Claude Code 재로그인 뒤 확인 남음) |
-| 10 | 가점 | 미시작 |
-| 11 | 시연 준비 | 미시작 |
+| 칸 | 하는 일 |
+|---|---|
+| ① 영상 불러오기 | [영상 불러오기]를 누르면 최신 영상이 썸네일·제목·채널·올린 날짜로 뜹니다. 검색어·기간·쇼츠 빼기를 고를 수 있고, 링크를 붙여 넣거나 [뜨기 직전 영상]으로 찾을 수도 있습니다 |
+| ② 영상 선택 | 영상을 고르면 AI가 자막(없으면 제목·설명)과 인기 댓글을 읽고 **영상 속 고민 한 줄**과 **댓글 초안**을 만듭니다. 규칙 검사 14개 결과가 아래에 보이고, 글을 고치면 다시 검사합니다. [다른 댓글 만들기], 「광고 표기 붙이기」 켬/끔 |
+| ③ 댓글 달기 | 프로필(자동 배정 또는 유튜브1~3)을 고르고 [댓글 달기]를 한 번 누르면 **프로필 여는 중 → 입력 중 → 게시 완료**. 내 댓글을 찾아 확인한 뒤 「게시 완료 · [댓글 보기]」가 됩니다. 실패하면 이유와 [화면 캡처 보기] |
 
-자세한 할 일과 완료 기준: [docs/STAGES.md](docs/STAGES.md)
+왼쪽 줄의 **기록** 화면에서 게시 성공·실패를 시간순으로 보고(「실제」·「연습」 표시), **프로필** 화면에서 로그인 상태를, **설정** 화면에서 글자 수·하루 상한·AI를 바꿉니다.
 
-## 문서
+## 3. 과제 요구사항과 확인할 곳
 
-- [AGENTS.md](AGENTS.md) — 작업 규칙(사람·AI 공통)
-- [docs/DESIGN.md](docs/DESIGN.md) — 구조와 규칙의 기준
-- [docs/PLAYBOOK.md](docs/PLAYBOOK.md) — 완성까지의 단계별 실행 계획(순서, 파일, API, 테스트)
-- [docs/STAGES.md](docs/STAGES.md) — 단계별 상태와 완료 기준
-- [docs/UI_SPEC.md](docs/UI_SPEC.md) — 화면 기준
-- [docs/INTENT.md](docs/INTENT.md) — 제작 의도(초안): 광고 표기 켬/끔과 사람이 검토하고 누른 댓글만 게시하는 이유
+화면은 프로그램에서, 파일은 저장소에서, 테스트는 `tests/` 아래에서 볼 수 있습니다.
 
-## 오픈소스 출처
+**필수 기능 3가지**
 
-- **Noto Serif KR** (제목 글꼴) — (c) 2017-2024 Adobe, Google. [SIL Open Font License 1.1](app/static/fonts/OFL.txt). 굵기 400과 필요한 글자만 남긴 파일을 `app/static/fonts/`에 넣었다. 원본과 만든 방법: [app/static/fonts/README.md](app/static/fonts/README.md)
-- **pywebview** (자체 창, P단계) — [BSD 3-Clause License](https://github.com/r0x0r/pywebview/blob/master/LICENSE). Windows에서는 Microsoft Edge WebView2 Runtime으로 화면을 그린다. 함께 설치되는 pythonnet(MIT)·bottle(MIT)·proxy_tools(MIT)·clr_loader(MIT)도 쓴다. 이름·설치 방법·지원 환경·라이선스는 2026-11-16에 [PyPI](https://pypi.org/project/pywebview/)와 [공식 문서](https://pywebview.flowrl.com/guide/installation.html)로 확인했다(자세한 내용은 `app/desktop.py` 맨 위).
-- **Playwright for Python** (테스트 페이지 자동 실행, 8단계) — [Apache License 2.0](https://github.com/microsoft/playwright-python/blob/main/LICENSE), Microsoft. 설치된 Google Chrome을 `channel="chrome"`으로 쓰고 브라우저는 내려받지 않는다. 동기 API를 전용 스레드 하나에서만 쓴다. 사용법은 2026-11-16에 공식 문서([BrowserType](https://playwright.dev/python/docs/api/class-browsertype) `launch_persistent_context`, [Library](https://playwright.dev/python/docs/library) 스레드 주의, [Browsers](https://playwright.dev/python/docs/browsers) `channel`)로 확인했다(playwright 1.65.2, 자세한 내용은 `app/browser/sandbox_driver.py` 맨 위). 이 앱의 `/sandbox/` 주소만 연다.
-- **youtube-transcript-api** 1.2.5 (자막 자동 읽기, R4) — [MIT License](https://github.com/jdepoix/youtube-transcript-api/blob/master/LICENSE), Jonas Depoix. 2026-11-17 [PyPI](https://pypi.org/project/youtube-transcript-api/)·[GitHub](https://github.com/jdepoix/youtube-transcript-api) 문서로 사용법(`YouTubeTranscriptApi().list(id)` → `.fetch()`)·오류 종류를 확인했다. 유튜브가 공개하지 않은 경로를 쓰는 도구라 막히면 조용히 제목·설명으로 대신한다(`app/transcript/auto.py`)
-- 파이썬 패키지는 `requirements.txt`, `requirements-dev.txt`에 적힌 것을 쓴다(FastAPI, Uvicorn, Jinja2, httpx, python-dotenv, PyYAML, pywebview, Playwright, youtube-transcript-api, pytest, ruff).
+| 요구 | 확인할 곳 |
+|---|---|
+| ① 버튼 한 번에 최신 영상(썸네일·제목·채널·날짜) | 화면 ①칸 · `app/youtube/service.py` · `tests/integration/test_videos_api.py` |
+| ② 고르면 고민 한 줄과 댓글 초안 | 화면 ②칸 · `app/analysis/analyzer.py`, `drafter.py` · `tests/integration/test_drafts_api.py` |
+| ③ 크롬 프로필 → 댓글 창 → 한 글자씩 → 게시 → 내 댓글 확인 | 화면 ③칸 · `app/browser/youtube_driver.py`, `jobs.py` · `tests/e2e/test_r3_post_flow.py`(가짜 유튜브 페이지로) |
 
-## 보안
+**댓글 조건** — 규칙 검사는 AI 없이 코드가 합니다(`app/analysis/validator.py`, `tests/unit/test_validator.py`).
 
-`.env`, API 키, 토큰, 브라우저 프로필 폴더, DB 파일, 과제 원문 PDF는 저장소에 넣지 않는다. pre-commit 훅이 커밋 전에 `scripts/check_secrets.py`로 검사한다.
+| 조건 | 어떻게 지키나 |
+|---|---|
+| 40~120자 | V1. 광고 표기를 포함한 전체 글로 셉니다. ②칸 「77 / 120자」 |
+| 영상 속 장면·말을 하나 이상 | V6 근거 문장이 영상 자료에 실제로 있는지, V7 영상의 핵심 말을 담았는지. ②칸 「근거」·「핵심 말」 |
+| 영상마다 다르게 | V11 다른 영상의 초안·과제 예시와 비교. 운명원을 꺼내는 말·끝말은 덜 쓴 것부터 권합니다(`app/llm/prompts.py`, `tests/unit/test_phrase_variety.py`) |
+| 금지: 링크 · 해시태그 · 지어낸 후기 | V2 · V3 · V8(써 본 척). 지어낸 애인 이야기(V9)와 효능 단정(V10)도 막습니다. 운명원은 「연애 사주 잘 봐주는 곳으로 유명한 곳」이라 「잘 본다던데」「친구가 봤는데 잘 맞는다고 하던데」 같은 들은 평판으로만 꺼냅니다(`tests/unit/test_brand_persona.py`) |
+
+**③칸과 화면**
+
+| 요구 | 확인할 곳 |
+|---|---|
+| 진행 상태 표시 | ③칸 진행 띠 · `app/static/js/job.js` · `tests/e2e/test_r3_post_flow.py` |
+| 실패하면 이유와 화면 캡처 | ③칸·기록 화면 [화면 캡처 보기] · `GET /api/jobs/{id}/screenshot` · `test_failure_shows_reason_screenshot_and_retry` |
+| 한국어 화면 | 모든 화면 · `tests/integration/test_dashboard_page.py`의 `test_screen_text_has_no_dev_words_or_english_labels` |
+| 크롬 프로필 폴더 | 프로필 화면 · `%LOCALAPPDATA%\JGMarketingAgent\profiles\profile-1~3`(유튜브1~3) · `app/ops/profiles.py` |
+
+**운영 규칙** — 화면이 아니라 DB와 코드가 막습니다(`app/ops/rules.py`, `tests/unit/test_ops_rules.py`).
+
+| 규칙 | 코드 |
+|---|---|
+| 영상당 댓글 1개(한 영상에 계정 하나) | `posts` 표의 `UNIQUE(target, video_id)`(`app/db.py`) · `test_same_video_rejected_even_with_other_profile` |
+| 하루 상한(기본 10개, 한국 자정에 풀림) | `PostRules.reserve`가 한 거래(`BEGIN IMMEDIATE`) 안에서 세고 넣습니다 · `test_limit_ten_then_eleventh_rejected` |
+| 기록(어느 영상·프로필·댓글·성공/실패, 시간순) | 지우지 않는 `runs` 표(`app/ops/ledger.py`) · 기록 화면 |
+| 사람이 승인한 초안만 | 규칙 검사를 통과해야 [댓글 달기]가 눌리고, 서버는 승인한 초안만 받습니다(`draft_not_approved`) |
+
+**설정 예시** — `config.yaml`(기본값). 설정 화면에서 바꾸면 내 PC 사용자 폴더에 저장됩니다.
+
+```yaml
+profiles: [유튜브1, 유튜브2, 유튜브3]
+comment:
+  min_chars: 40
+  max_chars: 120
+  brand: 운명원
+  disclosure: "[광고]"
+  disclose_default: true
+limits:
+  daily_max_comments: 10
+```
+
+**가점 4가지**
+
+| 가점 | 확인할 곳 |
+|---|---|
+| 프로필 3개 선택·자동 배정 | ③칸 「프로필」(자동 배정 · 이번에는 유튜브2) · `app/ops/profiles.py` · `tests/unit/test_ops_profiles_ledger.py` |
+| 링크 직접 입력 | ①칸 「영상 링크로 불러오기」 · `app/youtube/url_parser.py` · `tests/unit/test_url_parser.py` |
+| 새 영상 초안 즉석 생성 | ②칸(고르면 바로, [다른 댓글 만들기]) · `app/analysis/drafter.py` · `tests/integration/test_drafts_api.py` |
+| '연애' 뜨기 직전 영상(조회수 1,000~5,000, 시간당 150회 이상, 초안까지만) | ①칸 [뜨기 직전 영상] · `app/youtube/rising.py` · `tests/integration/test_rising.py` |
+
+## 4. 설계 요점과 한계
+
+- **사람이 검토하고 누릅니다.** AI는 초안까지 만들고, 게시는 사람이 [댓글 달기]를 눌러야 시작합니다.
+- **규칙은 코드가 봅니다.** 글자 수·링크·후기 같은 조건은 AI에게 맡기지 않고 검사 14개로 확인합니다.
+- **근거를 대조합니다.** AI가 뽑은 영상 속 말이 실제 자막·댓글에 있는지 확인하고, 없으면 버립니다.
+- **광고 표기 켬/끔**(기본 켬). 광고주가 계정을 운영하면 표기가 필요해서 둘 다 지원합니다.
+- **AI를 바꿔 끼울 수 있습니다.** 설정 화면에서 Ollama·API 키 AI·로그인된 프로그램 중에 고릅니다.
+
+**한계.** 유튜브 약관은 자동화된 수단으로 서비스를 조작하는 것을 금지합니다. 자동 입력으로 댓글을 달면 스팸·정책 위반으로 계정이 제한될 수 있습니다. 그래서 하루 상한을 낮게 두고, 사람이 검토한 댓글만 관련 영상에 답니다. 자막 자동 읽기는 공개되지 않은 경로를 쓰므로 막히면 제목·설명으로 대신합니다.
+
+이유와 자세한 구조: [docs/INTENT.md](docs/INTENT.md)(제작 의도) · [docs/DESIGN.md](docs/DESIGN.md)(설계 기준)
+
+## 5. 테스트
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # 처음 한 번
+.\scripts\verify.ps1                                                # ruff 검사 → 모든 자동 테스트
+```
+
+- 자동 테스트는 **인터넷·API 키·AI 없이** 돕니다. 유튜브와 AI는 가짜 응답으로 바꿉니다.
+- 화면 테스트(`tests/e2e/`)는 설치된 크롬을 창 없이 엽니다. 크롬이나 Playwright가 없으면 건너뜁니다.
+- 실제 유튜브에는 접속하지 않습니다. 게시 흐름은 가짜 유튜브 페이지(`tests/fixtures/fake_youtube_watch.html`)로 확인합니다.
+- PowerShell이 스크립트 실행을 막으면: `powershell -ExecutionPolicy Bypass -File .\scripts\verify.ps1`
+
+## 6. 오픈소스 출처
+
+2026-11-17에 설치된 패키지 정보(`importlib.metadata`의 라이선스 항목과 라이선스 파일)로 확인했습니다.
+
+| 이름 | 판 | 라이선스 | 쓰는 곳 |
+|---|---|---|---|
+| FastAPI | 0.163.1 | MIT | 안쪽 서버 |
+| Uvicorn (standard) | 0.54.0 | BSD-3-Clause | 서버 실행 |
+| Jinja2 | 3.1.6 | BSD 3-Clause(정보에는 「BSD License」만 있어 라이선스 파일 문구로 확인) | 화면 틀 |
+| httpx | 0.28.1 | BSD-3-Clause | 유튜브·AI 호출 |
+| python-dotenv | 1.2.4 | BSD-3-Clause | 개발용 `.env` 읽기 |
+| PyYAML | 6.0.3 | MIT | `config.yaml` 읽기 |
+| pywebview | 6.2.1 | BSD 3-Clause | 자체 창. 함께 설치되는 pythonnet(MIT)·bottle(MIT)·proxy_tools(MIT)·clr_loader(MIT, 정보에 항목이 없어 라이선스 파일로 확인) |
+| Playwright for Python | 1.65.2 | Apache-2.0 | 크롬 자동 입력 |
+| youtube-transcript-api | 1.2.5 | MIT | 자막 자동 읽기. 함께 설치되는 requests(Apache-2.0)·defusedxml(PSFL) |
+| pytest · ruff | 9.2.0 · 0.17.5 | MIT · MIT | 테스트·코드 검사(개발용) |
+| Noto Serif KR | — | SIL Open Font License 1.1 | 제목 글꼴. 필요한 글자만 남긴 파일([`app/static/fonts/`](app/static/fonts/README.md), 전문 `OFL.txt`) |
+
+- 위 패키지가 다시 끌어오는 작은 패키지(starlette, pydantic 등)는 표에 다 적지 않았습니다.
+- 저장소에 넣지 않고 PC에 있는 것을 쓰는 프로그램(Google Chrome, Microsoft Edge WebView2 Runtime, Ollama와 AI 모델)은 라이선스를 이 저장소에서 확인하지 않았습니다. 각 제공사 조건을 따릅니다.
+
+이 프로젝트는 AI 코딩 도구(Claude Code 등)를 써서 만들었습니다.
+
+---
+
+예전 README(단계별 변경 내용과 전체 API 표)는 [docs/CHANGELOG.md](docs/CHANGELOG.md)로 옮겼습니다. 작업 규칙은 [AGENTS.md](AGENTS.md)에 있습니다.
