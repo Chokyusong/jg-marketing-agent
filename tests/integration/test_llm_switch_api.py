@@ -97,8 +97,8 @@ def test_provider_list_groups_and_readiness(client):
     assert items["codex-cli"]["kind"] == "program" and items["codex-cli"]["installed"] is False
     assert items["codex-cli"]["unavailable_reason"] == "이 PC에 설치되지 않았습니다."
     assert items["codex-cli"]["models_listable"] is False
-    assert items["gemini-cli"]["verified"] is False
-    assert "아직 연결하지 않았습니다" in items["gemini-cli"]["unavailable_reason"]
+    # 2026-11-18 Gemini 명령줄 프로그램은 목록에서 뺐다(API 키 방식 gemini는 그대로)
+    assert "gemini-cli" not in items and items["gemini"]["kind"] == "api"
     text = json.dumps(data, ensure_ascii=False)
     assert "api.openai.com" not in text  # 주소는 싣지 않는다
 
@@ -108,7 +108,7 @@ def test_cannot_choose_ai_that_is_not_ready(client, user_dir):
         ("openai", "API 키를 먼저"),
         ("custom", "주소를 먼저"),
         ("codex-cli", "설치되지 않았습니다"),
-        ("gemini-cli", "아직 연결하지 않았습니다"),
+        ("gemini-cli", "목록에 없는 AI"),  # 2026-11-18 목록에서 뺐다
         ("없는것", "목록에 없는 AI"),
     ]:
         res = put(client, **{"llm.active": name})

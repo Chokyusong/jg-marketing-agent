@@ -1,4 +1,4 @@
-"""로그인된 프로그램을 대신 실행하는 공급자(R5, PLAYBOOK 12-3): Codex · Claude Code · (Gemini CLI).
+"""로그인된 프로그램을 대신 실행하는 공급자(R5, PLAYBOOK 12-3): Codex · Claude Code.
 
 이 앱은 그 프로그램이 저장한 로그인 정보(토큰 파일·설정 파일)를 **읽거나 복사하지 않는다.**
 프로그램을 그대로 실행하고, 프로그램이 자기 로그인을 쓴다. 영상 자막·댓글은 남이 쓴 글이라
@@ -64,8 +64,8 @@
   - `--bare`는 쓰지 않는다(구독 로그인을 쓰지 않고 API 키만 쓴다고 문서에 적혀 있다).
   - `claude auth status`: 로그인돼 있으면 종료 코드 0, 아니면 1(문서).
   - 모델 목록을 주는 명령은 `claude --help`에 없다(2026-11-17) → config.yaml의 별칭·이름 목록.
-- Gemini CLI: 이 PC에 설치돼 있지 않아 `--help`로 위 조건을 확인하지 못했다 → **물리지 않는다**.
-  목록에는 「설치되지 않음」으로만 보인다(설치돼 있어도 「아직 연결하지 않음」, 고를 수 없음).
+- Gemini 명령줄 프로그램: 문서 기준으로 안전 조건(도구 끔)을 확인하지 못해 넣지 않았다
+  (2026-11-17 판단, 2026-11-18 목록에서 뺌 — docs/DESIGN.md 5.2.1). Gemini는 API 키로 쓴다.
 """
 
 from __future__ import annotations
@@ -219,11 +219,6 @@ SPECS: dict[str, CLISpec] = {
         True,
         login_args=("auth", "status"),
         login_hint="명령 창에서 `claude auth login`(또는 `claude`를 켜고 /login)으로 로그인합니다.",
-    ),
-    "gemini": CLISpec(
-        "gemini",
-        False,
-        login_hint="이 PC에서 실행 방법을 확인하지 못해 아직 연결하지 않았습니다.",
     ),
 }
 

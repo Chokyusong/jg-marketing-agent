@@ -5,7 +5,7 @@
   새 창에 연다.
   창이 닫히면 로그인 상태 명령으로 한 번 저절로 묻는다.
 - 로그인됨 → 지금처럼 쓴다.
-- Gemini(명령줄 프로그램)는 물리지 않고 까닭을 보인다.
+- Gemini(명령줄 프로그램)는 2026-11-18 목록에서 뺐다(API 키 방식 Gemini는 그대로).
 
 진짜 프로그램·로그인 명령은 실행하지 않는다(가짜 실행기·가짜 창). 로그인 정보 파일도 읽지 않는다.
 """
@@ -145,24 +145,22 @@ def test_logged_in_program_is_ready_as_before(setup):
     assert windows == []
 
 
-def test_gemini_program_is_not_wired_and_says_why(setup):
+def test_gemini_program_is_not_in_the_list(setup):
+    """2026-11-18(대표 지시): Gemini 명령줄 프로그램은 고를 수 없어 목록에서 뺐다.
+
+    설치돼 있어도 보이지 않고, 그 이름으로 묻거나 로그인 창을 열 수 없다. API 키 방식의
+    Gemini(Google)는 그대로 있다."""
     make, windows = setup
     client = make(Programs(installed={"gemini"}))
-    p = by_name(client)["gemini-cli"]
-    assert p["verified"] is False and p["can_open_login"] is False and p["install_guide"] is None
-    # 맨 위 안내는 늘 같은 문장(기획 세션 2026-11-17): 개인 무료 계정 종료와 대신 쓸 길
-    assert p["not_wired_notes"][0] == (
-        "구글이 2026년 6월부터 개인 무료 계정의 이용을 끝냈습니다. 기업 계정이나 유료 키가 "
-        "있어야 합니다. 없으면 「API 키로 → Gemini」를 쓰세요.")
-    notes = " ".join(p["not_wired_notes"])
-    assert "Antigravity 앱과는 다른 프로그램입니다. 같은 구글 계정으로 로그인합니다." in notes
-    assert "2026년 5월 19일 발표, 2026년 6월 18일부터 적용" in notes
-    # 까닭은 쉬운 말로: 계획 모드를 켰다 끄면 승인 없이 고칠 수 있음(문서 기준 판단)
-    assert "계획 모드" in notes and "문서 기준 판단 · 실제 실행 확인 전" in notes
-    assert "Antigravity는 글을 쓰는 중에 파일을 고칠 수 있어" in notes
-    assert p["not_wired_page"].startswith("https://developers.googleblog.com/")
+    items = by_name(client)
+    assert "gemini-cli" not in items
+    programs = [n for n, p in items.items() if p["kind"] == "program"]
+    assert sorted(programs) == ["claude-cli", "codex-cli"]  # 프로그램 방식은 둘만
+    assert items["gemini"]["kind"] == "api" and items["gemini"]["needs_key"] is True
+    assert all(not p["not_wired_notes"] for p in items.values())
     res = client.post("/api/llm/providers/gemini-cli/login")
-    assert res.status_code == 422 and windows == []
+    assert res.status_code >= 400 and windows == []
+    assert client.post("/api/llm/providers/gemini-cli/test").status_code >= 400
 
 
 def test_antigravity_is_not_in_the_list(setup):

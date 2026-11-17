@@ -4,7 +4,7 @@
   [로그인하기] → (가짜) 로그인 창이 그 프로그램의 로그인 명령으로 열림 → 창을 닫으면 저절로
   다시 묻고 「준비됨」.
 - Codex: 설치되지 않음 → [설치 방법 보기]에 공식 설치 명령·[복사]·공식 페이지.
-- Gemini(명령줄 프로그램): 물리지 않음 → 까닭(Antigravity 앱과 다른 프로그램 등).
+- Gemini(명령줄 프로그램): 2026-11-18 목록에서 뺐다(API 키 방식 Gemini는 그대로).
 - 1920×1009 · 1600×960에서 화면 전체 스크롤 없음, 가장 작은 글자 12px 이상.
 
 진짜 프로그램·로그인 명령은 실행하지 않는다(가짜 PATH·가짜 실행기·가짜 창). 창 없는(headless) 크롬.
@@ -118,12 +118,10 @@ def test_first_run_paths_and_each_program_state(app, programs):
         assert "공식 문서 기준 2026-11-17 확인" in guide and "따로 설치" in guide
         assert page.locator("#ai-login-codex-cli").count() == 0
 
-        # Gemini(명령줄 프로그램): 물리지 않음, 까닭을 보인다
-        page.click("#ai-item-gemini-cli")
-        pane = page.text_content("#ai-pane-gemini-cli")
-        assert "Antigravity 앱과는 다른 프로그램입니다. 같은 구글 계정으로 로그인합니다." in pane
-        assert "공식 공지 열기" in pane
-        assert page.locator("#ai-login-gemini-cli").count() == 0
+        # Gemini(명령줄 프로그램): 2026-11-18 목록에서 뺐다. API 키 방식 Gemini는 그대로
+        assert page.locator("#ai-item-gemini-cli").count() == 0
+        assert page.locator("#ai-item-gemini").count() == 1
+        assert "Antigravity" not in page.text_content("#settings-body")
 
         # 첫 실행 안내의 「이 길로 보기」 → 구독 프로그램 중 설치된 Claude Code 칸.
         # 설정을 열 때 로그인 상태를 저절로 한 번 물었다(2026-11-18) → 「로그인 필요」
@@ -218,7 +216,7 @@ def test_setup_screens_fit_without_page_scroll(app, size):
 
         open_ai(page)
         assert page.is_visible("#ai-first-run")  # 첫 실행 안내가 펼쳐진 상태
-        for name in ("codex-cli", "claude-cli", "gemini-cli"):
+        for name in ("codex-cli", "claude-cli"):  # gemini-cli는 2026-11-18 뺐다
             page.click(f"#ai-item-{name}")
             if name == "claude-cli":
                 page.wait_for_selector("#ai-login-claude-cli")

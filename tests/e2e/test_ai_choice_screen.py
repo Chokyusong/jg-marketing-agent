@@ -270,7 +270,9 @@ LIST_FIT = """() => {
 
 @pytest.mark.parametrize("size", [(1920, 1009), (1600, 960)])
 def test_ai_list_last_row_is_visible_without_scrolling(app, size):
-    """2026-11-17: 넓은 창에서는 AI 목록 9줄이 목록 안쪽·설정 칸 스크롤 없이 다 보인다."""
+    """2026-11-17: 넓은 창에서는 AI 목록이 목록 안쪽·설정 칸 스크롤 없이 다 보인다.
+
+    2026-11-18 Gemini 명령줄 프로그램을 빼 9줄 → 8줄, 마지막 줄은 Claude Code."""
     base = app["base"]
     with headless_page(base, size=size) as (page, errors):
         page.goto(base + "/")
@@ -278,10 +280,11 @@ def test_ai_list_last_row_is_visible_without_scrolling(app, size):
         open_ai(page)
         page.click("#ai-item-openai")
         m = page.evaluate(LIST_FIT)
-        assert m["rows"] == 9 and not m["listScroll"], m
-        assert m["lastBottom"] <= m["bodyBottom"] <= m["viewport"], m  # 마지막 줄(Gemini 프로그램)
+        assert m["rows"] == 8 and not m["listScroll"], m
+        assert m["lastBottom"] <= m["bodyBottom"] <= m["viewport"], m  # 마지막 줄(Claude Code)
         assert m["useBottom"] <= m["bodyBottom"], m  # [이 AI 쓰기]도 가려지지 않는다
-        assert page.locator("#ai-item-gemini-cli").is_visible()
+        assert page.locator("#ai-item-claude-cli").is_visible()
+        assert page.locator("#ai-item-gemini-cli").count() == 0
         fit = measure(page, *size)
         assert not fit["pageScroll"] and not fit["hScroll"] and fit["minFont"] >= 12, fit
     assert not errors, errors

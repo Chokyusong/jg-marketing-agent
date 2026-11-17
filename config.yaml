@@ -128,4 +128,5 @@ llm:
       program: claude
       sends_to: "Anthropic(Claude Code)"
       models: [fable, opus, sonnet, claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5]
-    gemini-cli: {type: cli, label: "Gemini (명령줄 프로그램)", program: gemini, sends_to: "Google(Gemini 명령줄 프로그램)"}  # 화면에 「CLI」를 쓰지 않는다
+    # Gemini 명령줄 프로그램은 2026-11-18 목록에서 뺐다(문서 기준으로 안전 조건을 확인하지 못함 —
+    # docs/DESIGN.md 5.2.1). Gemini는 위 「API 키로」(gemini)로 쓴다

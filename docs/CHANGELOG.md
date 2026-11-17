@@ -7,6 +7,11 @@
 
 ## 새 변경 (README를 줄인 뒤)
 
+### 2026-11-18 Gemini 명령줄 프로그램을 목록에서 뺌
+
+- 설정 「로그인된 프로그램으로」에는 Codex·Claude Code 둘만 남는다. Gemini 명령줄 프로그램은 문서 기준으로 안전 조건(도구 끔·승인 없이 쓰기 불가)을 확인하지 못해 넣지 않았다 — 그동안 목록에 두고 「고를 수 없는 까닭」만 보였으나 대표 지시로 `config.yaml`·화면·README에서 뺐다(근거는 DESIGN 5.2.1에 한 단락으로 남김). Antigravity 명령줄 프로그램도 넣지 않는다.
+- API 키 방식의 Gemini(Google)와 「API 키로 → Gemini」 세 걸음, ChatGPT·Claude·Grok 키 방식, Ollama는 그대로. 물리지 않는 프로그램용 공통 장치(`CLISpec.verified`, `not_wired_notes` 필드)는 남기고 비워 둠.
+
 ### 2026-11-18 Codex 추론 수준을 이 앱이 정한다
 
 - Codex를 부를 때 추론 수준을 명령줄로 준다(`-c model_reasoning_effort=<값>`, 기본 **low**). 설정 → AI 모델 → Codex의 모델 고르기 바로 아래 「추론 수준」(낮음·보통·높음…, 「높을수록 오래 생각하고 사용량을 더 씁니다. 댓글 쓰기에는 낮음으로 충분합니다.」). 고를 수 있는 값은 `codex debug models`의 모델별 목록이고, 고른 모델이 받지 않는 수준은 보이지 않는다(못 받아 오면 낮음·보통·높음).

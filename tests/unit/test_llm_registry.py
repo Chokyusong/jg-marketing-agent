@@ -231,7 +231,7 @@ def test_repo_config_lists_every_ai_without_secrets(clean_env, tmp_path):
     expected = {
         "ollama": "ollama", "openai": "openai_compatible", "claude": "anthropic",
         "gemini": "openai_compatible", "grok": "openai_compatible", "custom": "openai_compatible",
-        "codex-cli": "cli", "claude-cli": "cli", "gemini-cli": "cli",
+        "codex-cli": "cli", "claude-cli": "cli",  # gemini-cli는 2026-11-18 뺐다
     }
     assert {n: p.type for n, p in providers.items()} == expected
     for p in providers.values():

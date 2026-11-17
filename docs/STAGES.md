@@ -318,7 +318,7 @@ FastAPI 앱, 읽기 전용 3열 화면, `/api/health`, 테스트 2개.
 
 **진행 상황 (2026-11-17)** — 코드·자동 테스트·로그인된 프로그램 진짜 실행(Codex 성공, Claude Code는 로그인 만료로 실패)은 했고, API 키 AI의 진짜 호출과 대표 화면 확인이 남아 `[-]`로 둔다.
 - [x] 어댑터 `app/llm/openai_compatible.py`(OpenAI·Gemini 호환 주소·Grok·직접 입력) · `anthropic.py`(Claude API) · `cli.py`(Codex·Claude Code를 대신 실행). 모두 `TextJSONLLM`, 모델 이름은 코드에 없음(목록 또는 직접 적기). 파일 머리말에 확인 날짜와 출처. 오류 종류 `llm_auth`·`llm_rate_limited` 추가
-- [x] 프로그램 실행 조건: 빈 임시 폴더(끝나면 지움) · 도구 끔/읽기 전용 · 비대화 한 번 실행 · 시간 제한 · 프롬프트는 표준 입력 · 셸 없음 · 콘솔 창 없음 · 이 앱의 키 환경 변수는 넘기지 않음 · 그 프로그램의 로그인·설정 파일은 읽지 않음 · `health()`는 설치·버전만. Gemini CLI는 이 PC에 없어 물리지 않음
+- [x] 프로그램 실행 조건: 빈 임시 폴더(끝나면 지움) · 도구 끔/읽기 전용 · 비대화 한 번 실행 · 시간 제한 · 프롬프트는 표준 입력 · 셸 없음 · 콘솔 창 없음 · 이 앱의 키 환경 변수는 넘기지 않음 · 그 프로그램의 로그인·설정 파일은 읽지 않음 · `health()`는 설치·버전만. Gemini CLI는 이 PC에 없어 물리지 않음 → 2026-11-18 목록에서 뺌(문서 기준으로 안전 조건을 확인하지 못해 넣지 않았다, DESIGN 5.2.1)
 - [x] 설정: `llm.active`·`llm.models`·`llm.base_urls`(settings.json), AI별 API 키는 따로 DPAPI(`llm_keys/<이름>.bin`, 유튜브 키는 그대로), 프로그램 > `.env` > 없음. 저장하면 바로 적용, 게시 중이면 409. `config.yaml` `llm.providers` 9개(비밀값 없음)
 - [x] API(더하기만): `GET /api/llm/providers`, `POST /api/llm/providers/{이름}/test`(모델 목록 — 요금 안 드는 호출, 프로그램은 로그인 상태 명령), `GET /api/llm/models?provider=`(인자 없으면 전과 같음), `PUT`·`DELETE /api/settings/llm-key/{이름}`, `PUT /api/settings`에 새 칸
 - [x] 화면: 설정 「AI 모델」 묶음을 왼쪽 목록(이 PC에서 · API 키로 · 로그인된 프로그램으로) + 오른쪽 준비 칸으로. 이 PC 밖 AI는 「영상 제목·설명·자막·댓글이 ○○(으)로 전송됩니다. 요금이 들 수 있습니다」와 한 번 확인. 위 줄 칩·아래 줄 「AI 이름 · 모델 · 이 PC/외부」. 미리 불러오기·불러오는 중·추천 모델은 Ollama만. 시작 준비 줄은 고른 AI를 본다
@@ -380,5 +380,5 @@ FastAPI 앱, 읽기 전용 3열 화면, `/api/health`, 테스트 2개.
 
 - R5에서 앞당겨 했다(위 R5 절). 남은 것도 R5 절의 사람 확인 두 줄.
 
-- 설정의 `llm.active`만 바꿔 다른 LLM을 쓴다(DESIGN 5.2.1, PLAYBOOK 12단계). 어댑터 하나가 한 걸음: `openai_compatible`(OpenAI·Grok·Gemini 호환 주소 등, API 키) → `anthropic`(Claude API, API 키) → `cli`(로그인된 Codex·Claude Code·Gemini CLI를 대신 실행) → 화면에서 공급자 고르기.
+- 설정의 `llm.active`만 바꿔 다른 LLM을 쓴다(DESIGN 5.2.1, PLAYBOOK 12단계). 어댑터 하나가 한 걸음: `openai_compatible`(OpenAI·Grok·Gemini 호환 주소 등, API 키) → `anthropic`(Claude API, API 키) → `cli`(로그인된 Codex·Claude Code를 대신 실행. Gemini CLI는 2026-11-18 뺌) → 화면에서 공급자 고르기.
 - 완료 기준: 분석·초안 코드를 바꾸지 않고 공급자만 바꿔 초안이 나온다. 자동 테스트는 키·CLI·인터넷 없이 통과. 키가 로그·응답에 없다. CLI 방식은 빈 폴더·도구 꺼짐·비대화 모드·시간 제한 조건이 테스트로 확인된다. CLI의 로그인 토큰 파일을 읽지 않는다.
