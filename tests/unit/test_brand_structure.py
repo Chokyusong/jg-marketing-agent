@@ -10,6 +10,8 @@
 - 하나씩 빠진 글은 V14에 걸리고, 빠진 조각 이름을 알린다.
 - V8(써 본 척)·V10(내 단정)의 경계: 의향은 통과, 써 본 말·내 단정은 걸린다.
 - 편한 맞춤법(하더라구요·하더라구여·가보려구요·봐보려구요, 연애사주)을 받아 준다.
+- ⑤ 안의 짧은 까닭(「저도 썸이 답답해서 조만간 한번 가보려구요」)은 통과하고, 까닭으로 써 본 척·
+  효능 단정·지어낸 애인·영상 숫자 복사를 하면 V8·V10·V9·S5에 걸린다(2026-11-18).
 """
 
 from __future__ import annotations
@@ -244,3 +246,60 @@ def test_draft_user_tells_not_to_reuse_the_model_just_copied():
                                   "viewer_needs": "n"},
                         quote="q", source="comment", min_body=35, max_body=115, last_model=4)
     assert "바로 앞 초안이 본보기 5번의 꺼내는 말을 그대로 썼다" in text
+
+
+# ---------------------------------------------------------------- ⑤ 안의 까닭(2026-11-18)
+# 기획 담당: 운명원 대목이 앞 문장과 따로 놀지 않게 「저도」와 가 보겠다는 말 사이에 이 영상
+# 고민에서 온 짧은 까닭을 넣을 수 있다. 다섯 조각과 순서는 그대로, V8·V10·V9는 그대로 막는다.
+LEAD = "요즘 운명원이 연애사주를 되게 잘 본다고 하던데, "
+
+
+@pytest.mark.parametrize("ending", [
+    "저도 썸이 답답해서 조만간 한번 가보려구요.",
+    "저도 그 사람 속마음이 궁금해서 언제 한번 상담받아보고 싶네요.",
+    "저도 재회 문제로 기회 되면 한번 가 보려고요.",
+    "저도 정말 맞는지 확인하러 가 보려고요.",
+    "저도 연락 기대치가 달라서 조만간 한번 상담받아보고 싶네요.",
+    # 핵심 말이 까닭에 들어가도 S2(바람에 핵심 말)로 보지 않는다
+    "저도 하루에 한 번 연락 문제로 언제 한번 가보려구요.",
+])
+def test_reason_inside_the_intent_passes(ending):
+    text = REACTION + LEAD + ending
+    result = _run(text)
+    assert result.passed, result.failure_lines()
+    assert _style(text) == []
+    assert P.intent_reason(text, "운명원")
+    assert len(text) <= 110
+
+
+@pytest.mark.parametrize("ending, code, said", [
+    ("저도 가 봤는데 잘 맞더라고요.", "V8", "'가 봤'"),  # 써 본 척
+    ("저도 썸 때문에 가 봤는데 좋았어요.", "V8", "'가 봤'"),
+    ("저도 무조건 맞는지 확인하러 가 보려고요.", "V10", "'무조건'"),  # 효능 단정
+    ("저도 3년 만난 남친 때문에 조만간 가보려구요.", "V9", "'저도 3년 만난 남친'"),  # 지어낸 애인
+    ("저도 남친이랑 싸워서 조만간 한번 가보려구요.", "V9", "'저도 남친'"),
+    ("저도 제 남친 때문에 한번 가보려구요.", "V9", "'제 남친'"),
+])
+def test_reason_cannot_be_a_fake_use_a_claim_or_a_made_up_partner(ending, code, said):
+    result = _run(REACTION + LEAD + ending)
+    assert not result.passed
+    check = _check(result, code)
+    assert not check.passed and said in check.message, check.message
+
+
+@pytest.mark.parametrize("ending", [
+    "저도 남친 없어서 조만간 한번 가보려구요.",
+    "저도 애인 생길지 궁금해서 한번 가보려구요.",
+    "저도 남친이 생길지 언제 한번 상담받아보고 싶네요.",
+])
+def test_reason_about_having_no_partner_yet_is_not_a_made_up_partner(ending):
+    assert _check(_run(REACTION + LEAD + ending), "V9").passed
+
+
+def test_reason_copying_the_videos_number_is_caught_by_s5():
+    # 영상 속 숫자를 까닭에 내 것으로(「저도 3년 사귄 사람이랑」) → 다듬기 검사 S5
+    context = "3년 사귄 커플이 하루에 한 번 연락 문제로 싸웠다는 사연"
+    text = REACTION + LEAD + "저도 3년 사귄 사람이랑 그래서 조만간 한번 가보려구요."
+    got = S.style_issues(text, brand="운명원", disclosure="[광고]", key_phrases=KEYS,
+                         context=context)
+    assert [i[:2] for i in got] == ["S5"] and "'3년'" in got[0]

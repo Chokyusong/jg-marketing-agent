@@ -433,9 +433,11 @@ def test_draft_user_suggests_hearsay_endings_and_lists_used_openings():
 
 
 def test_draft_system_asks_for_a_wish_about_my_own_love_life():
-    # 2026-11-17 다섯 조각: 「내 연애의 일」 바람 대신 가 보겠다는 말 앞에 내 일을 짧게
-    assert "가 보겠다는 말 앞에 이 영상의 고민에서 나온 내 일을 짧게 붙여도 된다" in SYSTEM
-    assert "핵심 말이나 영상 속 용어는 ③에 끼워 넣지 않는다" in SYSTEM
+    # 2026-11-17 다섯 조각: 「내 연애의 일」 바람 대신 가 보겠다는 말 앞에 내 일을 짧게.
+    # 2026-11-18(기획 담당): 그 자리를 「이 영상의 고민에서 온 짧은 까닭(12자 안)」으로 분명히 함
+    assert ("⑸의 '저도' 뒤, 가 보겠다는 말 앞에 **이 영상의 고민에서 온 짧은 까닭**(12자 안)을 "
+            "넣으면 앞 문장과 이어진다") in SYSTEM
+    assert "까닭이 아닌 자리에 핵심 말을 바람으로 끼워 넣지 않는다" in SYSTEM
     assert "사실 문장을 '~하는 곳이라던데'처럼 그대로 옮기지 않는다" in SYSTEM
     assert "'~라는 말에 ~네요' 틀만 쓰지 말고" in SYSTEM
 
@@ -469,7 +471,7 @@ def test_draft_system_says_ga_bwayagetda_takes_no_fortune_or_timing():
 
 def test_draft_system_keeps_key_phrases_out_of_the_wish_and_endings_light():
     # 2026-11-17 다섯 조각: ④가 없어졌고 끝말은 가 보겠다는 말이다
-    assert "핵심 말은 ①에만 쓴다('내짝 찾기 언제 되는지 …' ✗)" in SYSTEM
+    assert "핵심 말은 ①과 까닭에만 쓴다('내짝 찾기 언제 되는지 궁금해지네요' ✗)" in SYSTEM
     assert "'저도 언제 짝 만날지 조만간 한번 상담받아보고 싶어요'" in SYSTEM
     assert "'여쭤보고 싶네요'처럼 딱딱한 끝말은 피한다" in SYSTEM
     assert "②는 빼도 된다. 마무리 문장은 따로 붙이지 않는다" in SYSTEM
@@ -546,3 +548,54 @@ def test_prompts_say_to_rephrase_video_speech_instead_of_gluing_a_particle():
     assert "'헤어지자는 거야부터 떠오를 듯' ✗ → '헤어지자는 말부터 떠오를 듯'" in system
     polish = P.polish_system(brand="운명원", disclosure="[광고]")
     assert "'헤어지자는 거야부터' → '헤어지자는 말부터'" in polish
+
+
+def test_draft_system_shows_reasons_from_the_concern_and_what_not_to_make_up():
+    # 2026-11-18(기획 담당): ⑤ 안에 이 영상 고민에서 온 짧은 까닭 — 앞 문장과 이어지게
+    for example in ("'저도 썸이 답답해서 조만간 한번 가보려구요'",
+                    "'저도 그 사람 속마음이 궁금해서 언제 한번 상담받아보고 싶네요'",
+                    "'저도 재회 문제로 기회 되면 한번 가 보려고요'",
+                    "'저도 맞는지 확인하러 가 보려고요'"):
+        assert example in SYSTEM, example
+    assert "까닭은 고민 한 줄·핵심 말에서 가져오고 지어내지 않는다" in SYSTEM
+    assert "'저도 3년 만난 남친 때문에' ✗" in SYSTEM and "'저도 가 봤는데' ✗" in SYSTEM
+    # 좋은 예 하나(3번)는 까닭을 넣고, 나머지는 까닭 없는 본보기 꼴 그대로
+    with_reason = [ex for ex in P.GOOD_EXAMPLES if P.intent_reason(ex.body, "운명원")]
+    assert [P.intent_reason(ex.body, "운명원") for ex in with_reason] == ["이 썸 끝이 궁금해서"]
+    assert len(P.GOOD_EXAMPLES) - len(with_reason) == 3
+    polish = P.polish_system(brand="운명원", disclosure="[광고]")
+    assert "'저도' 뒤 가 보겠다는 말 앞의 짧은 까닭('저도 썸이 답답해서')은 그대로 둔다" in polish
+
+
+def test_draft_user_asks_for_a_reason_until_one_draft_has_it():
+    base = dict(analysis=ANALYSIS, quote="q", source="comment", min_body=35, max_body=115)
+    want = P.draft_user(**base, reason=True)
+    assert "이번 끝말에는 '저도' 뒤, 가 보겠다는 말 앞에 이 영상의 고민에서 온 짧은 까닭" in want
+    assert f"고민 한 줄('{ANALYSIS['concern']}')을 쉬운 내 말로 줄여서" in want
+    free = P.draft_user(**base, reason=False)
+    assert "이번 끝말은 까닭 없이 본보기 꼴('저도 조만간 한번 가보려구요')로 써도 된다" in free
+    assert "짧은 까닭(12자" not in free
+    plain = P.draft_user(**base)
+    assert "이번 끝말에는" not in plain and "까닭 없이" not in plain
+
+
+@pytest.mark.parametrize("ending, reason", [
+    ("저도 썸이 답답해서 조만간 한번 가보려구요.", "썸이 답답해서"),
+    ("저도 그 사람 속마음이 궁금해서 언제 한번 상담받아보고 싶네요.", "그 사람 속마음이 궁금해서"),
+    ("저도 재회 문제로 기회 되면 한번 가 보려고요.", "재회 문제로"),
+    ("저도 맞는지 확인하러 가 보려고요.", "맞는지"),
+    ("나도 언제 짝 만날지 조만간 한번 상담받아보고 싶어요.", "언제 짝 만날지"),
+    ("저도 연락 문제 때문에 언제 한번 가보려구요.", "연락 문제 때문에"),
+    # 때 말·「궁금해서」·가 보겠다는 말의 앞쪽만 있으면 까닭이 아니다
+    ("저도 언제 시간 내서 가보려구요.", ""),
+    ("저도 궁금해서 한번 가볼 생각이에요.", ""),
+    ("저도 기회 되면 방문해서 사주 봐보려구요.", ""),
+    ("저도 조만간 한번 가보려구요.", ""),
+])
+def test_intent_reason_finds_the_reason_between_jeodo_and_the_intent(ending, reason):
+    text = "요즘 운명원이 연애사주를 잘 본다고 하던데, " + ending
+    assert P.intent_reason(text, "운명원") == reason
+
+
+def test_boss_models_have_no_reason_except_the_plain_gungeumhaeseo():
+    assert [P.intent_reason(m, "운명원") for m in P.BRAND_MODELS] == [""] * 10

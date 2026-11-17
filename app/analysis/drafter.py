@@ -343,6 +343,9 @@ class DraftService:
         except AppError:
             context_text = ""
         self._context_text = context_text
+        # ⑤의 까닭(2026-11-18): 같은 영상 초안 가운데 적어도 하나는 이 영상 고민에서 온 까닭을
+        # 넣게 한다. 앞 초안에 이미 있으면 까닭 없는 본보기 꼴도 된다고 한다(전부 강제하지 않음)
+        want_reason = not any(prompts.intent_reason(b, rules.brand) for b in avoid_bodies)
         # S8: 바로 앞에 보인 초안과 같은 본보기를 그대로 옮기지 않게
         self._last_shown = shown[0] if shown else ""
 
@@ -375,6 +378,7 @@ class DraftService:
                 used_closings=used_closings,
                 avoid_phrases=avoid_phrases,
                 last_model=prompts.copied_model(self._last_shown) if self._last_shown else -1,
+                reason=want_reason,
             )
             try:
                 data = llm.generate_json(

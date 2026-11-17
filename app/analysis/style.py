@@ -6,7 +6,8 @@
 
 - S1 길이: 전체 110자를 넘음(목표 80~110자, 한도 40~120자는 V1 그대로)
 - S2 바람에 핵심 말: 운명원 문장(바람)에 영상의 핵심 말을 끼움
-  (「내짝 찾기 언제 되는지 궁금해지네요」)
+  (「내짝 찾기 언제 되는지 궁금해지네요」). 「저도」 뒤 가 보겠다는 말 앞의 짧은 까닭
+  (`prompts.intent_reason`, 「저도 읽씹이 무서워서 조만간 한번 가보려구요」)은 빼고 본다(2026-11-18)
 - S3 띄어쓰기·말꼴: 「이유여쭤보고」처럼 붙여 씀, 「없었네라는 말에」처럼 말끝에 바로 「라는」
 - S4 같은 영상 앞 초안과 비슷함: [다른 댓글 만들기]가 거의 같은 글을 내지 않게
 - S6 늘어진 문장: 「~는데/인데」로 이은 문장에 운명원의 「~던데」를 또 이음(2026-11-17)
@@ -37,7 +38,7 @@ from collections.abc import Sequence
 from difflib import SequenceMatcher
 
 from app.analysis.validator import V14_REPUTE, contains_key_phrase, normalize
-from app.llm.prompts import copied_model, fold
+from app.llm.prompts import copied_model, fold, intent_reason
 
 SOFT_MAX_TOTAL = 110
 # 1~5회차 실제 초안: 다른 영상 초안끼리 가장 닮은 것이 0.55, 같은 영상 두 초안은 0.18~0.67,
@@ -183,6 +184,9 @@ def style_issues(
             "④ 마무리는 빼도 됩니다)"
         )
     wish = wish_part(body, brand)
+    reason = intent_reason(body, brand)
+    if reason:  # ⑤의 까닭(「저도 읽씹이 무서워서 …」)은 고민·핵심 말에서 온다(2026-11-18)
+        wish = wish.replace(reason, " ")
     stuffed = [
         k for k in key_phrases
         if k and len(normalize(k)) >= 2 and contains_key_phrase(wish, k)
@@ -260,10 +264,19 @@ def _copied_number(body: str, context: str, brand: str) -> str:
     if not context:
         return ""
     ctx = normalize(context)
+    parts: list[str] = []
     for s in _sentences(body):
         if brand and brand in s:
-            # 운명원을 꺼내는 들은 얘기(「~던데」)는 영상 얘기 표지가 아니다
-            s = s.split(brand, 1)[0]
+            # 운명원을 꺼내는 들은 얘기(「~던데」)는 영상 얘기 표지가 아니다. 그 뒤 「저도 …」의
+            # 까닭(⑤, 2026-11-18)은 따로 본다: 「저도 3년 만난 사람 때문에」
+            before, after = s.split(brand, 1)
+            parts.append(before)
+            mine = re.search(r"(?<![가-힣])(?:저도|나도)\s.*", after)
+            if mine:
+                parts.append(mine.group(0))
+        else:
+            parts.append(s)
+    for s in parts:
         if _ABOUT_VIDEO.search(s):
             continue
         for m in _NUMBER.finditer(s):

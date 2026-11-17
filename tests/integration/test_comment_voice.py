@@ -10,7 +10,17 @@
 import json
 
 import pytest
-from test_drafts_api import ANALYSIS, GOOD_BODY, KEYS, OTHER, OTHER_BODY, VID, add_youtube, draft
+from test_drafts_api import (
+    ANALYSIS,
+    GOOD_BODY,
+    GOOD_BODY_2,
+    KEYS,
+    OTHER,
+    OTHER_BODY,
+    VID,
+    add_youtube,
+    draft,
+)
 
 from app import db
 
@@ -186,6 +196,23 @@ def test_next_video_cannot_reuse_the_last_approved_tone(setup):
     line = next(x for x in user_prompts(llm)[3].splitlines() if "꺼내는 말은" in x)
     assert "잘 본다고 하던데" not in line
     assert "이미 쓴 첫 반응(다른 영상에 승인됨)" in user_prompts(llm)[3]
+
+
+def test_first_draft_asks_for_a_reason_and_the_next_may_skip_it(setup):
+    # 2026-11-18(기획 담당): 같은 영상 초안 가운데 적어도 하나는 ⑤에 이 영상 고민에서 온 까닭
+    client, _, use = setup
+    reasoned = ("하루에 한 번 연락 갖고 싸웠다는 댓글 보니 남 일 같지 않네요ㅠㅠ 요즘 운명원 연애 "
+                "사주 잘 본다고 하던데 저도 연락 문제로 언제 한번 가 보려고요.")
+    llm = use([ANALYSIS, draft(reasoned), draft(GOOD_BODY_2)])
+    first = client.post("/api/drafts", json={"video_id": VID}).json()
+    assert first["passed"] is True
+    ask = user_prompts(llm)[1]
+    assert "이번 끝말에는 '저도' 뒤, 가 보겠다는 말 앞에 이 영상의 고민에서 온 짧은 까닭" in ask
+    assert f"고민 한 줄('{ANALYSIS['concern']}')을 쉬운 내 말로 줄여서" in ask
+    second = client.post("/api/drafts", json={"video_id": VID}).json()
+    assert second["passed"] is True
+    free = user_prompts(llm)[2]
+    assert "이번 끝말은 까닭 없이 본보기 꼴" in free and "이번 끝말에는" not in free
 
 
 # ---------------------------------------------------------------- 사람이 고친 글 · 직접 검사
