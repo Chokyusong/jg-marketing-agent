@@ -7,6 +7,13 @@
 
 ## 새 변경 (README를 줄인 뒤)
 
+### 2026-11-18 잇는 문장은 쉬운 말로, 넣을지는 코드가(C)
+
+- 프롬프트에 잇는 문장의 쉬운 낱말(인연·운명·타이밍·때·궁합·맞는 사람·팔자)과 끝꼴(「~인가 봐요」「~있는 듯」「~따로 있나 싶네요」「~것 같아요」)을 알리고, 꾸민 말(「결」「박자」「작용」「고비」「~을 타다」)은 쓰지 않게 했다. 나오면 다듬기 검사 **S17**.
+- 낱말 겹침은 괜찮다: S12(잇는 문장 되풀이)는 통째로 같은 문장만 잡는다(예전에는 70% 넘게 같으면).
+- 잇는 문장을 넣을지 코드가 정한다(`prompts.assign_bridge`): 같은 영상 초안끼리 「잇는 문장(+까닭)」과 「까닭만」을 섞고, 영상 첫 초안은 최근 12개에서 넣은 몫이 2/3보다 적으면 넣는다. 빼기로 정했는데 넣으면 **S16**, 둘 다 없으면 S11. AI 검수 뒤 다시 쓸 때는 그 초안 그대로.
+- 시험: 새 `tests/unit/test_bridge_plain.py`, `test_draft_bridge.py`에 두 시험(같은 영상 섞기 · 검수 뒤 같은 배정). 바꾼 기존 시험: `test_bridge.py::test_s12_same_bridge_as_an_earlier_draft`(「싶어요」로 끝만 다른 문장은 이제 통과 — 통째로 같은 문장으로 확인), `test_prompts.py`(「적어도 하나는 넣는다 — 빼라고 하면 까닭을 꼭」), `test_compare_drafts.py::test_stats_count_bridges_reasons_and_ai_review`(되풀이 셈 자료를 통째로 같은 문장으로), `test_draft_bridge.py::test_earlier_bridge_is_passed_as_used_and_repeating_it_is_rewritten` → 같은 영상 둘째 초안은 이제 잇는 문장을 빼므로 `…mixes_a_bridged_draft_and_a_reason_only_draft`(S16)와 `…only_the_same_sentence_is_rewritten`(S12 통째 같음만) 둘로 나눔. A·B 시험 두 곳(`test_piece_flow.py`·`test_review_not_a_problem.py`)은 검수를 따로 부를 때 `generate(review=False)`로(검수가 두 번 돌지 않게).
+
 ### 2026-11-18 AI 검수가 「문제가 아닌 것」을 안다(B)
 
 처음 검수의 거짓 여럿이 잘못 짚은 것이었다(잇는 혼잣말 → 「영상 근거 없음」, 「저도 + 까닭」 → 「지어낸 경험」, 「연애 사주 … 사주 봐보고 싶네요」 → 「되풀이」).

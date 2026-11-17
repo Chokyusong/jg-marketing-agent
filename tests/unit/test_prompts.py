@@ -439,7 +439,9 @@ def test_draft_system_asks_for_a_wish_about_my_own_love_life():
     # 2026-11-18(기획 담당): 그 자리를 「이 영상의 고민에서 온 짧은 까닭(12자 안)」으로 분명히 함
     assert ("⑸의 '저도' 뒤, 가 보겠다는 말 앞에 **이 영상의 고민에서 온 짧은 까닭**(12자 안)을 "
             "넣으면 앞 문장과 더 이어진다") in SYSTEM
-    assert "② 잇는 문장과 이 까닭 가운데 **적어도 하나는** 넣고" in SYSTEM
+    # 2026-11-18(기획 담당 C): 잇는 문장을 넣을지는 코드가 정한다 — 빼라고 하면 까닭을 꼭
+    assert "② 잇는 문장과 이 까닭 가운데 **적어도 하나는** 넣는다" in SYSTEM
+    assert "요청 글이 잇는 문장을 빼라고 하면 까닭을 꼭 넣는다" in SYSTEM
     assert "까닭이 아닌 자리에 핵심 말을 바람으로 끼워 넣지 않는다" in SYSTEM
     assert "사실 문장을 '~하는 곳이라던데'처럼 그대로 옮기지 않는다" in SYSTEM
     assert "'~라는 말에 ~네요' 틀만 쓰지 말고" in SYSTEM

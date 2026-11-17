@@ -677,6 +677,39 @@ BRIDGE_KINDS: tuple[tuple[str, str], ...] = (
 )
 
 
+# 2026-11-18(기획 담당 C): 잇는 문장은 쉬운 말로. 「결」「박자」「작용」「고비」「~을 타다」 같은
+# 꾸민 말이 나와 읽기 어려웠다. 쓸 낱말과 끝꼴을 알려 주고, 꾸민 말은 다듬기 검사 S17이 잡는다
+BRIDGE_WORDS: tuple[str, ...] = ("인연", "운명", "타이밍", "때", "궁합", "맞는 사람", "팔자")
+BRIDGE_ENDINGS: tuple[str, ...] = ("~인가 봐요", "~있는 듯", "~따로 있나 싶네요", "~것 같아요")
+FANCY_BRIDGE_WORDS: tuple[str, ...] = ("결", "박자", "작용", "고비", "~을 타다")
+FANCY_BRIDGE = re.compile(
+    r"(?:^|[\s(])결(?:이|을|은|도|과|에|대로)?(?=[\s.,!?…]|$)|박자|작용|고비|"
+    r"[을를]\s?타(?=[는다야고서지면요]|$)"
+)
+# 잇는 문장을 넣는 몫(약 3개 중 2개). 같은 영상 초안끼리는 넣은 것·안 넣은 것을 섞는다
+BRIDGE_SHARE = 2 / 3
+BRIDGE_RECENT = 12
+
+
+def fancy_bridge_word(sentence: str) -> str:
+    """잇는 문장의 꾸민 말(「결」「박자」「작용」「고비」「~을 타다」, 없으면 빈 글)."""
+    m = FANCY_BRIDGE.search(sentence or "")
+    return m.group(0).strip(" (") if m else ""
+
+
+def assign_bridge(brand: str, used_texts: Sequence[str], same_video: Sequence[str]) -> bool:
+    """이번 초안에 잇는 문장을 넣을지(2026-11-18 기획 담당 C). 같은 영상 앞 초안이 모두 넣었으면
+    빼고(까닭만), 모두 안 넣었으면 넣는다. 그 밖에는 앞서 보인 초안(최근 `BRIDGE_RECENT`개)에서
+    넣은 몫이 `BRIDGE_SHARE`보다 적으면 넣는다."""
+    mine = [bool(bridge_sentence(t, brand)) for t in same_video]
+    if mine and all(mine):
+        return False
+    if mine and not any(mine):
+        return True
+    recent = [bool(bridge_sentence(t, brand)) for t in used_texts[:BRIDGE_RECENT]]
+    return not recent or sum(recent) / len(recent) < BRIDGE_SHARE
+
+
 def bridge_sentence(text: str, brand: str) -> str:
     """영상 반응과 운명원 대목 사이의 잇는 한 문장(없으면 빈 글).
 
@@ -1047,14 +1080,20 @@ def draft_system(
         "굳은 말이니 쓰지 않는다. 영상 제목은 영상 속 말이 "
         "아니다 — 제목의 말을 '~라는 말에'로 받지 않는다(\"연애상담 상상상담 가능이라는 말에\"는 "
         "어색하다).\n"
-        f"② **잇는 한 문장**({BRIDGE_CHARS[0]}~{BRIDGE_CHARS[1]}자쯤) — 영상 얘기에서 생각이 "
-        "인연 쪽으로 넘어가는 혼잣말. 이 고민이 결국 인연·타이밍·때·궁합·맞는 사람의 문제일지도 "
-        "모른다는 짧은 생각을 '~인가 싶다', '~있나 봐요', '~건가...', '~있나 싶네' 같은 꼴로 쓴다. "
+        f"② **잇는 한 문장**({BRIDGE_CHARS[0]}~{BRIDGE_CHARS[1]}자쯤) — 요청 글이 넣으라고 할 "
+        "때만 쓴다. 영상 얘기에서 생각이 인연 쪽으로 넘어가는 혼잣말. 이 고민이 결국 인연·타이밍·"
+        "때·궁합·맞는 사람의 문제일지도 모른다는 짧은 생각을 **쉬운 말로** 쓴다: "
+        + "·".join(BRIDGE_WORDS)
+        + " 가운데 하나를 넣고 "
+        + ", ".join(f"'{e}'" for e in BRIDGE_ENDINGS)
+        + " 같은 꼴로 끝낸다. "
+        + "·".join(f"'{w}'" for w in FANCY_BRIDGE_WORDS)
+        + " 같은 꾸민 말은 쓰지 않는다. "
         "영상 고민에 맞는 쪽을 고른다("
         + ", ".join(f"{a} → {b}" for a, b in BRIDGE_KINDS)
         + f"). 이 문장에는 '{brand}'·'사주'를 쓰지 않는다(그건 ③의 일). 효능 단정·써 본 척·영상 "
-        "속 숫자와 사정을 내 것으로 옮기기는 여기서도 하지 않는다. 문구는 영상마다 새로 쓰고, "
-        "이미 쓴 잇는 문장이 주어지면 그 말과 겹치지 않게 쓴다. 과제 예시 댓글도 '…인연이면 "
+        "속 숫자와 사정을 내 것으로 옮기기는 여기서도 하지 않는다. 이미 쓴 잇는 문장이 주어지면 "
+        "낱말은 겹쳐도 되지만 통째로 같은 문장은 쓰지 않는다. 과제 예시 댓글도 '…인연이면 "
         f"만나는 것 같아요'처럼 인연 쪽으로 생각이 넘어간 다음 {brand}을 꺼낸다. "
         "잇는 문장이 들어가는 만큼 ①을 짧게 쓴다(핵심 말은 남긴다).\n"
         "   ①에 내 처지 한마디를 붙여도 된다(쓰면 ①과 합쳐 두 문장 안) —'연애만 하면 차이는 "
@@ -1086,8 +1125,9 @@ def draft_system(
         "'궁금하네요', '궁금해지네'로만 맺으면 가 보겠다는 말이 없어 걸린다. 고민 뒤에 곧바로 "
         f"'{brand}에서 연애 사주를 한번 보고 싶어요'를 붙이지 않는다(때·평판이 없다). "
         "⑸의 '저도' 뒤, 가 보겠다는 말 앞에 **이 영상의 고민에서 온 짧은 까닭**(12자 안)을 "
-        "넣으면 앞 문장과 더 이어진다. ② 잇는 문장과 이 까닭 가운데 **적어도 하나는** 넣고, 둘 "
-        "다 넣으면 더 좋다(길이가 넘치면 까닭을 뺀다). 꼴만 따른다: 이 영상의 고민 한 줄을 12자 "
+        "넣으면 앞 문장과 더 이어진다. ② 잇는 문장과 이 까닭 가운데 **적어도 하나는** 넣는다 — "
+        "요청 글이 잇는 문장을 빼라고 하면 까닭을 꼭 넣는다(길이가 넘치면 까닭보다 ①을 줄인다). "
+        "꼴만 따른다: 이 영상의 고민 한 줄을 12자 "
         "안의 내 말로 줄이고 "
         "'~서', '~때문에', '~문제로', '~러'로 끝낸다('저도 [까닭] + 요청 글이 정해 준 끝말'). "
         "까닭 문구는 영상마다 새로 쓴다 — 예시나 앞 초안의 까닭을 그대로 쓰지 않는다. "
@@ -1213,7 +1253,7 @@ def draft_user(
     last_model: int = -1,
     reason: bool | None = None,
     used_reasons: Sequence[str] = (),
-    bridge: bool = False,
+    bridge: bool | None = None,
     used_bridges: Sequence[str] = (),
     thin: bool = False,
     pieces: Pieces | None = None,
@@ -1230,6 +1270,8 @@ def draft_user(
     (같은 영상 앞 초안에 까닭이 있음) 까닭 없는 본보기 꼴도 된다고 한다. None이면 말하지 않는다.
     `used_reasons`: 앞서 보인 초안(다른 영상 포함)에 쓴 까닭(`intent_reason`). 겹치지 말라고 넣는다.
     `bridge`: 참이면 영상 반응과 운명원 대목 사이에 ② 잇는 한 문장을 넣게 한다(2026-11-18).
+    거짓이면 이번 초안은 잇는 문장 없이 까닭으로 잇게 한다(코드가 정한다, 2026-11-18 C). None이면
+    말하지 않는다.
     `used_bridges`: 앞서 보인 초안(다른 영상 포함)의 잇는 문장(`bridge_sentence`). 겹치지 말라고
     넣는다.
     `thin`: 자막이 없는 영상(제목·설명·인기 댓글만, 2026-11-18). 제목 낱말을 되풀이하지 말고 인기
@@ -1275,7 +1317,7 @@ def draft_user(
         f"{max_body}자를 넘으면 검사에 걸리고, 목표보다 길면 다시 쓰게 된다. {brand} 대목이 두 "
         "토막 45~55자쯤이니 영상 반응은 한 문장(길어야 두 문장)으로 쓴다. "
         + (f"잇는 문장({BRIDGE_CHARS[0]}~{BRIDGE_CHARS[1]}자)이 들어가니 영상 반응은 25~35자로 "
-           "짧게 쓴다. " if bridge else "")
+           "짧게 쓴다. " if bridge is True else "")
         + "고민 한 줄과 영상 글도 10자 넘게 이어서 옮기지 않는다.",
         f"고민 한 줄('{concern}')을 그대로 옮기지 말고, 영상 반응과 {brand}에 가 보겠다는 말로 "
         "바꿔 쓴다(써 본 척 없이 의향까지만).",
@@ -1314,20 +1356,29 @@ def draft_user(
             + (f"{pieces.ending()}'" if pieces is not None else "+ 끝말'")
             + ")로 써도 된다."
         )
-    if bridge:
+    if bridge is False:
+        parts.append(
+            f"이번 초안에는 **잇는 문장을 넣지 않는다** — 영상 반응 다음에 바로 {brand} 대목으로 "
+            "넘어가고, 앞 문장과는 '저도' 뒤의 짧은 까닭으로 잇는다(같은 영상의 다른 초안과 짜임을 "
+            "다르게)."
+        )
+    if bridge is True:
         parts.append(
             f"영상 반응 다음, {brand} 대목 앞에 **잇는 한 문장**({BRIDGE_CHARS[0]}~"
             f"{BRIDGE_CHARS[1]}자)을 따로 쓴다 — 이 고민('{concern}')이 결국 인연·타이밍·때·궁합·"
             "맞는 사람의 문제일지도 모른다는 혼잣말("
             + ", ".join(f"{a} → {b}" for a, b in BRIDGE_KINDS)
-            + f"). '{brand}'·'사주'는 이 문장에 쓰지 않는다. 끝말의 까닭까지 넣어 길이가 넘치면 "
+            + "). 쉬운 말로: " + "·".join(BRIDGE_WORDS) + " + "
+            + "·".join(f"'{e}'" for e in BRIDGE_ENDINGS)
+            + " 같은 끝(" + "·".join(f"'{w}'" for w in FANCY_BRIDGE_WORDS) + " ✗). "
+            + f"'{brand}'·'사주'는 이 문장에 쓰지 않는다. 끝말의 까닭까지 넣어 길이가 넘치면 "
             "까닭을 뺀다(잇는 문장은 남긴다)."
         )
         bridges = list(dict.fromkeys(b for b in used_bridges if b))[:MAX_USED_BRIDGES]
         if bridges:
             parts.append(
-                f"이미 쓴 잇는 문장: {_quoted(bridges)} — 이 말들과 겹치지 않는 다른 말로 쓴다"
-                "(같은 꼴·같은 낱말을 되풀이하지 않는다)."
+                f"이미 쓴 잇는 문장: {_quoted(bridges)} — 통째로 같은 문장만 피한다(낱말은 "
+                "겹쳐도 된다)."
             )
     reasons = list(dict.fromkeys(r for r in used_reasons if r))[:MAX_USED_REASONS]
     if reasons and reason is not None:

@@ -100,7 +100,7 @@ def test_ai_review_rewrite_keeps_the_same_pieces(setup):
     _, services, use = setup
     llm = use([ANALYSIS, "follow", {"ok": False, "problems": ["이어짐이 갑작스러움"]}, "follow",
                {"ok": True, "problems": []}])
-    d = services.drafts.generate(VID)
+    d = services.drafts.generate(VID, review=False)
     reviewed = services.drafts.review(d.id)
     asks = [u for u in users(llm) if HEAD in u]
     first = asks[0]

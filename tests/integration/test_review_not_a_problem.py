@@ -37,7 +37,7 @@ def _review_calls(llm):
 def test_bridge_and_reason_pass_review_without_a_rewrite(setup):
     _, services, use = setup
     llm = use([ANALYSIS, draft(BRIDGED), {"ok": True, "problems": []}])
-    d = services.drafts.generate(VID)
+    d = services.drafts.generate(VID, review=False)
     assert d.passed, d.validation.failure_lines()
     reviewed = services.drafts.review(d.id)
     assert reviewed.review_status == R.PASSED and reviewed.body == d.body
@@ -54,7 +54,7 @@ def test_a_clear_problem_is_still_written_again_once(setup):
     llm = use([ANALYSIS, draft(BRIDGED),
                {"ok": False, "problems": ["'갖고 싸웠다는' 뒤 조사가 꼬였다"]},
                draft(GOOD_BODY), {"ok": True, "problems": []}])
-    d = services.drafts.generate(VID)
+    d = services.drafts.generate(VID, review=False)
     reviewed = services.drafts.review(d.id)
     assert reviewed.review_status == R.REWRITTEN
     assert reviewed.body == f"[광고] {GOOD_BODY}"

@@ -26,7 +26,12 @@
   쪽으로 넘어가는 잇는 한 문장(`prompts.bridge_sentence`)이나 ⑤의 까닭 가운데 하나는 있어야 한다.
   **모델이 쓴 초안에만** 본다(`need_bridge`) — 사람이 고친 글과 대표 본보기 10개는 그대로 둔다.
 - S12 잇는 문장 되풀이: 잇는 문장이 앞서 보인 초안(다른 영상 포함)이나 프롬프트의 좋은 예의 잇는
-  문장과 같거나 거의 같음(맞춤법을 지우고 70% 넘게 같음)
+  문장과 통째로 같음(맞춤법을 지우고 같음). 2026-11-18(기획 담당 C): 예전에는 70% 넘게 같으면
+  잡았는데, 낱말이 겹치는 것은 괜찮다 — 통째로 같은 문장만 다시 쓰게 한다
+- S16 잇는 문장 빼기(2026-11-18 C): 코드가 이번 초안은 잇는 문장 없이(까닭만) 쓰라고 정했는데 잇는
+  문장을 넣음 — 같은 영상 초안끼리 짜임이 섞이게. **모델이 쓴 초안에만** 본다(`bridge_wanted`)
+- S17 꾸민 말(2026-11-18 C): 잇는 문장 자리에 「결」「박자」「작용」「고비」「~을 타다」 —
+  인연·운명·타이밍·때·궁합·맞는 사람·팔자 같은 쉬운 말로. **모델이 쓴 초안에만** 본다
 - S15 정해 준 조각과 다름(2026-11-18): 코드가 초안마다 정해 준 운명원 대목 조각(때·세기 말·
   평판·들은 꼴·끝말, `prompts.assign_pieces`)이 글에 없거나, ④ 꺼내는 말이 앞서 보인 초안과
   통째로 같음. **모델이 쓴 초안에만** 본다(`pieces`) — 사람이 고친 글은 그대로 둔다
@@ -67,6 +72,7 @@ from app.llm.prompts import (
     brand_part,
     bridge_sentence,
     copied_model,
+    fancy_bridge_word,
     fold,
     intent_reason,
     lead_part,
@@ -77,9 +83,6 @@ SOFT_MAX_TOTAL = 110
 # 1~5회차 실제 초안: 다른 영상 초안끼리 가장 닮은 것이 0.55, 같은 영상 두 초안은 0.18~0.67,
 # 대표가 본 영상의 두 초안은 0.94였다. 다른 영상 글만큼도 다르지 않으면 다시 쓰게 한다.
 SAME_VIDEO_SIMILARITY = 0.55
-# S12: 잇는 문장끼리 이만큼 같으면 되풀이로 본다(「결국 타이밍 문제인가 싶네요」·「결국 타이밍
-# 문제인가 싶어요」)
-SAME_BRIDGE_SIMILARITY = 0.7
 
 _SPLIT = re.compile(r"[.!?…\n]+|(?<=[ㄱ-ㅎㅏ-ㅣ])\s+")
 _WISH = re.compile(
@@ -222,6 +225,7 @@ def style_issues(
     used_bridges: Sequence[str] = (),
     pieces: Pieces | None = None,
     used_leads: Sequence[str] = (),
+    bridge_wanted: bool | None = None,
 ) -> list[str]:
     """다시 쓰게 할 까닭들(없으면 빈 목록).
 
@@ -233,6 +237,7 @@ def style_issues(
     `context`는 S13(해시태그로만 있는 낱말을 댓글에 씀, 2026-11-18)에도 쓴다.
     `pieces`: 코드가 정해 준 이번 초안의 운명원 대목 조각(S15, 없으면 보지 않는다).
     `used_leads`: 앞서 보인 초안들의 ④ 꺼내는 말(`prompts.lead_part`, S15).
+    `bridge_wanted`: 코드가 정한 잇는 문장 넣기(거짓이면 S16, None이 아니면 S17도 본다).
     """
     issues: list[str] = []
     body = _body(text, disclosure)
@@ -305,11 +310,28 @@ def style_issues(
         )
     bridge = bridge_sentence(body, brand) if brand else ""
     if need_bridge and brand and brand in body and not bridge and not reason:
+        if bridge_wanted is False:  # 이번 초안은 잇는 문장 없이 — 까닭으로 잇는다
+            issues.append(
+                f"S11 까닭 없음: 영상 반응 바로 뒤에 {with_i(brand)} 나와 공식처럼 읽힙니다 — "
+                "끝말의 '저도' 뒤에 이 영상 고민에서 온 짧은 까닭을 넣으세요"
+            )
+        else:
+            issues.append(
+                f"S11 잇는 문장 없음: 영상 반응 바로 뒤에 {with_i(brand)} 나와 공식처럼 "
+                "읽힙니다 — 사이에 이 고민이 결국 인연·타이밍·때·궁합·맞는 사람의 문제일지도 "
+                "모른다는 짧은 혼잣말 한 문장을 넣거나, 끝말의 '저도' 뒤에 이 영상 고민에서 온 "
+                "짧은 까닭을 넣으세요(영상 반응은 짧게)"
+            )
+    if bridge_wanted is False and bridge:
         issues.append(
-            f"S11 잇는 문장 없음: 영상 반응 바로 뒤에 {with_i(brand)} 나와 공식처럼 "
-            "읽힙니다 — 사이에 이 고민이 결국 인연·타이밍·때·궁합·맞는 사람의 문제일지도 "
-            "모른다는 짧은 혼잣말 한 문장을 넣거나, 끝말의 '저도' 뒤에 이 영상 고민에서 온 짧은 "
-            "까닭을 넣으세요(영상 반응은 짧게)"
+            f"S16 잇는 문장 빼기: 이번 초안은 잇는 문장('{bridge}') 없이 씁니다 — 영상 반응 "
+            f"다음에 바로 {brand} 대목으로, 앞 문장과는 '저도' 뒤의 짧은 까닭으로 이으세요"
+        )
+    fancy = fancy_bridge_word(_before_brand(body, brand)) if bridge_wanted is not None else ""
+    if fancy:
+        issues.append(
+            f"S17 꾸민 말: 잇는 문장의 '{fancy}'은 꾸민 말입니다 — 인연·운명·타이밍·때·궁합·"
+            "맞는 사람·팔자 같은 쉬운 말로 '~인가 봐요', '~것 같아요'처럼 쓰세요"
         )
     # S14(2026-11-18): 운명원 문장 바로 앞 문장(첫 문장=영상 반응 다음, 잇는 문장 자리)에 설정에
     # 없는 운명원 평판·사례 — 운명원 대목은 V14가 본다. 잇는 말이 없어도 그 자리면 본다
@@ -428,17 +450,12 @@ def piece_issues(
 
 
 def repeated_bridge(bridge: str, used: Sequence[str]) -> str:
-    """S12: `bridge`와 같거나 거의 같은 앞 잇는 문장(없으면 빈 글)."""
+    """S12: `bridge`와 통째로 같은 앞 잇는 문장(맞춤법은 지우고, 없으면 빈 글)."""
     if not bridge:
         return ""
     mine = fold(bridge)
-    for old in used:
-        if not old:
-            continue
-        theirs = fold(old)
-        if theirs == mine or SequenceMatcher(None, mine, theirs).ratio() > SAME_BRIDGE_SIMILARITY:
-            return old
-    return ""
+    # 2026-11-18(기획 담당 C): 통째로 같은 문장만 — 낱말이 겹치는 것은 괜찮다
+    return next((old for old in used if old and fold(old) == mine), "")
 
 
 def _copied_number(body: str, context: str, brand: str) -> str:

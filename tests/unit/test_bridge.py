@@ -132,8 +132,12 @@ def test_rule_checks_never_require_a_bridge():
 
 def test_s12_same_bridge_as_an_earlier_draft():
     text = REACTION + "결국 타이밍 문제인가 싶네요. " + LEAD + END
-    got = _style(text, need_bridge=True, used_bridges=["결국 타이밍 문제인가 싶어요."])
+    got = _style(text, need_bridge=True, used_bridges=["결국 타이밍 문제인가 싶네요"])
     assert "S12" in _codes(got)
+    # 2026-11-18(기획 담당 C): 낱말이 겹치는 것(끝만 다름)은 괜찮다 — 통째로 같을 때만
+    # (예전에는 「싶어요」로 끝난 이 문장도 70% 넘게 같아 잡았다)
+    near = _style(text, need_bridge=True, used_bridges=["결국 타이밍 문제인가 싶어요."])
+    assert "S12" not in _codes(near)
 
 
 def test_s12_copying_a_good_example_bridge():

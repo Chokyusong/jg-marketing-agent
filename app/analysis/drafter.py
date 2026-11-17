@@ -218,6 +218,7 @@ class DraftService:
         self._used_bridges: list[str] = []  # 앞서 보인 초안들의 잇는 문장(다듬기 검사 S12)
         self._pieces: prompts.Pieces | None = None  # 이번 초안의 운명원 대목 조각(S15)
         self._used_leads: list[str] = []  # 앞서 보인 초안들의 ④ 꺼내는 말(S15)
+        self._want_bridge: bool | None = None  # 이번 초안에 잇는 문장을 넣을지(S16·S17)
 
     @property
     def rules(self):
@@ -513,6 +514,16 @@ class DraftService:
         # ⑤의 까닭(2026-11-18): 같은 영상 초안 가운데 적어도 하나는 이 영상 고민에서 온 까닭을
         # 넣게 한다. 앞 초안에 이미 있으면 까닭 없는 본보기 꼴도 된다고 한다(전부 강제하지 않음)
         want_reason = not any(prompts.intent_reason(b, rules.brand) for b in avoid_bodies)
+        # ② 잇는 문장 넣기(2026-11-18 기획 담당 C): 코드가 정한다 — 약 3개 중 2개, 같은 영상 초안
+        # 끼리는 넣은 것·안 넣은 것을 섞는다. 안 넣으면 까닭으로 잇는다. AI 검수 뒤 다시 쓸 때는
+        # 그 초안 그대로
+        if exclude is not None:
+            want_bridge = bool(prompts.bridge_sentence(exclude.body, rules.brand))
+        else:
+            want_bridge = prompts.assign_bridge(rules.brand, shown, avoid_bodies)
+        if not want_bridge:
+            want_reason = True
+        self._want_bridge = want_bridge
         # 2026-11-18: 앞서 보인 초안(다른 영상 포함, 꺼내는 말을 세는 범위와 같게)의 까닭은 피한다
         self._used_reasons = list(dict.fromkeys(
             r for r in (prompts.intent_reason(t, rules.brand) for t in [*avoid_bodies, *shown]) if r
@@ -537,7 +548,7 @@ class DraftService:
             previous=previous, avoid_bodies=avoid_bodies, avoid_phrases=avoid_phrases,
             avoid_tones=avoid_tones, tones=tones, schema=schema, used_closings=used_closings,
             hearsay=hearsay, endings=endings, used_openings=used_openings, want_reason=want_reason,
-            thin=thin, pieces=pieces,
+            thin=thin, pieces=pieces, want_bridge=want_bridge,
         )
 
     def _draft_prompt(
@@ -566,7 +577,7 @@ class DraftService:
             last_model=prompts.copied_model(self._last_shown) if self._last_shown else -1,
             reason=kit.want_reason,
             used_reasons=self._used_reasons,
-            bridge=True,
+            bridge=kit.want_bridge,
             used_bridges=self._used_bridges,
             thin=kit.thin,
             pieces=kit.pieces,
@@ -582,6 +593,7 @@ class DraftService:
             need_bridge=BRIDGE_CHECK,
             used_bridges=[*self._used_bridges, *prompts.EXAMPLE_BRIDGES],
             pieces=self._pieces if PIECE_CHECK else None, used_leads=self._used_leads,
+            bridge_wanted=self._want_bridge if BRIDGE_CHECK else None,
         )
 
     def _polish(
