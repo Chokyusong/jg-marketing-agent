@@ -216,17 +216,17 @@
           </div>
 
           <div class="jobbox" id="job-box" data-state="idle" aria-live="polite">
-            <div class="job-title" id="exec-title">영상 선택 대기</div>
+            <div class="job-head"><div class="job-title" id="exec-title">영상 선택 대기</div>
+              <a class="btn btn-small" id="job-view" href="#" target="_blank" rel="noopener noreferrer" hidden>댓글 보기</a></div>
             <p class="job-desc" id="exec-desc">①에서 영상을 고르면 댓글 초안이 나오고, [댓글 달기]를 누르면 끝까지 진행합니다.</p>
             <button type="button" class="btn btn-big" id="job-primary" disabled>댓글 달기</button>
             <p class="job-why" id="job-why"></p>
             <p class="job-login" id="job-login" hidden><span id="job-login-text"></span> <button type="button" class="btn btn-text" id="job-login-btn">프로필 화면에서 로그인</button></p>
-            <ol class="job-steps" id="job-steps" aria-label="진행 상태">
-              <li data-phase="1">프로필 여는 중</li><li data-phase="2">입력 중</li><li data-phase="3">게시</li><li data-phase="4">확인</li>
+            <ol class="job-steps" id="job-steps" aria-label="진행 상태: 프로필 여는 중 → 입력 중 → 게시 완료">
+              <li data-phase="1">프로필 여는 중</li><li data-phase="2">입력 중</li><li data-phase="3">게시 완료</li>
             </ol>
             <div class="job-actions" id="job-actions" hidden>
               <button type="button" class="btn btn-small" id="job-cancel" hidden>그만두기</button>
-              <a class="btn btn-small" id="job-view" href="#" target="_blank" rel="noopener noreferrer" hidden>댓글 보기</a>
               <a class="btn btn-small" id="job-shot" href="#" target="_blank" rel="noopener" hidden>화면 캡처 보기</a>
             </div>
             <p class="job-error" id="job-error" role="alert" hidden></p>

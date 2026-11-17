@@ -107,7 +107,7 @@ STATE_LABELS = {
     "typing": "입력 중",
     "awaiting_approval": "게시 대기",
     "posting": "게시 중",
-    "verifying": "확인 중",
+    "verifying": "내 댓글 확인 중",
     "posted": "게시 완료",
     "failed": "실패",
 }

@@ -161,7 +161,8 @@ def test_post_without_label_in_one_click_and_record_says_so(base, page_of):
     assert not page.is_checked("#practice-mode")  # 기본은 실제 게시
     page.click("#job-primary")  # [댓글 달기] 한 번
     page.wait_for_function(JOB_STATE.format("posted"), timeout=45000)
-    assert "확인됨" in page.text_content("#exec-title")
+    assert page.text_content("#exec-title").startswith("게시 완료")
+    assert "확인했습니다" in page.text_content("#exec-desc")
     href = page.get_attribute("#job-view", "href")
     assert href == WATCH + VID and page.is_visible("#job-view")  # [댓글 보기] → 그 영상
     assert seen and all(u.startswith(WATCH + VID) for u in seen)

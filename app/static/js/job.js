@@ -31,13 +31,15 @@ export const STATE_WORDS = {
   typing: '입력 중',
   awaiting_approval: '게시 대기',
   posting: '게시 중',
-  verifying: '확인 중',
+  verifying: '내 댓글 확인 중',
   posted: '게시 완료',
   failed: '실패',
 };
 
-// 서버의 진행 칸(0~6) → 화면의 네 칸(프로필 여는 중 · 입력 중 · 게시 · 확인). 6은 모두 지남
-const PHASE_OF_STEP = [0, 1, 2, 3, 3, 4, 5];
+// 서버의 진행 칸(0~6) → 화면의 세 칸(과제 문구 그대로: 프로필 여는 중 → 입력 중 → 게시 완료).
+// 게시 대기·게시 중·내 댓글 확인 중은 3번 칸을 반만 채우고(아직 켜지지 않음), 확인까지 끝나야 켠다(4 = 모두 지남)
+const PHASE_OF_STEP = [0, 1, 2, 3, 3, 3, 4];
+export const LAST_PHASE = 3;
 
 // 설정 「게시 직전 확인」: GET /api/status로 바로 바뀐 값을 받고, 오기 전에는 화면에 넣어 둔 처음 값
 export function confirmBeforePost(state) {
@@ -241,14 +243,20 @@ function show(id, on) {
   return node;
 }
 
+export function stepClass(job, n) {
+  if (!job) return '';
+  const at = PHASE_OF_STEP[Math.min(Math.max(job.step, 0), 6)];
+  if (job.state === 'failed') return n === Math.min(Math.max(at, 1), LAST_PHASE) ? 'is-failed' : (n < at ? 'is-done' : '');
+  if (job.state === 'posted') return n === LAST_PHASE && !job.verified ? 'is-warn' : 'is-done';
+  if (n < at) return 'is-done';
+  if (n !== at) return '';
+  return n === LAST_PHASE ? 'is-wait' : 'is-current'; // 「게시 완료」는 확인이 끝나야 켜진다
+}
+
 function paintSteps(job) {
-  const at = job ? PHASE_OF_STEP[Math.min(Math.max(job.step, 0), 6)] : 0;
   for (const li of $('job-steps').querySelectorAll('li')) {
-    const n = Number(li.dataset.phase);
-    const failed = Boolean(job) && job.state === 'failed' && n === Math.max(at, 1);
-    li.classList.toggle('is-done', Boolean(job) && !failed && (n < at || job.state === 'posted'));
-    li.classList.toggle('is-current', Boolean(job) && !job.finished && n === at);
-    li.classList.toggle('is-failed', failed);
+    const cls = stepClass(job, Number(li.dataset.phase));
+    for (const name of ['is-done', 'is-current', 'is-failed', 'is-wait', 'is-warn']) li.classList.toggle(name, cls === name);
   }
 }
 
@@ -292,7 +300,7 @@ function paint(state) {
     $('job-login-btn').dataset.profile = hint.profile;
   }
 
-  // 작은 단추 줄: 필요한 것만([그만두기] · 게시 완료면 [댓글 보기] · 실패면 [화면 캡처 보기])
+  // 작은 단추: 필요한 것만([그만두기] · 게시 완료면 제목 옆 [댓글 보기] · 실패면 [화면 캡처 보기])
   show('job-cancel', running(job));
   const view = show('job-view', Boolean(job && job.state === 'posted'));
   if (job) {
@@ -317,8 +325,9 @@ function paint(state) {
   if (job) {
     const where = job.target === 'sandbox' ? '연습' : '유튜브';
     const left = job.seconds_left !== null && job.seconds_left !== undefined ? ` (남은 시간 ${Math.ceil(job.seconds_left / 60)}분)` : '';
+    // 끝나면 「게시 완료 · [댓글 보기]」(단추는 제목 옆). 확인을 못 했으면 그렇게 적는다
     title.textContent = job.state === 'posted'
-      ? (job.verified ? '게시 완료 · 내 댓글 확인됨' : '게시 완료 · 확인 못 함')
+      ? (job.verified ? '게시 완료 ·' : '게시됨 · 내 댓글 확인 못 함 ·')
       : job.state === 'failed' ? '게시 실패' : `${where} · ${STATE_WORDS[job.state] || job.state_label}`;
     const mark = job.disclosed === false ? ' · 광고 표기 없음' : '';
     desc.textContent = `${job.profile}${mark} · ${job.message}${left}`;
@@ -335,6 +344,7 @@ function paint(state) {
   let text = modeNote(target, confirmBeforePost(state));
   if (job && job.state === 'failed') { tone = 'is-bad'; text = `${targetName(job.target)} · 실패`; }
   else if (job && job.state === 'posted') text = `${targetName(job.target)} · 게시 완료${job.verified ? '' : '(확인 못 함)'}`;
+  else if (running(job) && job.state === 'verifying') { tone = 'is-wait'; text = `${targetName(job.target)} · 내 댓글 확인 중`; }
   else if (running(job)) { tone = 'is-wait'; text = modeNote(job.mode === 'sandbox' ? 'sandbox' : 'youtube', job.confirm_before_post); }
   else if (!state.browser) tone = 'is-wait';
   else if (!state.browser.chrome_found) tone = 'is-bad';

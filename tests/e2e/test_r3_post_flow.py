@@ -76,7 +76,11 @@ def test_real_post_by_default_label_off_on_another_video_then_practice_once(live
         states = page.evaluate("window.jgStates")
         assert "awaiting_approval" not in states, states
         assert "launching" in states and "typing" in states, states
-        assert page.text_content("#exec-title") == "게시 완료 · 내 댓글 확인됨"
+        assert page.text_content("#exec-title") == "게시 완료 ·"  # 옆에 [댓글 보기]
+        assert "확인했습니다" in page.text_content("#exec-desc")
+        assert page.evaluate(
+            "[...document.querySelectorAll('#job-steps li')].map((li) => li.className)"
+        ) == ["is-done"] * 3
         assert page.text_content("#draft-tag") == "승인됨"
         assert page.is_visible("#job-view") and page.text_content("#job-view") == "댓글 보기"
         assert page.get_attribute("#job-view", "href") == WATCH + PICK  # 그 영상의 유튜브 주소
@@ -212,3 +216,40 @@ def test_auto_assignment_shows_profile_and_unchecked_profile_hint(live):
         page.check("#practice-mode", force=True)
         page.wait_for_selector("#job-login", state="hidden")
     assert not errors, errors
+
+
+STEP_CLASSES = """async () => {
+  const m = await import('/static/js/job.js');
+  const row = (job) => [1, 2, 3].map((n) => m.stepClass(job, n));
+  return {
+    launching: row({ state: 'launching', step: 1 }),
+    typing: row({ state: 'typing', step: 2 }),
+    posting: row({ state: 'posting', step: 4 }),
+    verifying: row({ state: 'verifying', step: 5 }),
+    posted: row({ state: 'posted', step: 6, verified: true }),
+    unverified: row({ state: 'posted', step: 6, verified: false }),
+    failedTyping: row({ state: 'failed', step: 2 }),
+    failedVerify: row({ state: 'failed', step: 5 }),
+    word: m.STATE_WORDS.verifying,
+  };
+}"""
+
+
+def test_progress_steps_follow_assignment_wording(live):
+    """2026-11-17(PDF 대조): 세 칸이 과제 문구 그대로. 게시 완료는 내 댓글 확인 뒤에 켜진다."""
+    base = live["base"]
+    with headless_page(base) as (page, errors):
+        page.goto(base + "/")
+        got = page.evaluate(STEP_CLASSES)
+        assert page.evaluate(
+            "[...document.querySelectorAll('#job-steps li')].map((li) => li.textContent)"
+        ) == ["프로필 여는 중", "입력 중", "게시 완료"]
+    assert not errors, errors
+    assert got["launching"] == ["is-current", "", ""]
+    assert got["typing"] == ["is-done", "is-current", ""]
+    assert got["posting"] == got["verifying"] == ["is-done", "is-done", "is-wait"]  # 아직 안 켜짐
+    assert got["posted"] == ["is-done"] * 3
+    assert got["unverified"] == ["is-done", "is-done", "is-warn"]
+    assert got["failedTyping"] == ["is-done", "is-failed", ""]
+    assert got["failedVerify"] == ["is-done", "is-done", "is-failed"]
+    assert got["word"] == "내 댓글 확인 중"

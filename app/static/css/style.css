@@ -287,15 +287,19 @@ select { padding-right: 6px; cursor: pointer; }
 .jobbox { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); }
 .jobbox[data-state="posted"] { border-color: rgba(143, 191, 143, 0.45); }
 .jobbox[data-state="failed"] { border-color: rgba(224, 139, 127, 0.45); }
+.job-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.job-head .job-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-head #job-view { flex: none; }
 .job-title { font-size: 15px; font-weight: 600; color: var(--text); }
 .job-desc { color: var(--sub); font-size: 13px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .job-why { color: var(--warn); font-size: 12px; }
 .job-why:empty { display: none; }
 .job-login { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; color: var(--warn); font-size: 12px; }
 .job-login[hidden] { display: none; }
-.job-login .btn-text { min-height: 0; padding: 0; font-size: 12px; }
-.job-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
-.job-steps li { position: relative; padding-top: 10px; color: var(--dim); font-size: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.job-login .btn-text { padding: 0 6px; color: var(--gold); font-size: 13px; }
+.job-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.job-steps li:not(:last-child)::after { content: "→"; position: absolute; top: 9px; right: -12px; color: var(--dim); font-size: 12px; line-height: 1; }
+.job-steps li { position: relative; padding-top: 10px; color: var(--dim); font-size: 12px; text-align: center; white-space: nowrap; }
 .job-steps li::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 2px; background: var(--line-strong); }
 .job-steps li.is-done { color: var(--sub); }
 .job-steps li.is-done::before { background: var(--ok); }
@@ -303,6 +307,10 @@ select { padding-right: 6px; cursor: pointer; }
 .job-steps li.is-current::before { background: var(--gold); }
 .job-steps li.is-failed { color: var(--bad); }
 .job-steps li.is-failed::before { background: var(--bad); }
+.job-steps li.is-wait { color: var(--sub); }
+.job-steps li.is-wait::before { background: linear-gradient(90deg, var(--gold) 50%, var(--line-strong) 50%); }
+.job-steps li.is-warn { color: var(--warn); }
+.job-steps li.is-warn::before { background: var(--warn); }
 .job-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .job-error { color: var(--bad); font-size: 13px; }
 .taskstatus { display: flex; align-items: center; gap: 8px; color: var(--sub); font-size: 12px; }

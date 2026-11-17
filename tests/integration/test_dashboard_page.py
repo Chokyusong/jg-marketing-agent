@@ -483,7 +483,7 @@ def test_execute_settings_are_on(page):
     # 하루 상한은 설정값 이하로만 고른다
     assert re.findall(r'<option value="(\d+)"[^>]*>\d+개까지', settings) == ["10", "5", "3", "1"]
     assert '<option value="10" selected>10개까지</option>' in settings
-    assert '<ol class="job-steps" id="job-steps" aria-label="진행 상태">' in execute
+    assert '<ol class="job-steps" id="job-steps" aria-label="진행 상태: ' in execute
 
 
 def test_daily_limit_options_follow_config(make_client):
@@ -536,10 +536,15 @@ def test_records_and_commented_styles(make_client):
 # ---------------------------------------------------------------- 8단계: ③ 작업 상자 · 상태 줄
 
 
-def test_job_box_has_four_steps_and_only_needed_buttons(page):
+def test_job_box_has_three_steps_and_only_needed_buttons(page):
     box = _section(page, 'id="job-box"', '<section class="history"')
     steps = re.findall(r'<li data-phase="(\d)">([^<]+)</li>', box)
-    assert steps == [("1", "프로필 여는 중"), ("2", "입력 중"), ("3", "게시"), ("4", "확인")]
+    # 2026-11-17(PDF 대조): 과제 문구 그대로 「프로필 여는 중 → 입력 중 → 게시 완료」
+    assert steps == [("1", "프로필 여는 중"), ("2", "입력 중"), ("3", "게시 완료")]
+    assert 'aria-label="진행 상태: 프로필 여는 중 → 입력 중 → 게시 완료"' in box
+    # [댓글 보기]는 「게시 완료」 제목 옆
+    head = _section(box, 'class="job-head"', "</a></div>")
+    assert 'id="exec-title"' in head and 'id="job-view"' in head
     # 상태에 따라 필요한 것만 보인다: 작은 단추 줄과 실패 이유는 처음에 숨김
     assert 'class="job-actions" id="job-actions" hidden' in box
     assert 'id="job-cancel" hidden>그만두기</button>' in box
