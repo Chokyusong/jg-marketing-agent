@@ -45,6 +45,7 @@ C1 다듬기(2026-11-17, 대표 지시 「초안 더 다듬고」)
 from __future__ import annotations
 
 import json
+import random
 import time
 import unicodedata
 from collections.abc import Callable, Sequence
@@ -71,6 +72,8 @@ MAX_ATTEMPTS = 3
 # 고치지 못했다. 대신 어색한 꼴을 다듬기 검사(`style.py`)로 잡아 다시 쓰게 한다.
 # 자세한 것은 docs/MODEL_EVAL.md 「C1 다듬기」.
 POLISH_DRAFTS = False
+# 꺼내는 말·끝말을 돌려 쓸 때 보는 「보인 초안」 수(최근 것부터, 2026-11-17)
+SHOWN_TEXTS = 30
 DraftStatus = str  # 'draft' | 'approved' | 'superseded'
 
 _QUOTES = "'\"‘’“”"
@@ -150,8 +153,11 @@ class DraftService:
         ledger: Ledger | None = None,
         disclose_default: bool = True,
         polish: bool = POLISH_DRAFTS,
+        rng: random.Random | None = None,
     ) -> None:
         self.context = context
+        # 꺼내는 말·끝말을 권할 때 횟수가 같으면 무작위로(2026-11-17). 시험은 씨앗을 넣는다
+        self.rng = rng if rng is not None else random.Random()
         self.checks = checks
         self._llm = llm
         self.db_path = db_path
@@ -321,10 +327,15 @@ class DraftService:
             prompts.closing_sentence(t, brand=rules.brand, disclosure=rules.disclosure)
             for t in previous
         ]
-        # C1 손질 2회차: 운명원 꺼내는 말·끝말·첫 반응이 한 틀로 굳지 않게 덜 쓴 것을 권한다
-        hearsay = prompts.hearsay_choices(rules.brand, previous, n=3, avoid=avoid_bodies)
-        endings = prompts.ending_choices(previous, n=3, avoid=avoid_bodies)
-        used_openings = [prompts.opening_sentence(t, disclosure=rules.disclosure) for t in previous]
+        # C1 손질 2회차: 운명원 꺼내는 말·끝말·첫 반응이 한 틀로 굳지 않게 덜 쓴 것을 권한다.
+        # 2026-11-17(대표): 「이미 쓴 글」은 승인한 초안이 아니라 사람에게 보인 초안 전부로 센다
+        # (초안을 보기만 하고 게시하지 않으면 기록이 늘지 않아 같은 말만 권했다).
+        # V11 같은 규칙 검사의 기준(`previous`, 게시한 글)은 그대로 둔다
+        shown = self.shown_texts()
+        hearsay = prompts.hearsay_choices(
+            rules.brand, shown, n=3, avoid=avoid_bodies, rng=self.rng)
+        endings = prompts.ending_choices(shown, n=3, avoid=avoid_bodies, rng=self.rng)
+        used_openings = [prompts.opening_sentence(t, disclosure=rules.disclosure) for t in shown]
 
         try:  # S5(영상 숫자를 내 것으로)를 볼 영상 자료 글
             context_text = self.context.search_text(self.context.current(video_id))
@@ -653,6 +664,19 @@ class DraftService:
         if analysis is None:
             return quote, (), ""
         return quote, analysis.checked_phrases or (), analysis.concern
+
+    def shown_texts(self, limit: int = SHOWN_TEXTS) -> list[str]:
+        """사람에게 보인 초안 전부(승인 여부·영상과 상관없이, 최신이 앞, 최근 `limit`개).
+
+        꺼내는 말·끝말·첫 반응을 돌려 쓰는 데만 쓴다(2026-11-17). 규칙 검사(V11)의 기준은
+        `previous_texts`(승인·게시한 글) 그대로다."""
+        with db.session(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT body FROM drafts WHERE status IN ('draft', 'superseded', 'approved') "
+                "ORDER BY created_at DESC, id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return list(dict.fromkeys(r["body"] for r in rows))
 
     def previous_texts(self, video_id: str | None = None) -> list[str]:
         """V11 비교 대상: 승인한 초안과 게시한 댓글(다른 영상 것). 최근 50개씩, 겹치면 하나."""

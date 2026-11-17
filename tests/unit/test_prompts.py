@@ -4,6 +4,8 @@ C1(2026-11-17)에서 다시 썼다: 좋은 예 4개(말투가 서로 다름)·�
 검사, 네 박자 짜임, 과제 예시 댓글은 말투 기준으로만, 말투 유형 돌려 쓰기.
 """
 
+import random
+
 import pytest
 
 from app.analysis.style import style_issues
@@ -344,27 +346,31 @@ def test_draft_user_lists_used_closings_and_bodies_to_avoid():
 
 
 def test_hearsay_and_ending_choices_prefer_the_least_used():
-    # 2026-11-17(대표, 운명원 페르소나): 목록이 연애 사주 평판 꼴로 바뀌었다
-    assert P.hearsay_choices("운명원", []) == [
-        "운명원 연애 사주 잘 본다던데", "요새 운명원이 연애 사주를 그렇게 잘 본다던데",
-    ]
+    # 2026-11-17(대표): 횟수가 같으면 목록 순서가 아니라 무작위 → 씨앗을 넣어 정해지게 본다.
+    # 예전에는 빈 기록에서 늘 목록 맨 앞 두 줄을 기대했다(그게 「같은 말만 나온다」의 원인)
+    leads = [P.fill_hearsay(t, "운명원") for t, _ in P.HEARSAY_LINES]
+    first = P.hearsay_choices("운명원", [], rng=random.Random(1))
+    assert len(first) == 2 and set(first) <= set(leads)
+    assert first == P.hearsay_choices("운명원", [], rng=random.Random(1))  # 같은 씨앗 → 같은 답
     used = ["[광고] 운명원 연애 사주 잘 본다던데 한번 보고 싶다.",
             "[광고] 요새 운명원이 연애 사주를 그렇게 잘 본다던데 궁금해지네요."]
-    assert P.hearsay_choices("운명원", used) == [
-        "운명원이 연애 사주를 잘 봐준다고 하던데", "운명원이 연애 사주 잘 보기로 유명하다던데",
-    ]
+    # 쓴 두 줄은 덜 쓴 줄들보다 뒤로 간다(전체 순서의 맨 뒤 둘)
+    every = P.hearsay_choices("운명원", used, n=len(leads), rng=random.Random(2))
+    assert set(every[-2:]) == {"운명원 연애 사주 잘 본다던데",
+                               "요새 운명원이 연애 사주를 그렇게 잘 본다던데"}
     # C1 다듬기: 딱딱한 「여쭤보고 싶네요」는 뺐다
     assert "여쭤보고 싶네요" not in P.WISH_ENDINGS
-    assert P.ending_choices([]) == ["한번 보고 싶다", "다음에 한번 가 봐야겠네요"]
-    assert P.ending_choices(used, n=1) == ["다음에 한번 가 봐야겠네요"]
+    ends = P.ending_choices(used, n=len(P.WISH_ENDINGS), rng=random.Random(3))
+    assert set(ends[-2:]) == {"한번 보고 싶다", "궁금해지네"}  # 쓴 끝말 둘은 맨 뒤
     # 같은 영상 앞 초안에 쓴 것은 덜 쓴 것보다도 뒤로 간다
     mine = ["[광고] 운명원이 연애 사주를 잘 봐준다고 하던데 다음에 한번 가 봐야겠네요."]
-    assert P.hearsay_choices("운명원", used, avoid=mine) == [
-        "운명원이 연애 사주 잘 보기로 유명하다던데", "친구가 운명원에서 연애 사주 봤는데 잘 "
-        "맞는다고 "
-        "하던데",
-    ]
-    assert P.ending_choices([], n=1, avoid=["…한번 보고 싶다."]) == ["다음에 한번 가 봐야겠네요"]
+    every = P.hearsay_choices("운명원", used, n=len(leads), avoid=mine, rng=random.Random(4))
+    assert every[-1] == "운명원이 연애 사주를 잘 봐준다고 하던데"
+    assert set(every[-3:-1]) == {"운명원 연애 사주 잘 본다던데",
+                                 "요새 운명원이 연애 사주를 그렇게 잘 본다던데"}
+    ends = P.ending_choices([], n=len(P.WISH_ENDINGS), avoid=["…한번 보고 싶다."],
+                            rng=random.Random(5))
+    assert ends[-1] == "한번 보고 싶다"
 
 
 def test_opening_sentence_skips_the_disclosure():

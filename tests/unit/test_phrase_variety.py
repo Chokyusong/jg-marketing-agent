@@ -12,6 +12,8 @@ Codex(`gpt-5.6-luna`) 영상 8개 × 초안 2개에서 「자꾸 눈에 띄던�
 
 from __future__ import annotations
 
+import random
+
 import pytest
 from test_context_fit import make_context
 
@@ -115,6 +117,19 @@ def test_eight_videos_in_a_row_do_not_repeat_the_same_lead():
         endings.append(end)
         used.insert(0, f"[광고] 영상 얘기. {lead} {end}.")
     assert len(set(leads)) == 8 and len(set(endings)) == 8
+
+
+def test_empty_history_picks_differ_by_seed():
+    """2026-11-17(대표 「잘 보기로 유명하다던데 이것만 나와?」): 기록이 하나도 없는 새 PC에서도
+    영상마다 다른 말을 권한다 — 횟수가 같으면 목록 순서가 아니라 무작위. 씨앗이 같으면 같은 답."""
+    firsts = {P.hearsay_choices("운명원", [], n=3, rng=random.Random(s))[0] for s in range(12)}
+    ends = {P.ending_choices([], n=3, rng=random.Random(seed))[0] for seed in range(12)}
+    assert len(firsts) >= 5 and len(ends) >= 5
+    a = P.hearsay_choices("운명원", [], n=3, rng=random.Random(7))
+    assert a == P.hearsay_choices("운명원", [], n=3, rng=random.Random(7))
+    assert a != P.hearsay_choices("운명원", [], n=3, rng=random.Random(8))
+    # 기본(씨앗 없음)도 무작위: 여러 번 부르면 처음 권하는 말이 한 가지로 굳지 않는다
+    assert len({P.hearsay_choices("운명원", [])[0] for _ in range(40)}) > 1
 
 
 def test_draft_user_says_lists_are_only_suggestions():

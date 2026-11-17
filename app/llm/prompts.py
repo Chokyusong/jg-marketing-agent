@@ -49,6 +49,7 @@ C1 다듬기(대표 지시 2026-11-17 「초안 더 다듬고」)
 
 from __future__ import annotations
 
+import random
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -204,33 +205,41 @@ RECENT_TEXTS = 6
 
 def _least_used(
     options: Sequence[str], markers: Sequence[str], used: Sequence[str],
-    avoid: Sequence[str] = (),
+    avoid: Sequence[str] = (), rng: random.Random | None = None,
 ) -> list[str]:
     """덜 쓴 순서. `avoid`(같은 영상 앞 초안)에 쓴 것은 맨 뒤로 보낸다.
 
     `used`는 최신이 앞이다. 최근 `RECENT_TEXTS`개 글에 쓴 것을 먼저 뒤로 보내고, 그다음 전체 횟수.
+    횟수가 같으면 무작위(2026-11-17 대표: 목록 순서로 줄 세우니 기록이 적을 때 늘 같은 앞쪽
+    몇 개만 권했다). 시험은 `rng`에 씨앗을 넣어 정해지게 한다.
     """
+    rng = rng if rng is not None else random.Random()
     recent = list(used)[:RECENT_TEXTS]
     counts = [sum(m in t for t in used) for m in markers]
     lately = [sum(m in t for t in recent) for m in markers]
     taken = [any(m in t for t in avoid) for m in markers]
-    order = sorted(range(len(options)), key=lambda i: (taken[i], lately[i], counts[i], i))
+    tie = [rng.random() for _ in options]
+    order = sorted(range(len(options)), key=lambda i: (taken[i], lately[i], counts[i], tie[i]))
     return [options[i] for i in order]
 
 
 def hearsay_choices(
-    brand: str, used_texts: Sequence[str], n: int = 2, *, avoid: Sequence[str] = ()
+    brand: str, used_texts: Sequence[str], n: int = 2, *, avoid: Sequence[str] = (),
+    rng: random.Random | None = None,
 ) -> list[str]:
-    """앞 영상들에 덜 쓴 순서로 운명원을 꺼내는 말 `n`개(같은 영상 앞 초안에 쓴 것은 뒤로)."""
+    """앞서 보인 초안들에 덜 쓴 순서로 운명원을 꺼내는 말 `n`개(같은 영상 앞 초안에 쓴 것은 뒤로,
+    횟수가 같으면 무작위)."""
     options = [fill_hearsay(t, brand) for t, _ in HEARSAY_LINES]
-    return _least_used(options, [m for _, m in HEARSAY_LINES], used_texts, avoid)[:n]
+    return _least_used(options, [m for _, m in HEARSAY_LINES], used_texts, avoid, rng)[:n]
 
 
 def ending_choices(
-    used_texts: Sequence[str], n: int = 2, *, avoid: Sequence[str] = ()
+    used_texts: Sequence[str], n: int = 2, *, avoid: Sequence[str] = (),
+    rng: random.Random | None = None,
 ) -> list[str]:
-    """앞 영상들에 덜 쓴 순서로 바람의 끝말 `n`개(같은 영상 앞 초안에 쓴 것은 뒤로)."""
-    return _least_used(WISH_ENDINGS, WISH_MARKERS, used_texts, avoid)[:n]
+    """앞서 보인 초안들에 덜 쓴 순서로 바람의 끝말 `n`개(같은 영상 앞 초안에 쓴 것은 뒤로,
+    횟수가 같으면 무작위)."""
+    return _least_used(WISH_ENDINGS, WISH_MARKERS, used_texts, avoid, rng)[:n]
 
 
 def opening_sentence(text: str, *, disclosure: str = "") -> str:

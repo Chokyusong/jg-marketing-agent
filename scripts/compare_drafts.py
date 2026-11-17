@@ -89,8 +89,12 @@ def run(
     services: Services, order: Sequence[str], *, drafts_per_video: int = 2,
     titles: dict[str, str] | None = None, log=print,
     on_video: Callable[[list[dict[str, Any]]], None] | None = None,
+    approve: bool = True,
 ) -> list[dict[str, Any]]:
     """영상마다 분석 1번 + 초안 N개. 처음 통과한 초안은 승인한다.
+
+    `approve=False`(2026-11-17, `--no-approve`): 승인하지 않고 초안만 만든다. 대표가 실제로 쓰듯
+    초안을 보기만 하고 게시하지 않을 때 꺼내는 말·끝말이 어떻게 흩어지는지 잰다.
 
     `on_video`: 영상 하나가 끝날 때마다(오류로 건너뛴 영상도) 그때까지의 목록으로 부른다.
     """
@@ -144,7 +148,7 @@ def run(
                     for p in seen if RETRY_HEAD in p
                 ],
             })
-            if d.passed and not approved:
+            if approve and d.passed and not approved:
                 try:
                     services.drafts.approve(d.id)
                     approved = True
@@ -278,6 +282,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--videos", default="", help="DB 사본에 저장된 영상 ID들(쉼표, 순서대로 돈다)")
     p.add_argument("--db", type=Path, default=None, help="앱 DB 사본(임시 폴더로 복사해 쓴다)")
     p.add_argument("-d", "--drafts", type=int, default=2, help="영상마다 초안 수")
+    p.add_argument("--no-approve", action="store_true",
+                   help="처음 통과한 초안도 승인하지 않는다(보기만 하는 실제 쓰임)")
     p.add_argument("--before", type=Path, default=None, help="비교할 예전 결과 JSON")
     p.add_argument("--labels", default="전,후", help="표 열 이름 두 개(쉼표)")
     p.add_argument("--out-json", type=Path, default=None)
@@ -350,8 +356,9 @@ def _compare(
             out["load_s"] = round(time.monotonic() - started, 1)
         prepare(services, fixtures)
         titles = {c["video_id"]: c.get("title", "") for c in fixtures}
+        out["approve"] = not args.no_approve
         out["videos"] = run(services, order, drafts_per_video=args.drafts, titles=titles,
-                            on_video=save)
+                            on_video=save, approve=not args.no_approve)
         contexts = {}
         for vid in order:
             try:

@@ -6,6 +6,7 @@
 """
 
 import json
+import random
 import tempfile
 from pathlib import Path
 
@@ -202,3 +203,97 @@ def test_temp_cleanup_failure_is_one_warning(tmp_path, monkeypatch, capsys):
     C.remove_temp(tmp_path / "x")
     err = capsys.readouterr().err
     assert err.count("\n") == 1 and err.startswith("경고: 임시 폴더를 지우지 못했습니다")
+
+
+# ------------------------------------------------ 2026-11-17 꺼내는 말·끝말이 영상마다 흩어지는지
+
+HEARSAY_HEAD = "운명원을 꺼내는 말은"
+ENDING_HEAD = "바람의 끝말은"
+
+
+def _first_quoted(prompt: str, head: str) -> str:
+    line = next(x for x in prompt.splitlines() if x.startswith(head))
+    return line.split(": ", 1)[1].split("'")[1]
+
+
+class FirstChoiceLLM:
+    """권한 첫 번째 꺼내는 말·끝말을 그대로 쓰는 가짜 AI(실제 모델이 첫 권유를 따른다고 칠 때)."""
+
+    model = "fake-first-choice"
+
+    def __init__(self, contexts):
+        self.contexts = contexts
+        self.leads: list[str] = []
+        self.endings: list[str] = []
+
+    def close(self):
+        pass
+
+    def generate_json(self, *, system, user, schema, **kwargs):
+        ctx = max((c for c in self.contexts if c["comments"][0] in user),
+                  key=lambda c: len(c["comments"][0]))
+        quote = ctx["comments"][0]
+        if "evidence" in schema.get("properties", {}):
+            return {"topic": "연애 고민", "concern": "이 관계를 계속 가도 될까", "tone": "차분",
+                    "viewer_needs": "고민을 덜고 싶다", "is_love": True,
+                    "evidence": [{"quote": quote, "source": "comment"}], "key_phrases": []}
+        lead = _first_quoted(user, HEARSAY_HEAD)
+        ending = _first_quoted(user, ENDING_HEAD)
+        self.leads.append(lead)
+        self.endings.append(ending)
+        return {"body": f"댓글 보니 남 일 같지 않네요. {lead} 나도 {ending}.",
+                "used_quote": quote, "tone_label": "공감형"}
+
+
+def six_contexts() -> list[dict]:
+    """연애 고민이 있는 가상 영상 5개(06은 협찬 영상이라 일부러 고민이 없다) + 01을 바꾼 하나."""
+    loaded = E.load_contexts(CONTEXTS)
+    contexts = [c for c in loaded if c["video_id"] != "EvalCtx0006"][:5]
+    extra = json.loads(json.dumps(contexts[0], ensure_ascii=False))
+    extra["video_id"] = "EvalCtx0099"
+    extra["title"] = "권태기 사연 둘째 이야기"
+    extra["comments"] = ["둘째 사연도 " + c for c in extra["comments"]]
+    return contexts + [extra]
+
+
+def spread(seed: int) -> tuple[list[str], list[str], list[dict]]:
+    contexts = six_contexts()
+    llm = FirstChoiceLLM(contexts)
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = C.make_settings("ollama", Path(tmp) / "app.sqlite3", model="fake", environ={})
+        services = build_services(settings, transport=E.youtube_transport(contexts),
+                                  llm_transport=httpx.MockTransport(_llm_off))
+        services.llm = llm
+        services.drafts.rng = random.Random(seed)
+        try:
+            E.prepare(services, contexts)
+            videos = C.run(services, [c["video_id"] for c in contexts], drafts_per_video=1,
+                           log=lambda s: None, approve=False)
+            with db.session(settings.db_path) as conn:
+                statuses = {r["status"] for r in conn.execute("SELECT status FROM drafts")}
+        finally:
+            services.llm = None
+            services.close()
+    assert statuses == {"draft"}  # 하나도 승인하지 않았다
+    # 영상마다 본문에 들어간 꺼내는 말·끝말(겹치면 긴 것)
+    def found(options: list[str], body: str) -> str:
+        return max((x for x in set(options) if x in body), key=len)
+
+    bodies = [v["drafts"][0]["body"] for v in videos]
+    return ([found(llm.leads, b) for b in bodies], [found(llm.endings, b) for b in bodies],
+            videos)
+
+
+def test_six_videos_without_approval_spread_leads_and_endings():
+    """대표(2026-11-17): 초안을 보기만 하고 게시하지 않으면 「잘 보기로 유명하다던데」만 나왔다.
+    보인 초안 전부를 「이미 쓴 글」로 세면 6개 영상에서 꺼내는 말·끝말이 5가지 이상."""
+    leads, endings, videos = spread(seed=11)
+    assert len(videos) == 6
+    assert len(set(leads)) >= 5, leads
+    assert len(set(endings)) >= 5, endings
+
+
+def test_seed_changes_the_first_suggestion_on_an_empty_history():
+    first_a = spread(seed=1)[0][0]
+    others = {spread(seed=s)[0][0] for s in (2, 3, 4)}
+    assert others - {first_a}, (first_a, others)
