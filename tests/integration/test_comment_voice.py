@@ -217,6 +217,21 @@ def test_first_draft_asks_for_a_reason_and_the_next_may_skip_it(setup):
     assert "이미 쓴 까닭: '연락 문제로'" in free
 
 
+def test_period_after_jamo_is_dropped_from_the_model_but_kept_in_human_edits(setup):
+    # 2026-11-18(기획 담당): 「현실적이네ㅋㅋ.」 → 「현실적이네ㅋㅋ」(모델 글만)
+    client, _, use = setup
+    body = ("하루에 한 번 연락 갖고 싸웠다니 현실적이네ㅋㅋ. 요즘 운명원 연애 사주 잘 본다고 "
+            "하던데 저도 언제 한번 가 보려고요.")
+    llm = use([ANALYSIS, draft(body)])
+    made = client.post("/api/drafts", json={"video_id": VID}).json()
+    assert "현실적이네ㅋㅋ 요즘" in made["body"] and "ㅋㅋ." not in made["body"]
+    system = llm.calls[1]["kwargs"]["system"]
+    assert "'ㅋㅋ', 'ㅠㅠ', 'ㅎㅎ' 바로 뒤에는 마침표를 찍지 않는다" in system
+    edited = client.patch(f"/api/drafts/{made['id']}",
+                          json={"body": f"[광고] {body}"}).json()
+    assert "현실적이네ㅋㅋ. 요즘" in edited["body"]  # 사람이 쓴 글은 그대로
+
+
 # ---------------------------------------------------------------- 사람이 고친 글 · 직접 검사
 
 

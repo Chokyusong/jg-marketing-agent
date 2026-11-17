@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import time
 import unicodedata
 from collections.abc import Callable, Sequence
@@ -77,6 +78,9 @@ SHOWN_TEXTS = 30
 DraftStatus = str  # 'draft' | 'approved' | 'superseded'
 
 _QUOTES = "'\"‘’“”"
+# 2026-11-18(기획 담당): 「현실적이네ㅋㅋ.」「답답하다 ㅠㅠ.」 — 사람은 자모 표기 뒤에 마침표를
+# 찍지 않는다. 모델 글에서만 자모 바로 뒤의 마침표 하나를 지운다(말줄임 「...」은 그대로)
+_JAMO_PERIOD = re.compile(r"(?<=[ㄱ-ㅎㅏ-ㅣ])\.(?!\.)")
 
 
 @dataclass(frozen=True)
@@ -101,13 +105,16 @@ class Draft:
 
 
 def clean_body(raw: Any, disclosure: str) -> str:
-    """모델 본문 정리: 줄바꿈·연속 공백을 한 칸으로, 앞뒤 따옴표, 모델이 붙인 표기는 뗀다."""
+    """모델 본문 정리: 줄바꿈·연속 공백을 한 칸으로, 앞뒤 따옴표, 모델이 붙인 표기는 뗀다.
+
+    「ㅋㅋ.」「ㅠㅠ.」처럼 자모 바로 뒤의 마침표 하나도 지운다(사람이 고친 글에는 쓰지 않는다)."""
     text = unicodedata.normalize("NFC", str(raw or ""))
     text = " ".join(text.split())
     if len(text) >= 2 and text[0] in _QUOTES and text[-1] in _QUOTES and text[0] == text[-1]:
         text = text[1:-1].strip()
     while disclosure and text.startswith(disclosure):
         text = text[len(disclosure) :].lstrip(" :·-")
+    text = _JAMO_PERIOD.sub("", text)
     return text.strip()
 
 

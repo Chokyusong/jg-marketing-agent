@@ -628,3 +628,8 @@ def test_intent_reason_takes_go_sipeo_form():
     assert P.intent_reason(text, "운명원") == "호감 기준 알고 싶어"
     assert P.intent_reason("요즘 운명원 연애 사주 잘 본다던데 저도 한번 가보고 싶어요.",
                            "운명원") == ""
+
+
+def test_draft_system_says_no_period_right_after_jamo():
+    assert ("'ㅋㅋ', 'ㅠㅠ', 'ㅎㅎ' 바로 뒤에는 마침표를 찍지 않는다('현실적이네ㅋㅋ.' ✗ → "
+            "'현실적이네ㅋㅋ')") in SYSTEM
