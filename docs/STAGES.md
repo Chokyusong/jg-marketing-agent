@@ -310,6 +310,22 @@ FastAPI 앱, 읽기 전용 3열 화면, `/api/health`, 테스트 2개.
 - [ ] 사람 확인: 큰 모델을 처음 불러올 때 ②칸 안내와 420초 기다림, 시작 준비 [바꾸기]를 실제 Ollama로
 - 정한 것(대표 확인 전 기본값): 자막을 못 읽어도 「자막 직접 넣기」는 저절로 펼치지 않고 접힌 줄에 「자동으로 못 읽었을 때 여기에 붙여 넣으세요」만 붙인다(화면 스크롤 없게). 뜨기 직전은 실제 게시·연습 모드 둘 다 막는다. 마지막에 불러온 목록이 영상의 출처다. 버전 번호는 그대로(0.9.0)
 
+### [-] R5 — 설정에서 AI 바꾸기 (프로그램화 2차, 2026-11-17)
+
+- 기준: [PLAYBOOK.md](PLAYBOOK.md) 「R5」, [DESIGN.md](DESIGN.md) 5.2.1·8.1, [UI_SPEC.md](UI_SPEC.md) 6.1. 12단계(12-1 ~ 12-4)를 앞당겨 한꺼번에 했다.
+
+**진행 상황 (2026-11-17)** — 코드·자동 테스트·로그인된 프로그램 진짜 실행(Codex 성공, Claude Code는 로그인 만료로 실패)은 했고, API 키 AI의 진짜 호출과 대표 화면 확인이 남아 `[-]`로 둔다.
+- [x] 어댑터 `app/llm/openai_compatible.py`(OpenAI·Gemini 호환 주소·Grok·직접 입력) · `anthropic.py`(Claude API) · `cli.py`(Codex·Claude Code를 대신 실행). 모두 `TextJSONLLM`, 모델 이름은 코드에 없음(목록 또는 직접 적기). 파일 머리말에 확인 날짜와 출처. 오류 종류 `llm_auth`·`llm_rate_limited` 추가
+- [x] 프로그램 실행 조건: 빈 임시 폴더(끝나면 지움) · 도구 끔/읽기 전용 · 비대화 한 번 실행 · 시간 제한 · 프롬프트는 표준 입력 · 셸 없음 · 콘솔 창 없음 · 이 앱의 키 환경 변수는 넘기지 않음 · 그 프로그램의 로그인·설정 파일은 읽지 않음 · `health()`는 설치·버전만. Gemini CLI는 이 PC에 없어 물리지 않음
+- [x] 설정: `llm.active`·`llm.models`·`llm.base_urls`(settings.json), AI별 API 키는 따로 DPAPI(`llm_keys/<이름>.bin`, 유튜브 키는 그대로), 프로그램 > `.env` > 없음. 저장하면 바로 적용, 게시 중이면 409. `config.yaml` `llm.providers` 9개(비밀값 없음)
+- [x] API(더하기만): `GET /api/llm/providers`, `POST /api/llm/providers/{이름}/test`(모델 목록 — 요금 안 드는 호출, 프로그램은 로그인 상태 명령), `GET /api/llm/models?provider=`(인자 없으면 전과 같음), `PUT`·`DELETE /api/settings/llm-key/{이름}`, `PUT /api/settings`에 새 칸
+- [x] 화면: 설정 「AI 모델」 묶음을 왼쪽 목록(이 PC에서 · API 키로 · 로그인된 프로그램으로) + 오른쪽 준비 칸으로. 이 PC 밖 AI는 「영상 제목·설명·자막·댓글이 ○○(으)로 전송됩니다. 요금이 들 수 있습니다」와 한 번 확인. 위 줄 칩·아래 줄 「AI 이름 · 모델 · 이 PC/외부」. 미리 불러오기·불러오는 중·추천 모델은 Ollama만. 시작 준비 줄은 고른 AI를 본다
+- [x] 테스트(키·프로그램·인터넷 없이): 어댑터 단위 29, 프로그램 단위 15(가짜 실행기: 인자·빈 폴더·표준 입력·시간 제한·환경 변수·셸 없음·창 없음·실패 분류), AI 바꾸기 통합 16(키가 파일·응답·로그에 없음, 저장 → 바로 적용 → 다른 AI로 초안, 게시 중 409), 화면 e2e 5(고르기 → 키 → 모델 → 확인 → 저장, 취소, 1920×1009 · 1600×960 · 1366×720 스크롤 없음·12px 이상). `tests/conftest.py`가 프로그램 진짜 실행을 막는다
+- [x] 진짜 확인(`tests/integration/test_live_cli.py`, `RUN_LIVE=1`, 짧은 시험 문장): Codex 0.152.1 — 1번 실행, JSON 답 받음. Claude Code 2.1.312 — 2번 실행, 둘 다 「Failed to authenticate: OAuth session expired」(첫 번째는 `llm_error`로 분류돼 고쳤고, 두 번째는 `llm_auth`)
+- [ ] 대표가 키를 넣은 뒤 확인 필요: OpenAI·Claude·Gemini·Grok API 키로 [연결 확인]과 초안 한 번(진짜 API 키 호출은 하지 않았다)
+- [ ] 사람 확인: Claude Code에 다시 로그인(`claude auth login`)한 뒤 [연결 확인]·초안 한 번, 설정 화면에서 AI를 바꿔 보는 확인
+- 정한 것(대표 확인 전 기본값): 각 회사의 "엄격 스키마"(OpenAI `json_schema`, Codex `--output-schema`)는 쓰지 않고 공통 확인만. Claude 모델 목록은 첫 쪽만 읽는다. 설정 묶음 제목은 기존 테스트대로 「AI 모델」. Gemini CLI 이름은 「Gemini 프로그램」(화면에 「CLI」를 쓰지 않음). 모델 이름은 `-`로 시작할 수 없다
+
 ### [-] 10단계 — 가점
 
 - [x] 뜨기 직전 영상 찾기(`app/youtube/rising.py`, 초안까지만) — R4에서 함
@@ -321,7 +337,9 @@ FastAPI 앱, 읽기 전용 3열 화면, `/api/health`, 테스트 2개.
 - 한국어 README(설치·실행·설정·테스트), `docs/DEVIATIONS.md`(원문과 다른 점), `docs/INTENT.md`(제작 의도), 시연 순서 대본, 시연용 저장 데이터.
 - 완료 기준: 새 폴더에 내려받아 README대로 실행된다. 공개 저장소에 비밀값이 없다. 시연 대본대로 2~3분 안에 끝난다.
 
-### [ ] 12단계 — 다른 LLM 물리기 (제출 뒤, 또는 로컬 모델 품질이 모자랄 때 앞당김)
+### [-] 12단계 — 다른 LLM 물리기 (제출 뒤, 또는 로컬 모델 품질이 모자랄 때 앞당김)
+
+- R5에서 앞당겨 했다(위 R5 절). 남은 것도 R5 절의 사람 확인 두 줄.
 
 - 설정의 `llm.active`만 바꿔 다른 LLM을 쓴다(DESIGN 5.2.1, PLAYBOOK 12단계). 어댑터 하나가 한 걸음: `openai_compatible`(OpenAI·Grok·Gemini 호환 주소 등, API 키) → `anthropic`(Claude API, API 키) → `cli`(로그인된 Codex·Claude Code·Gemini CLI를 대신 실행) → 화면에서 공급자 고르기.
 - 완료 기준: 분석·초안 코드를 바꾸지 않고 공급자만 바꿔 초안이 나온다. 자동 테스트는 키·CLI·인터넷 없이 통과. 키가 로그·응답에 없다. CLI 방식은 빈 폴더·도구 꺼짐·비대화 모드·시간 제한 조건이 테스트로 확인된다. CLI의 로그인 토큰 파일을 읽지 않는다.

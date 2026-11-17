@@ -213,25 +213,50 @@ analyzer / drafter
 - **화면 표시.** 위 줄 AI 상태에 지금 공급자와 모델, 그리고 "로컬"인지 "외부"인지를 보인다. 외부 공급자를 쓰면 영상 제목·설명·자막·댓글이 그 회사로 전송된다는 것을 설정 화면에 적는다.
 - 기본값은 계속 Ollama다. 외부 공급자는 비용이 들 수 있다.
 
-설정 모양(목표):
+**구현(R5, 2026-11-17)** — 모듈 머리말에 확인한 날짜와 출처를 적었다.
+
+| 종류 | 모듈 | 요청 | 모델 목록([모델 불러오기]·[연결 확인]) |
+|---|---|---|---|
+| `openai_compatible` | `app/llm/openai_compatible.py` | `POST {base_url}/chat/completions`, `Authorization: Bearer` | `GET {base_url}/models`(글 생성 없음) |
+| `anthropic` | `app/llm/anthropic.py` | `POST /v1/messages`, `x-api-key`, `anthropic-version: 2026-10-21` | `GET /v1/models` |
+| `cli` | `app/llm/cli.py` | 아래 실행 조건 | 없음(직접 적는다. 비우면 그 프로그램의 기본 모델) |
+
+- 모델 이름은 코드·`config.yaml`에 박지 않는다. 각 회사의 목록에서 고르거나 직접 적는다(`settings.json`의 `llm.models`).
+- JSON: 모든 공급자가 프롬프트에 스키마를 넣고 `base.py`의 공통 확인(꺼내기·스키마·한 번 다시)을 쓴다. OpenAI·Grok은 `response_format: json_object`를 함께 보내고, 모델이 400으로 거절하면 빼고 한 번 더 보낸다. 각 회사의 "엄격 스키마" 기능은 이 앱 스키마와 조건이 맞는지 확인하지 않아 쓰지 않는다. `temperature`는 보내지 않는다(Claude API 2026-10-21은 400, OpenAI 추론 모델도 받지 않는다).
+- 오류: 401·403 → `llm_auth`, 429(Claude 529 포함) → `llm_rate_limited`, 404 → `llm_model_missing`, 시간 초과 → `llm_timeout`, 연결 실패 → `llm_down`. 문구는 그 AI 이름으로(「OpenAI가 이 API 키를 받아 주지 않았습니다」 등).
+- `health()`는 바깥에 묻지 않는다(아래 줄이 30초마다 묻는다). API 키 AI는 키·주소·모델이 있는지만, 로그인된 프로그램은 설치 여부와 `--version`만 본다. 미리 불러오기·「모델 불러오는 중」·첫 분석의 긴 시간 제한·추천 모델 안내는 Ollama만.
+- **로그인된 프로그램 실행 조건**(`app/llm/cli.py`, 이 PC의 `--help`와 공식 문서로 확인):
+  - Codex(0.152.1): `codex exec --sandbox read-only --skip-git-repo-check --ephemeral --ignore-user-config --ignore-rules --color never -C <빈 임시 폴더> --disable shell_tool,unified_exec,browser_use,computer_use,apps,plugins,multi_agent,image_generation(하나씩) [-m 모델] -`. 프롬프트는 표준 입력(`-`), 답은 stdout의 마지막 메시지.
+  - Claude Code(2.1.312): `claude -p <고정 안내> --output-format json --tools "" --safe-mode --strict-mcp-config --no-session-persistence --disable-slash-commands --permission-mode dontAsk --permission-prompts none --no-chrome --system-prompt <고정 글> [--model 모델]`. 영상 자료는 표준 입력, 답은 JSON의 `result`. `--bare`는 구독 로그인을 쓰지 않아 쓰지 않는다.
+  - 공통: 빈 임시 폴더(끝나면 지움), 셸 없이 인자 목록(`shell=False`), Windows 콘솔 창 없음(`CREATE_NO_WINDOW`), 시간 제한(`llm.timeout_seconds`), 이 앱의 키 환경 변수는 자식에게 넘기지 않음. 그 프로그램의 로그인·설정 파일은 읽거나 복사하지 않는다. 로그인 여부는 [연결 확인]에서 그 프로그램의 `codex login status`·`claude auth status`로 묻는다.
+  - Gemini CLI: 이 PC에 설치돼 있지 않아 `--help`로 조건을 확인하지 못했다 → 물리지 않는다(목록에 「설치 안 됨」/「아직 연결 안 함」, 고를 수 없음).
+  - 모델 이름은 `-`로 시작할 수 없다(명령 인자로 들어가므로 `--sandbox` 같은 값을 막는다).
+
+설정 모양(`config.yaml`, 비밀값 없음):
 
 ```yaml
 llm:
   active: ollama
-  timeout_seconds: 180
-  context_chars: 6000
   providers:
-    ollama:     { type: ollama }                       # 주소·모델은 .env의 OLLAMA_BASE_URL, OLLAMA_MODEL
-    openai:     { type: openai_compatible, base_url: "https://api.openai.com/v1", model: "", api_key_env: OPENAI_API_KEY }
-    grok:       { type: openai_compatible, base_url: "https://api.x.ai/v1",       model: "", api_key_env: XAI_API_KEY }
-    gemini:     { type: openai_compatible, base_url: "",                          model: "", api_key_env: GEMINI_API_KEY }
-    claude:     { type: anthropic,                                                model: "", api_key_env: ANTHROPIC_API_KEY }
-    codex-cli:  { type: cli, command: [] }             # 실행 명령과 옵션은 구현할 때 각 CLI의 --help와 문서로 확인
-    claude-cli: { type: cli, command: [] }
-    gemini-cli: { type: cli, command: [] }
+    ollama:  {type: ollama, label: Ollama}           # 주소·모델은 .env의 OLLAMA_BASE_URL, OLLAMA_MODEL
+    openai:  {type: openai_compatible, label: ChatGPT(OpenAI), sends_to: OpenAI,
+              base_url: "https://api.openai.com/v1", api_key_env: OPENAI_API_KEY,
+              json_mode: true, max_tokens_field: max_completion_tokens}
+    claude:  {type: anthropic, label: Claude(Anthropic), sends_to: Anthropic,
+              base_url: "https://api.anthropic.com", api_key_env: ANTHROPIC_API_KEY}
+    gemini:  {type: openai_compatible, label: Gemini(Google), sends_to: Google,
+              base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
+              api_key_env: GEMINI_API_KEY, json_mode: false, max_tokens_field: ""}
+    grok:    {type: openai_compatible, label: Grok(xAI), sends_to: xAI, base_url: "https://api.x.ai/v1",
+              api_key_env: XAI_API_KEY, json_mode: true, max_tokens_field: max_completion_tokens}
+    custom:  {type: openai_compatible, label: 직접 입력, base_url: "", editable_url: true,
+              key_optional: true, api_key_env: CUSTOM_LLM_API_KEY, max_tokens_field: max_tokens}
+    codex-cli:  {type: cli, label: Codex, program: codex}
+    claude-cli: {type: cli, label: Claude Code, program: claude}
+    gemini-cli: {type: cli, label: Gemini 프로그램, program: gemini}   # 화면에 「CLI」를 쓰지 않는다
 ```
 
-주소·모델 이름·CLI 옵션은 자주 바뀐다. 구현할 때 각 회사 문서로 확인하고, 문서에 없는 값을 지어 넣지 않는다.
+주소·모델 이름·실행 옵션은 자주 바뀐다. 바꿀 때 각 회사 문서와 `--help`로 다시 확인하고, 문서에 없는 값을 지어 넣지 않는다.
 
 ### 5.3 댓글 형식
 
@@ -365,10 +390,11 @@ llm:
   keep_alive: "30m"
   context_chars: 6000
   providers:
-    ollama: {type: ollama}
+    ollama: {type: ollama, label: Ollama}
+    # R5: openai · claude · gemini · grok · custom · codex-cli · claude-cli · gemini-cli(5.2.1)
 ```
 
-`.env` (커밋 금지, **개발용 선택**): `YOUTUBE_API_KEY`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`. 외부 LLM 키는 `llm.providers.*.api_key_env`에 적은 이름으로(12단계). R2부터 사용자는 `.env`와 `config.yaml`을 열지 않는다(아래 8.1).
+`.env` (커밋 금지, **개발용 선택**): `YOUTUBE_API_KEY`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`. 외부 AI 키는 `llm.providers.*.api_key_env`에 적은 이름으로(`OPENAI_API_KEY`·`ANTHROPIC_API_KEY`·`GEMINI_API_KEY`·`XAI_API_KEY`·`CUSTOM_LLM_API_KEY`, R5). R2부터 사용자는 `.env`와 `config.yaml`을 열지 않는다(아래 8.1).
 
 ### 8.1 프로그램 안에서 설정 (R2, 2026-11-17)
 
@@ -388,7 +414,13 @@ llm:
   - 게시 작업이 돌고 있으면 409 `settings_busy`(「지금 게시 중입니다. 끝난 뒤 다시 저장해 주세요」).
   - 로그인 창 목록(`LoginWindows`)은 서비스를 다시 만들어도 남는다.
 - **[기본값으로]**(`POST /api/settings/reset`)는 `settings.json`을 지운다. 저장한 API 키는 남긴다.
-- **모델**: 프로그램에서 고른 모델 > `.env`의 `OLLAMA_MODEL` > 코드 기본값.
+- **글 쓰는 AI**(R5, UI_SPEC 6.1):
+  - 칸: `llm.active`(고른 AI 이름), `llm.models`(AI 이름 → 모델), `llm.base_urls`(「직접 입력」 주소). `llm.models`·`llm.base_urls`는 보낸 이름만 바꾸고 빈 글이면 그 이름을 지운다.
+  - `llm.active`는 준비된 AI만 받는다: 목록에 있음 · 지원하는 종류 · (API 키 AI) 키 있음 · (「직접 입력」) 주소 있음 · 모델 있음 · (프로그램) 확인한 프로그램이고 설치됨. 아니면 422와 이유(「API 키를 먼저 넣어 주세요」 등).
+  - 저장하면 바로 적용(다음 분석·초안이 새 AI로). 게시 중이면 409.
+  - API: `GET /api/llm/providers`(목록·준비 상태, 바깥에 묻지 않음), `POST /api/llm/providers/{이름}/test`([연결 확인]: API 키 AI는 모델 목록 — 글을 만들지 않아 요금이 들지 않는 호출, 프로그램은 그 프로그램의 로그인 상태 명령), `GET /api/llm/models?provider=<이름>`(인자가 없으면 전과 같이 Ollama).
+  - **AI API 키**: `PUT`·`DELETE /api/settings/llm-key/{이름}`. AI마다 따로 DPAPI로 암호화해 `llm_keys/<이름>.bin`에 둔다(유튜브 키 파일과 그 동작은 그대로). 읽는 순서는 프로그램에 저장한 키 > `.env`(`api_key_env`) > 없음. 응답에는 있는지와 출처만. 저장한 키는 비밀값 목록에 들어가 오류 문구에서 가리고, 로그는 모든 줄에서 가린다(`app/errors.remember_log_secrets`).
+- **모델(Ollama)**: 프로그램에서 고른 모델(`llm.model`) > `.env`의 `OLLAMA_MODEL` > 코드 기본값. 다른 AI의 모델은 `llm.models`.
   모델 목록은 `GET /api/llm/models`(Ollama `/api/tags`). 일반 모델이 위, 코드용·임베딩용은 아래에 표시만 다르게.
 - **YouTube API 키**:
   - Windows DPAPI(현재 사용자, ctypes)로 암호화해 `youtube_key.bin`에 둔다. 평문은 파일·응답·화면·로그 어디에도 없다.

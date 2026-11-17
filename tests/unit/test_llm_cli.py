@@ -171,6 +171,16 @@ def test_claude_not_logged_in_is_llm_auth():
     assert "로그인" in info.value.message and "claude auth login" in info.value.action
 
 
+def test_claude_expired_login_is_llm_auth():
+    # 진짜 확인(2026-11-17)에서 본 문구: 로그인이 만료되면 llm_error가 아니라 llm_auth
+    text = "Failed to authenticate: OAuth session expired and could not be refreshed"
+    runner = FakeRunner([ok_claude(text, is_error=True, code=1)])
+    llm = make("claude", runner)
+    with pytest.raises(AppError) as info:
+        llm.generate_json(system="s", user="u", schema=SCHEMA)
+    assert info.value.kind == "llm_auth"
+
+
 def test_codex_rate_limit_and_other_errors():
     runner = FakeRunner([RunResult(1, "", "ERROR: usage limit reached, try later")])
     with pytest.raises(AppError) as info:

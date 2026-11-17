@@ -2,9 +2,16 @@
 
 유튜브 영상을 분석해 댓글 초안(광고 표기 `[광고]` 켬/끔)을 만들고, 사람이 검토하고 [댓글 달기]를 누르면 고른 크롬 프로필로 그 영상에 한 글자씩 입력·게시·확인하는 내 PC용 프로그램(FastAPI + 자체 창). 제이지그룹 AI PM 채용 과제 TRACK 2 「마케팅 AI 에이전트 개발」.
 
-## 지금 되는 것 / 아직 안 되는 것 (2026-11-17, 3단계 + P단계 + 6단계 + 4단계 + 5단계 + 7단계 + 8단계 + 9단계 + R1 + R2 + R3 + R4)
+## 지금 되는 것 / 아직 안 되는 것 (2026-11-17, 3단계 + P단계 + 6단계 + 4단계 + 5단계 + 7단계 + 8단계 + 9단계 + R1 + R2 + R3 + R4 + R5)
 
 **되는 것**
+- **설정에서 AI 바꾸기 (R5, 2026-11-17)** — 파일을 열지 않고 [저장]하면 다음 분석·초안부터 그 AI로 쓴다(다시 켜지 않음)
+  - 설정 「AI 모델」: 왼쪽 목록에서 고른다 — 이 PC에서(Ollama) · API 키로(ChatGPT(OpenAI) · Claude(Anthropic) · Gemini(Google) · Grok(xAI) · 직접 입력) · 로그인된 프로그램으로(Codex · Claude Code. Gemini 프로그램은 아직 연결 안 함)
+  - API 키 AI: 키를 넣고 [키 저장](AI마다 따로 Windows가 암호화, 「저장됨」만 보임) → [모델 불러오기]로 그 회사의 목록에서 고르거나 직접 적기 → [연결 확인](모델 목록만 읽어 요금이 들지 않음) → [이 AI 쓰기] → [저장]
+  - 이 PC 밖으로 보내는 AI는 「영상 제목·설명·자막·댓글이 ○○(으)로 전송됩니다. 요금이 들 수 있습니다」를 보이고 한 번 더 확인한다
+  - 로그인된 프로그램은 이 PC에 이미 로그인된 Codex·Claude Code를 대신 실행한다: 빈 임시 폴더, 도구 끔(읽기 전용), 한 번 실행, 시간 제한, 영상 자료는 표준 입력으로, 창 없음. 그 프로그램의 로그인 파일은 읽지 않는다
+  - 위 줄 오른쪽 칩과 아래 줄에 「AI 이름 · 모델 · 이 PC/외부」. 미리 불러오기·추천 모델 안내는 Ollama만
+  - 확인: Codex는 짧은 시험 문장으로 한 번 실행해 JSON 답을 받았다. Claude Code는 이 PC의 로그인이 만료돼 실패했다(「로그인이 풀렸습니다」로 보인다). API 키 AI는 진짜 키로 불러 보지 않았다(대표가 키를 넣은 뒤 확인)
 - **자막 자동 읽기 · 뜨기 직전 영상 · 첫 분석 시간 (R4, 2026-11-17)**
   - 영상을 고르면 **자막을 자동으로 읽는다**(`youtube-transcript-api`, 설정 「자막 자동으로 읽기」 기본 켬). 고르는 순서: 한국어 올린 자막 → 한국어 자동 생성 → 다른 언어. ②칸 「자동으로 읽은 자막 3,210자(한국어, 자동 생성)」. 줄마다 시간 표시(「1:23 …」), 2만 자가 넘으면 앞부분과 뒷부분만. 한 번 읽은 자막은 저장해 두고 다시 부르지 않는다
   - 못 읽으면(자막 없음·막아 둠·유튜브가 막음·10초 넘음·오류) 조용히 넘어가 「자막을 읽지 못해 제목과 설명으로 대신합니다(이유)」. 잠깐 막힌 경우는 30분 뒤에 다시 해 본다. 「자막 직접 넣기」는 그대로 남아 있고, 붙여 넣은 자막이 늘 먼저다(붙여 넣은 자막 > 자동 > 없음)
@@ -172,7 +179,10 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | `POST /api/settings/youtube-key/test` | R2 [연결 확인]: 1단위짜리 호출. `result`: ok·no_key·rejected·quota·network·error와 쉬운 말 한 줄 |
 | `GET /api/llm/loaded` | R4: 모델이 지금 메모리에 올라가 있는지(`loaded`: 참·거짓·모름 null)와 처음 불러올 때 기다리는 초(`cold_timeout_seconds`). 모델을 부르지 않는다 |
 | `GET /api/videos/rising` | R4: 뜨기 직전 영상(초안까지만). 선택 입력 `exclude_shorts`. 영상마다 `views_per_hour`·`rising`, 응답에 `mode: rising`·`rising`(조건)·`checked`(본 영상 수). 검색 100 + 상세 1단위, 같은 요청 10분 저장 |
-| `GET /api/llm/models` | R2: 이 PC의 Ollama 모델(일반 → 코드용 → 임베딩용), 지금 모델과 설치 여부 |
+| `GET /api/llm/models` | R2: 이 PC의 Ollama 모델(일반 → 코드용 → 임베딩용), 지금 모델과 설치 여부. R5: `?provider=<이름>`이면 그 AI의 모델 목록(API 키 AI는 그 회사의 목록, 프로그램은 `manual_only`) |
+| `GET /api/llm/providers` | R5: 고를 수 있는 AI 목록(이름 · 종류 · 보내는 곳 · 키 있음 · 모델 · 준비 안 된 이유). 바깥에 묻지 않는다 |
+| `POST /api/llm/providers/{name}/test` | R5 [연결 확인]: API 키 AI는 모델 목록(글을 만들지 않음), 프로그램은 버전·로그인 상태. `result`: ok·no_key·rejected·rate_limited·network·not_installed·not_logged_in·no_url·not_wired·error |
+| `PUT`·`DELETE /api/settings/llm-key/{name}` | R5: AI별 API 키 저장(`{"key"}`)·지우기. 응답은 있는지와 출처만 |
 | `GET /api/screens` | R2: 크롬 창을 띄울 모니터 목록(이름 · 고르면 쓸 안전한 위치) |
 | `POST /api/profiles/{name}/login` | R2 [로그인하기]: 그 프로필로 보통 크롬 창을 구글 로그인 화면으로 연다(로그인은 사람이). 창을 닫으면 한 번 저절로 확인 |
 | `POST /api/profiles/{name}/check` | R2 [로그인 확인]: 창 없이 유튜브에서 로그인 상태·채널 이름만 읽어 저장. 게시 중이면 409 `profile_check_busy` |
@@ -181,7 +191,7 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 
 영상 목록·영상 항목 응답(`GET /api/videos`, `POST /api/videos/resolve`, `GET /api/videos/{id}`)의 영상마다 `commented: {sandbox, youtube}`(그 대상에 게시 완료했는지)가 붙는다(7단계, 기존 필드는 그대로).
 
-오류는 `{"error": {"kind", "message", "action"}}` 모양이다. AI 오류 종류: `llm_down`(Ollama 꺼짐 → `ollama serve`), `llm_model_missing`(→ `ollama pull <모델>`), `llm_timeout`, `llm_bad_output`(한 번 다시 시켜도 JSON이 아님), `llm_error`, `llm_provider_unknown`(`llm.active`가 없거나 아직 지원하지 않는 종류). 분석 오류: `no_love_concern`(422, 영상 자료에서 연애 고민을 찾지 못함 — 자막을 붙여 넣고 다시 분석하거나 다른 영상을 고른다. `detail`에 모델이 적은 까닭). 초안 오류: `draft_not_found`(404), `draft_not_passed`(409, 검사에 걸려 승인 불가), `draft_superseded`(409, 새 초안이나 승인으로 밀려난 초안). 운영 규칙 오류(7단계, 8단계 게시 실행에서 보인다): `already_commented`(409, 이미 댓글을 단 영상), `daily_limit_reached`(429, 오늘 상한 — 한국 자정에 풀림), `draft_not_approved`(409, 승인하지 않은 초안), `profile_unknown`(422). 작업 오류(8단계): `job_busy`(409), `job_not_found`(404), `job_wrong_state`(409), `chrome_not_found`(503), `playwright_missing`(503), `profile_in_use`(409, 그 프로필의 크롬 창을 닫아 주세요), `screenshot_not_found`(404). 검색은 100단위, 상세·댓글은 1단위를 쓴다(하루 10,000단위). 댓글이 막힌 영상은 오류가 아니라 빈 목록으로 진행한다.
+오류는 `{"error": {"kind", "message", "action"}}` 모양이다. AI 오류 종류: `llm_auth`(R5, API 키를 받아 주지 않음·프로그램 로그인 안 됨), `llm_rate_limited`(R5, 사용량 한도), `llm_down`(Ollama 꺼짐 → `ollama serve`), `llm_model_missing`(→ `ollama pull <모델>`), `llm_timeout`, `llm_bad_output`(한 번 다시 시켜도 JSON이 아님), `llm_error`, `llm_provider_unknown`(`llm.active`가 없거나 아직 지원하지 않는 종류). 분석 오류: `no_love_concern`(422, 영상 자료에서 연애 고민을 찾지 못함 — 자막을 붙여 넣고 다시 분석하거나 다른 영상을 고른다. `detail`에 모델이 적은 까닭). 초안 오류: `draft_not_found`(404), `draft_not_passed`(409, 검사에 걸려 승인 불가), `draft_superseded`(409, 새 초안이나 승인으로 밀려난 초안). 운영 규칙 오류(7단계, 8단계 게시 실행에서 보인다): `already_commented`(409, 이미 댓글을 단 영상), `daily_limit_reached`(429, 오늘 상한 — 한국 자정에 풀림), `draft_not_approved`(409, 승인하지 않은 초안), `profile_unknown`(422). 작업 오류(8단계): `job_busy`(409), `job_not_found`(404), `job_wrong_state`(409), `chrome_not_found`(503), `playwright_missing`(503), `profile_in_use`(409, 그 프로필의 크롬 창을 닫아 주세요), `screenshot_not_found`(404). 검색은 100단위, 상세·댓글은 1단위를 쓴다(하루 10,000단위). 댓글이 막힌 영상은 오류가 아니라 빈 목록으로 진행한다.
 
 ## 설정
 
@@ -211,6 +221,7 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | R1 | 프로그램형 화면 (프로그램화 2차) | 진행 중 (코드·자동 테스트·흐름 e2e·5가지 화면 크기 측정 완료, 대표가 프로그램 창에서 써 보는 확인 남음) |
 | R2 | 설정과 프로필 로그인을 프로그램 안에서 | 진행 중 (코드·자동 테스트·화면 e2e 완료, 대표가 실제 키 저장·구글 로그인을 해 보는 확인 남음) |
 | R3 | 실제 게시를 기본으로 | 진행 중 (코드·자동 테스트·가짜 유튜브 e2e·실제 유튜브 읽기 확인 1회 완료, 대표가 로그인한 뒤 첫 실제 게시 확인 남음) |
+| R5 | 설정에서 AI 바꾸기 (12단계를 앞당김) | 진행 중 (코드·자동 테스트·화면 e2e·Codex 진짜 실행 1회 완료, API 키 AI 진짜 호출과 Claude Code 재로그인 뒤 확인 남음) |
 | 10 | 가점 | 미시작 |
 | 11 | 시연 준비 | 미시작 |
 

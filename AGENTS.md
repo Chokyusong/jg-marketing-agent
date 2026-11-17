@@ -83,6 +83,7 @@ config.yaml     비밀이 아닌 규칙(커밋함)
 - 자동 테스트는 **인터넷·API 키·Ollama 없이** 통과해야 한다. 외부 호출은 `tests/conftest.py`의 `mock_http`(httpx.MockTransport), `fake_llm`(정해 둔 JSON을 차례로 반환)으로 바꾼다.
 - 그 밖의 도우미: `tmp_db_path`(임시 SQLite 경로), `base_config`·`make_config`(임시 설정), `clean_env`(비밀 환경 변수 제거), `fixture_json`(`tests/fixtures/` 읽기).
 - 진짜 YouTube·Ollama 호출은 `@pytest.mark.live` — `RUN_LIVE=1`일 때만 돈다.
+- R5 로그인된 프로그램(Codex·Claude Code): `tests/conftest.py`가 `app.llm.cli`의 진짜 실행과 설치 찾기를 막는다(가짜 실행기를 넘겨 시험). 진짜 실행은 `tests/integration/test_live_cli.py`(live)만 — 대표의 구독 계정이라 짧은 시험 문장으로 프로그램당 1~2번만. 그 프로그램의 로그인 파일을 읽지 않는다. 다른 AI의 API 키도 키 값을 실행할 때 조립한다.
 - 브라우저 테스트는 `@pytest.mark.e2e` — Playwright가 없으면 건너뛴다. 항상 headless.
 - 새 기능마다 테스트를 쓴다. `validator.py`와 `ops/rules.py`는 가장 두껍게 테스트한다(DESIGN 3.2).
 

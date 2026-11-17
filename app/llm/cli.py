@@ -264,6 +264,9 @@ def _classify(text: str) -> ErrorKind:
             "logged out",
             "unauthorized",
             "authentication",
+            "authenticate",  # Claude Code 2.1.312: "Failed to authenticate: OAuth session expired"
+            "oauth",
+            "session expired",
             "401",
             "/login",
         )
