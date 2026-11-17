@@ -422,6 +422,12 @@ td.wrap.st { white-space: normal; }
 .ai-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-state { display: inline-flex; align-items: center; gap: 5px; color: var(--sub); font-size: 12px; white-space: nowrap; }
 .ai-panes { min-width: 0; }
+/* 2026-11-17: 넓은 창(1600×960 · 1920×1009)에서는 AI 묶음을 첫 줄 「유튜브 연결」 옆(2열~끝)에 두고
+   목록 높이 제한을 풀어 9줄이 안쪽 스크롤 없이 다 보이게 한다. 1366×720 등은 전처럼 아래 줄 + 목록 안쪽 스크롤 */
+@media (min-width: 1440px) and (min-height: 900px) {
+  .set-group.is-ai { grid-column: 2 / -1; }
+  .ai-list { max-height: none; }
+}
 .ai-pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .ai-pane[hidden] { display: none; }
 .ai-pane h4 { font-size: 14px; font-weight: 600; }
