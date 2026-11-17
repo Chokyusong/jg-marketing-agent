@@ -10,7 +10,7 @@
 """
 
 import pytest
-from test_drafts_api import ANALYSIS, GOOD_BODY, VID, add_youtube, draft
+from test_drafts_api import ANALYSIS, GOOD_BODY, GOOD_BODY_2, VID, add_youtube, draft
 
 OTHER = "AAAAAAAAAA1"  # 아무 영상(예전에는 표기를 끌 수 없던 「내 채널이 아닌 영상」)
 
@@ -114,7 +114,8 @@ def test_toggle_resets_approval(services):
 
 @pytest.mark.parametrize("overrides", [{"comment": {"disclose_default": False}}])
 def test_settings_default_off_applies_to_new_drafts(services):
-    services.use([ANALYSIS, draft(GOOD_BODY), draft(GOOD_BODY)])
+    # C1 다듬기: 같은 영상 두 번째 초안은 앞 초안과 달라야 한다(같으면 다시 쓰게 된다)
+    services.use([ANALYSIS, draft(GOOD_BODY), draft(GOOD_BODY_2)])
     d = services.drafts.generate(VID)
     assert d.disclosed is False and d.body == GOOD_BODY and d.passed
     again = services.drafts.generate(VID, disclose=True)  # 화면에서 켜면 그대로 붙는다
@@ -131,7 +132,7 @@ def test_create_draft_api_with_disclose_false_on_any_video(client, services):
     assert res.status_code == 200, res.text
     data = res.json()
     assert data["body"] == GOOD_BODY and data["disclosed"] is False and data["passed"] is True
-    services.use([draft(GOOD_BODY)])
+    services.use([draft(GOOD_BODY_2)])  # 앞 초안과 다른 글(C1 다듬기)
     res = client.post("/api/drafts", json={"video_id": OTHER})  # 비우면 설정 기본값(켬)
     assert res.json()["disclosed"] is True and res.json()["body"].startswith("[광고] ")
 

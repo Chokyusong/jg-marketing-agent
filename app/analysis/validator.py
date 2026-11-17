@@ -45,6 +45,10 @@ MAX_KEY_PHRASE_CHARS = 10
 # 앞뒤 몇 글자(10자 안쪽)만 겹쳤다.
 COPY_LIMIT = 13
 TITLE_QUOTE_LIMIT = 8  # V13: 제목을 따옴표로 이만큼(정리 후) 이상 옮기면 실패("'…'라는 제목부터")
+# V13(C1 다듬기): 제목은 영상 속 말이 아니다. 따옴표 없이도 제목을 이만큼(정리 후) 이어서 옮기면
+# 실패(대표가 본 「연애상담 상상상담 가능이라는 말에」 = 10자). 그 말이 자막·설명·댓글에도 있으면
+# 영상 속 말이므로 일반 기준(`COPY_LIMIT`)만 본다. 1~5회차 실제 초안 98개 중 5개가 9자 이상이었다.
+TITLE_COPY_LIMIT = 9
 SAMPLE_SENTENCE_SIMILARITY = 0.8  # V11: 과제 예시 댓글의 한 문장과 이만큼 비슷한 문장이 있으면 실패
 QUOTE_SIMILARITY = 0.85  # V6: 근거 구절이 그대로 없으면 이만큼 비슷한 구간이 있어야 한다
 PREVIOUS_SIMILARITY = 0.6  # V11: 이전 글과 이만큼 비슷하면 실패
@@ -668,6 +672,8 @@ def _v13_copy(text: str, context_text: str, rules: ValidatorRules, concern: str)
 
     자동 자막은 말하다 만 문장이라 그대로 옮기면 말이 안 된다(대표가 본 초안). 정리 후
     `COPY_LIMIT`자 이상 이어서 같으면 실패. 핵심 말(10자 이하)만 넣은 글은 걸리지 않는다.
+    제목은 따로 본다: 따옴표 안 `TITLE_QUOTE_LIMIT`자, 따옴표 없이 `TITLE_COPY_LIMIT`자(그 말이
+    자막·설명·댓글에 없을 때 — 제목은 영상 속 말이 아니다).
     """
     body_n = normalize(_strip_markers(text, rules))
     worst = (0, "", "")
@@ -688,6 +694,16 @@ def _v13_copy(text: str, context_text: str, rules: ValidatorRules, concern: str)
                 f"영상 제목을 따옴표로 그대로 옮겼습니다({_clip(m.group(0), 20)}) — "
                 "제목은 옮기지 말고 영상 속 말이나 장면을 내 말로 짚으세요",
             )
+    rest = (context_text or "").partition("\n")[2]
+    t_size, t_span = _longest_shared(body_n, _strip_markers(title, rules))
+    if COPY_LIMIT > t_size >= TITLE_COPY_LIMIT and normalize(t_span) not in normalize(
+        _strip_markers(rest, rules)
+    ):
+        return _check(
+            "V13", False,
+            f"영상 제목의 '{_clip(t_span, 20)}'를 {t_size}자 이어서 옮겼습니다 — 제목은 영상 속 "
+            "말이 아니니 '~라는 말에'로 받지 말고 영상 속 장면이나 말을 내 말로 짚으세요",
+        )
     if size >= COPY_LIMIT:
         return _check(
             "V13", False,
