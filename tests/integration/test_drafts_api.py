@@ -279,7 +279,7 @@ def test_draft_passes_on_first_try_and_code_adds_disclosure(setup):
     assert data["attempts"] == 1 and data["status"] == "draft"
     assert data["evidence_quote"] == Q_COMMENT and data["evidence_source"] == "comment"
     assert data["evidence_label"] == "댓글" and data["tone_label"] == "공감형"
-    assert data["validation"]["passed"] is True and data["validation"]["total"] == 13
+    assert data["validation"]["passed"] is True and data["validation"]["total"] == 14
     call = llm.calls[1]["kwargs"]
     assert call["temperature"] == 0.8  # 초안은 높은 온도
     assert "[광고]는 쓰지 않는다" in call["system"]
@@ -386,7 +386,7 @@ def test_human_edit_is_checked_again(setup):
     assert broken["edited_by_human"] is True and broken["attempts"] == 1
     fixed_text = (
         "[광고] 하루에 한 번 연락 때문에 다툰 적 있다는 댓글에 공감했어요. "
-        "운명원 연애 사주도 한번 보고 싶네요."
+        "요즘 운명원 얘기 자주 보이던데 연애 사주 한번 보고 싶네요."
     )
     fixed = client.patch(f"/api/drafts/{made['id']}", json={"body": fixed_text}).json()
     assert fixed["passed"] is True and fixed["body"] == fixed_text

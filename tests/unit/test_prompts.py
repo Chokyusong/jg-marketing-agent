@@ -28,9 +28,11 @@ def check_example(ex: P.Example):
     )
 
 
-def test_four_good_and_three_bad_examples():
-    # C1: 말투가 서로 다른 좋은 예 4개, 나쁜 예 3개(써 본 척 · 효능 단정 · 길게 베끼기)
-    assert len(P.GOOD_EXAMPLES) == 4 and len(P.BAD_EXAMPLES) == 3
+def test_four_good_and_four_bad_examples():
+    # C1: 말투가 서로 다른 좋은 예 4개, 나쁜 예 4개(써 본 척 · 효능 단정 · 길게 베끼기 ·
+    # 뜬금없는 운명원 — 대표가 본 초안과 같은 꼴, V14)
+    assert len(P.GOOD_EXAMPLES) == 4 and len(P.BAD_EXAMPLES) == 4
+    assert "운명원에서 연애 사주를 한번 보고 싶어요" in P.BAD_EXAMPLES[3].body
     assert len(P.BAD_EXAMPLE_FAILS) == len(P.BAD_EXAMPLES)
 
 
@@ -67,12 +69,14 @@ def test_bad_examples_fail_the_real_checks(ex, codes):
 
 def test_examples_follow_the_viewer_persona():
     # 좋은 예는 써 본 척 없이 의향·궁금함으로 끝나고, 운명원은 들은 얘기로 꺼낸다
-    intents = ("보고 싶", "물어보고 싶", "궁금해지", "여쭤보고 싶")
+    intents = ("보고 싶", "물어보고 싶", "궁금해지", "여쭤보고 싶", "가 봐야겠")
     for ex in P.GOOD_EXAMPLES:
         assert any(word in ex.body for word in intents), ex.body
         assert ex.body.count("운명원") == 1
-    hearsay = ("잘 본다던데", "많이 보이던데", "얘기 많이 하던데")
-    assert sum(any(h in ex.body for h in hearsay) for ex in P.GOOD_EXAMPLES) >= 3
+    # C1-V14: 네 예 모두 들은 얘기로 꺼내고, 그 평판 표현이 서로 다르다
+    hearsay = ("잘 본다던데", "많이 보이던데", "얘기 많이 하던데", "그렇게 잘 본다고 하던데")
+    used = [next(h for h in hearsay if h in ex.body) for ex in P.GOOD_EXAMPLES]
+    assert len(set(used)) == 4, used
     # 좋은 예는 자료를 13자 이상 이어서 옮기지 않는다(V13)
     for ex in P.GOOD_EXAMPLES:
         v13 = next(c for c in check_example(ex).checks if c.code == "V13")
@@ -280,7 +284,7 @@ def test_good_examples_have_different_closing_structures():
 
 def test_good_examples_closings_follow_the_example_concern():
     # 운명원에 거는 바람이 예시 고민(먼저 못 다가감 · 기다림)에서 나온다
-    words = ("이어질 인연", "제 차례는 언제", "썸도 결말", "다시 설레는 때")
+    words = ("이어질 인연", "제 차례는 언제", "썸도 결말", "다시 설렐 날")
     for ex, word in zip(P.GOOD_EXAMPLES, words, strict=True):
         assert word in closing(ex), (word, ex.body)
 

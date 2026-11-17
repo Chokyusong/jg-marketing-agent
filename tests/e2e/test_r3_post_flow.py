@@ -123,7 +123,7 @@ def test_real_post_by_default_label_off_on_another_video_then_practice_once(live
         assert page.is_checked("#disclose")  # 새 영상은 다시 설정 기본값(켬)
         practice = ("[광고] 영상 속 '하루에 한 번 연락'으로 싸웠다는 고백을 들으니 "
                     "서로 연락 기대치가 다를 때가 많다는 생각이 드네요. "
-                    "운명원 연애 사주가 궁금해져요.")
+                    "주변에서 운명원 얘기 종종 하던데 연애 사주가 궁금해져요.")
         page.fill("#draft-text", practice)
         page.wait_for_function(DRAFT_TAG.format("검사 통과"), timeout=15000)
         page.click("#job-primary")

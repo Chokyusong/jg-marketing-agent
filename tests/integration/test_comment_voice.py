@@ -154,6 +154,21 @@ def test_long_copy_fails_v13_and_is_rewritten(setup):
     assert "V13 영상 글을 길게 베끼지 않음" in retry and "그대로 옮겼습니다" in retry
 
 
+def test_abrupt_brand_fails_v14_and_is_rewritten(setup):
+    # 대표가 본 초안(2026-11-17)과 같은 꼴: 고민 뒤에 곧바로 운명원
+    client, _, use = setup
+    abrupt = ("하루에 한 번 연락 얘기가 제 고민 같아 눈길이 가네요. 연락 문제를 어디서부터 풀지 "
+              "막막한데 운명원에서 연애 사주를 한번 보고 싶어요.")
+    llm = use([ANALYSIS, draft(abrupt), draft(GOOD_BODY)])
+    data = client.post("/api/drafts", json={"video_id": VID}).json()
+    assert data["attempts"] == 2 and data["passed"] is True
+    retry = user_prompts(llm)[2]
+    assert "V14 브랜드는 들은 얘기로 꺼내고 바람으로 맺음" in retry and "뜬금없이" in retry
+    # 사람이 고쳐 써도 같은 검사를 거친다
+    edited = client.patch(f"/api/drafts/{data['id']}", json={"body": f"[광고] {abrupt}"}).json()
+    assert failed(edited["validation"]) == ["V14"]
+
+
 def test_next_video_cannot_reuse_the_last_approved_tone(setup):
     client, _, use = setup
     llm = use([ANALYSIS, draft(GOOD_BODY, tone="한탄형"), ANALYSIS,
@@ -185,11 +200,13 @@ def test_human_edit_is_checked_with_the_same_basis(setup):
     assert small["evidence_quote"] == made["evidence_quote"]
     # 핵심 말을 빼면 V7, 영상 글을 길게 옮기면 V13
     no_key = client.patch(f"/api/drafts/{made['id']}", json={
-        "body": "[광고] 연락 때문에 다툰 얘기 남 일 같지 않네요. 운명원 연애 사주 한번 보고 싶다."
+        "body": "[광고] 연락 때문에 다툰 얘기 남 일 같지 않네요. 운명원 연애 사주 잘 본다던데 "
+                "한번 보고 싶다."
     }).json()
     assert failed(no_key["validation"]) == ["V7"]
     copied = client.patch(f"/api/drafts/{made['id']}", json={
-        "body": "[광고] 저도 하루에 한 번 연락으로 싸운 적 있어요. 운명원 연애 사주 한번 보고 싶다."
+        "body": "[광고] 저도 하루에 한 번 연락으로 싸운 적 있어요. 운명원 연애 사주 잘 본다던데 "
+                "한번 보고 싶다."
     }).json()
     assert failed(copied["validation"]) == ["V13"]
 
@@ -203,11 +220,11 @@ def test_validate_api_uses_the_stored_key_phrases_and_concern(setup):
         return client.post("/api/validate", json={"video_id": VID, "text": text}).json()
 
     good = check(f"[광고] {GOOD_BODY}")
-    assert good["passed"] is True and good["total"] == 13
+    assert good["passed"] is True and good["total"] == 14
     v7 = next(c for c in good["checks"] if c["code"] == "V7")
     assert "'하루에 한 번 연락'" in v7["message"]
     # 고민 한 줄을 그대로 옮기면 V13
     concern = check(f"[광고] {ANALYSIS['concern']} 하루에 한 번 연락 문제예요. "
-                    "운명원 연애 사주 한번 보고 싶다.")
+                    "운명원 연애 사주 잘 본다던데 한번 보고 싶다.")
     v13 = next(c for c in concern["checks"] if c["code"] == "V13")
     assert v13["passed"] is False and "고민 한 줄" in v13["message"]
