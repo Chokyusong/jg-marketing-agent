@@ -313,6 +313,8 @@ FIELDS: dict[str, Field] = {
 FIELDS["llm.active"] = Field("str", "글 쓰는 AI", ("llm", "active"), 1, 40)
 FIELDS["llm.models"] = Field("models", "AI별 모델", None, 1, 200, max_items=20)
 FIELDS["llm.base_urls"] = Field("urls", "직접 입력 주소", None, 8, 300, max_items=5)
+# 2026-11-18: AI별 추론 수준(Codex). 이름은 app.llm.cli.REASONING_EFFORTS만
+FIELDS["llm.reasoning"] = Field("reasoning", "AI별 추론 수준", None, 1, 20, max_items=20)
 # 화면이 직접 보내지 않고 서버가 계산해 넣는 칸
 COMPUTED_FIELDS = ("browser.window_position",)
 
@@ -339,7 +341,7 @@ def _clean_one(name: str, field: Field, value: Any) -> tuple[Any, str | None]:
         if text not in field.choices:
             return None, f"{label}에서 고를 수 없는 값입니다"
         return text, None
-    if field.kind in ("models", "urls"):
+    if field.kind in ("models", "urls", "reasoning"):
         if not isinstance(value, dict) or len(value) > field.max_items:
             return None, f"{label} 모양이 잘못됐습니다"
         out: dict[str, str] = {}
@@ -351,6 +353,11 @@ def _clean_one(name: str, field: Field, value: Any) -> tuple[Any, str | None]:
             if not isinstance(item, str):
                 return None, f"{label}은(는) 글로 적어 주세요"
             text = item.strip()
+            if text and field.kind == "reasoning":
+                from app.llm.cli import REASONING_EFFORTS
+
+                if text not in REASONING_EFFORTS:
+                    return None, f"{label}에서 고를 수 없는 값입니다: {text[:20]}"
             if text and field.kind == "models" and not MODEL_NAME.match(text):
                 return None, "모델 이름은 영문·숫자로 시작하고 빈칸 없이 200자까지입니다"
             too_long = len(text) > (field.hi or 300)

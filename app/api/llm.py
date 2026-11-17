@@ -133,7 +133,10 @@ def _program_models(services: Services, name: str, current: str,
             source="recommended" if recommended else "none", **base,
         )
     items = [LLMModelOut(name=m["name"], kind="general", label=m.get("label"),
-                         current=m["name"] == current) for m in found]  # 그 프로그램이 준 순서
+                         current=m["name"] == current,
+                         reasoning_levels=list(m.get("reasoning_levels") or []),
+                         default_reasoning=str(m.get("default_reasoning") or ""))
+             for m in found]  # 그 프로그램이 준 순서
     if not items:
         return LLMModelsOut(reachable=True, current_installed=False, items=[], **base,
                             **_fallback(recommended, program=True))

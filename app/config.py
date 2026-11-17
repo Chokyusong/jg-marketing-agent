@@ -135,6 +135,8 @@ class LLMSettings:
     # R5: 프로그램 설정에서 고른 AI별 모델·주소, AI별 API 키와 그 출처(program | dev_file)
     models: dict[str, str] = field(default_factory=dict)
     base_urls: dict[str, str] = field(default_factory=dict)
+    # 2026-11-18: AI별 추론 수준(지금은 Codex만, `llm.reasoning.<이름>`)
+    reasoning: dict[str, str] = field(default_factory=dict)
     api_keys: dict[str, str] = field(default_factory=dict, repr=False)
     key_sources: dict[str, str] = field(default_factory=dict)
 
@@ -153,6 +155,22 @@ class LLMSettings:
         if chosen:
             return chosen
         return str((provider.options.get("model") if provider else "") or "").strip()
+
+    def reasoning_levels(self, name: str) -> list[str]:
+        """config.yaml `reasoning_levels`(그 AI가 추론 수준을 받지 않으면 빈 목록)."""
+        provider = self.providers.get(name)
+        raw = provider.options.get("reasoning_levels") if provider is not None else None
+        return [str(v) for v in raw] if isinstance(raw, list) else []
+
+    def reasoning_for(self, name: str) -> str:
+        """그 AI에 줄 추론 수준: 프로그램에서 고른 것 > config.yaml `reasoning_default` > 빈 글."""
+        if not self.reasoning_levels(name):
+            return ""
+        chosen = (self.reasoning.get(name) or "").strip()
+        if chosen:
+            return chosen
+        provider = self.providers.get(name)
+        return str((provider.options.get("reasoning_default") if provider else "") or "").strip()
 
     def base_url_for(self, name: str) -> str:
         provider = self.providers.get(name)
@@ -503,6 +521,7 @@ def _llm_user_values(
     """R5: AI별 모델·주소와 키. 키는 프로그램에 저장한 것 > .env(개발용)."""
     models_raw = user_values.get("llm.models")
     urls_raw = user_values.get("llm.base_urls")
+    reasoning_raw = user_values.get("llm.reasoning")
     models = {
         str(k): str(v).strip()
         for k, v in (models_raw.items() if isinstance(models_raw, dict) else [])
@@ -511,6 +530,11 @@ def _llm_user_values(
     urls = {
         str(k): str(v).strip()
         for k, v in (urls_raw.items() if isinstance(urls_raw, dict) else [])
+        if k in llm.providers and str(v).strip()
+    }
+    reasoning = {
+        str(k): str(v).strip()
+        for k, v in (reasoning_raw.items() if isinstance(reasoning_raw, dict) else [])
         if k in llm.providers and str(v).strip()
     }
     keys: dict[str, str] = {}
@@ -524,7 +548,9 @@ def _llm_user_values(
             keys[name], sources[name] = stored, "program"
         elif env_key:
             keys[name], sources[name] = env_key, "dev_file"
-    return replace(llm, models=models, base_urls=urls, api_keys=keys, key_sources=sources)
+    return replace(
+        llm, models=models, base_urls=urls, reasoning=reasoning, api_keys=keys, key_sources=sources
+    )
 
 
 def _transcript_provider(raw: Any) -> str:

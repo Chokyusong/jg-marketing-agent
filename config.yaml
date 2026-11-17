@@ -117,6 +117,11 @@ llm:
       program: codex
       sends_to: "OpenAI(Codex)"
       models: []
+      # 2026-11-18 추론 수준: 명령줄 `-c model_reasoning_effort=<값>`으로 준다(설정 화면 「추론 수준」).
+      # 고르지 않으면 reasoning_default. 고를 수 있는 값은 `codex debug models`의 모델별
+      # supported_reasoning_levels — 받아 오지 못하면 reasoning_levels만 보인다
+      reasoning_default: low
+      reasoning_levels: [low, medium, high]
     claude-cli:
       type: cli
       label: Claude Code

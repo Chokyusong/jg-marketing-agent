@@ -430,6 +430,8 @@ def _compare(
     try:
         llm = services.require_llm()
         out["model"] = str(getattr(llm, "model", "") or args.model)
+        if getattr(llm, "reasoning", ""):  # 2026-11-18 Codex 추론 수준(명령줄로 준 값)
+            out["reasoning"] = str(llm.reasoning)
         warmup = getattr(llm, "warmup", None)
         if callable(warmup):
             started = time.monotonic()

@@ -95,6 +95,7 @@ def _build_cli(
         label=_label(provider),
         program=str(provider.options.get("program") or provider.name),
         model=llm.model_for(provider.name),
+        reasoning=llm.reasoning_for(provider.name),
         timeout_seconds=llm.timeout_seconds,
         hidden_env=settings.secret_env_names,  # 이 앱의 키는 자식 프로그램에 넘기지 않는다
         secrets=settings.secret_values(),

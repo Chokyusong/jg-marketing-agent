@@ -46,6 +46,7 @@ export const FIELD_IDS = {
   'llm.active': 'ai-active',
   'llm.models': 'ai-models',
   'llm.base_urls': 'ai-urls',
+  'llm.reasoning': 'ai-reasoning',
 };
 const MAX_FACTS = 10;
 const RESET_WAIT_MS = 5000;
@@ -449,6 +450,7 @@ const aiModelNotes = {}; // 이름 → 목록 아래 한 줄
 const aiModelLabels = {}; // 이름 → { 모델 이름: 화면 이름 }(그 회사·프로그램이 붙인 이름이 있을 때)
 const aiModelCustom = {}; // 이름 → 「직접 입력…」을 고른 상태인지
 const aiModelTried = {}; // 이름 → 이번에 목록을 받아 와 봤는지(칸을 열 때 한 번만 저절로)
+const aiModelReasoning = {}; // 이름 → { 모델 이름: 그 모델이 받는 추론 수준 목록 }(Codex가 알려 줄 때)
 
 function findProvider(name) {
   return providers ? providers.items.find((p) => p.name === name) || null : null;
@@ -631,6 +633,53 @@ function modelRow(p, { optional = false } = {}) {
   ])];
 }
 
+// 2026-11-18 「추론 수준」(지금은 Codex만): 고른 모델이 받는 수준만 보인다. 그 모델의 목록을 모르면
+// config.yaml의 수준(낮음·보통·높음). 저장한 값이 없으면 서버가 정한 값(기본 낮음)
+const REASONING_LABELS = { low: '낮음', medium: '보통', high: '높음', xhigh: '매우 높음', max: '최대', ultra: '울트라' };
+const REASONING_NOTE = '높을수록 오래 생각하고 사용량을 더 씁니다. 댓글 쓰기에는 낮음으로 충분합니다.';
+
+function savedReasoning(p) {
+  return (data.edit.values['llm.reasoning'] || {})[p.name] || '';
+}
+
+function reasoningLevels(p, model) {
+  const known = (aiModelReasoning[p.name] || {})[model];
+  return known && known.length ? known : (p.reasoning_levels || []);
+}
+
+function reasoningPick(levels, wanted) {
+  if (levels.includes(wanted)) return wanted;
+  return levels.includes('low') ? 'low' : (levels[0] || '');
+}
+
+function reasoningOptions(p, model) {
+  return reasoningLevels(p, model).map((level) => el('option', { value: level, text: REASONING_LABELS[level] || level }));
+}
+
+function reasoningRow(p) {
+  if (!(p.reasoning_levels || []).length) return null;
+  const model = savedModel(p);
+  const current = reasoningPick(reasoningLevels(p, model), savedReasoning(p) || p.reasoning);
+  const select = el('select', { id: `ai-reasoning-sel-${p.name}`, class: 'ai-reasoning-select', 'data-ai-reasoning': p.name, 'data-start': current }, reasoningOptions(p, model));
+  select.value = current;
+  return [el('dt', {}, [el('label', { for: `ai-reasoning-sel-${p.name}`, text: '추론 수준' })]), el('dd', { class: 'set-field' }, [
+    select,
+    el('span', { class: 'caption', id: `ai-reasoning-note-${p.name}`, text: REASONING_NOTE }),
+  ])];
+}
+
+// 모델을 바꾸면 그 모델이 받는 수준으로 다시 채운다(받지 않는 수준이면 낮음으로)
+function refillReasoning(name) {
+  const p = findProvider(name);
+  const select = $(`ai-reasoning-sel-${name}`);
+  const input = $(`ai-model-${name}`);
+  if (!p || !select || !input) return;
+  const levels = reasoningLevels(p, input.value.trim());
+  const value = reasoningPick(levels, select.value);
+  select.replaceChildren(...reasoningOptions(p, input.value.trim()));
+  select.value = value;
+}
+
 // 받아 온 목록으로 고르는 칸을 다시 채운다(지금 고른 값은 그대로)
 function refillModelSelect(name) {
   const p = findProvider(name);
@@ -642,6 +691,7 @@ function refillModelSelect(name) {
   select.value = aiModelCustom[name] ? CUSTOM_MODEL : value;
   const note = $(`ai-models-note-${name}`);
   if (note) note.textContent = modelNote(p);
+  refillReasoning(name);
 }
 
 function onModelSelect(event) {
@@ -659,6 +709,7 @@ function onModelSelect(event) {
     input.hidden = true;
     input.value = select.value;
   }
+  refillReasoning(name);
   repaintUse(name);
   markDirty();
 }
@@ -748,7 +799,8 @@ function programBody(p) {
     readRow('설치', flag(p.installed, '설치됨', '설치되지 않음 · 아래 [설치 방법 보기]')),
     readRow('로그인', loginState(p)),
     modelRow(p, { optional: true }),
-  ];
+    reasoningRow(p),
+  ].filter(Boolean);
   const busy = p.login_window_open || p.login_checking;
   return [
     el('p', { class: 'caption', text: '이 프로그램이 저장한 로그인 정보는 읽지 않고, 프로그램을 대신 실행합니다. 파일을 읽거나 명령을 실행하는 기능은 끄고 돌립니다.' }),
@@ -844,7 +896,7 @@ function aiGroup(s) {
       aiList(),
       el('div', { class: 'ai-panes' }, providers.items.map((p) => aiPane(p, s))),
     ]),
-    errSpan('ai-active'), errSpan('ai-models'), errSpan('ai-urls'),
+    errSpan('ai-active'), errSpan('ai-models'), errSpan('ai-urls'), errSpan('ai-reasoning'),
   ]);
 }
 
@@ -1130,6 +1182,7 @@ async function aiLoadModels(name) {
     if (res.source === 'api' && res.items.length) {
       aiModelLists[name] = res.items.map((i) => i.name);
       aiModelLabels[name] = Object.fromEntries(res.items.filter((i) => i.label).map((i) => [i.name, i.label]));
+      aiModelReasoning[name] = Object.fromEntries(res.items.filter((i) => (i.reasoning_levels || []).length).map((i) => [i.name, i.reasoning_levels]));
       aiModelNotes[name] = `받아 온 모델 ${res.items.length}개`;
     } else {
       aiModelLists[name] = res.recommended || [];
@@ -1221,6 +1274,11 @@ function aiChanges() {
     if (node.value.trim() !== node.defaultValue) urls[node.dataset.aiUrl] = node.value.trim();
   }
   if (Object.keys(urls).length) out['llm.base_urls'] = urls;
+  const reasoning = {};
+  for (const node of document.querySelectorAll('#settings-body .ai-reasoning-select')) {
+    if (node.value && node.value !== node.dataset.start) reasoning[node.dataset.aiReasoning] = node.value;
+  }
+  if (Object.keys(reasoning).length) out['llm.reasoning'] = reasoning;
   return out;
 }
 

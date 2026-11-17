@@ -285,3 +285,73 @@ def test_ai_list_last_row_is_visible_without_scrolling(app, size):
         fit = measure(page, *size)
         assert not fit["pageScroll"] and not fit["hScroll"] and fit["minFont"] >= 12, fit
     assert not errors, errors
+
+
+REASONING_CATALOG = {"models": [
+    {"slug": "e2e-sol", "visibility": "list", "default_reasoning_level": "low",
+     "supported_reasoning_levels": [{"effort": e} for e in ("low", "medium", "high", "xhigh")]},
+    {"slug": "e2e-luna", "visibility": "list",
+     "supported_reasoning_levels": [{"effort": "low"}, {"effort": "medium"}]},
+]}
+
+
+def test_codex_reasoning_level_follows_the_model_and_is_saved(app, monkeypatch):
+    """2026-11-18: Codex를 고르면 모델 바로 아래 「추론 수준」(기본 낮음, 한 줄 설명).
+
+    고른 모델이 받는 수준만 보이고(가짜 Codex의 `debug models`), 저장하면 `llm.reasoning`.
+    Claude Code에는 이 칸이 없다. 진짜 Codex는 실행하지 않는다."""
+    from app.llm import cli
+
+    def runner(req):
+        if req.args[1:] == ["--version"]:
+            return cli.RunResult(0, "codex-cli 9.9.9", "")
+        if req.args[1:] == ["debug", "models"]:
+            return cli.RunResult(0, json.dumps(REASONING_CATALOG), "")
+        if req.args[1:] == ["login", "status"]:
+            return cli.RunResult(0, "Logged in using ChatGPT", "")
+        raise AssertionError(f"글 생성은 부르지 않는다: {req.args[1:3]}")
+
+    monkeypatch.setattr(cli, "default_which",
+                        lambda p: f"C:/fake/{p}.exe" if p == "codex" else None)
+    monkeypatch.setattr(cli, "default_runner", runner)
+    base = app["base"]
+    with headless_page(base) as (page, errors):
+        page.goto(base + "/")
+        page.wait_for_function(STATUS_LOADED)
+        open_ai(page)
+        page.click("#ai-item-codex-cli")
+        page.wait_for_function("(document.getElementById('ai-models-note-codex-cli') || {})"
+                               ".textContent?.includes('받아 온 모델 2개')")
+        sel = "#ai-reasoning-sel-codex-cli"
+        # 「기본값」(모델 목록을 모름) → config.yaml의 낮음·보통·높음, 기본 낮음
+        assert page.locator(sel + " option").all_text_contents() == ["낮음", "보통", "높음"]
+        assert page.input_value(sel) == "low"
+        note = page.text_content("#ai-reasoning-note-codex-cli")
+        assert note == ("높을수록 오래 생각하고 사용량을 더 씁니다. "
+                        "댓글 쓰기에는 낮음으로 충분합니다.")
+        model_box = page.locator("#ai-model-sel-codex-cli").bounding_box()
+        level_box = page.locator(sel).bounding_box()
+        assert level_box["y"] > model_box["y"]  # 모델 고르기 바로 아래
+        page.select_option("#ai-model-sel-codex-cli", "e2e-sol")
+        assert page.locator(sel + " option").all_text_contents() == [
+            "낮음", "보통", "높음", "매우 높음"]
+        page.select_option(sel, "xhigh")
+        # 받지 않는 모델로 바꾸면 그 수준은 사라지고 낮음으로
+        page.select_option("#ai-model-sel-codex-cli", "e2e-luna")
+        assert page.locator(sel + " option").all_text_contents() == ["낮음", "보통"]
+        assert page.input_value(sel) == "low"
+        page.select_option(sel, "medium")
+        with page.expect_request(lambda r: r.url.endswith("/api/settings")
+                                 and r.method == "PUT") as req:
+            page.click("#settings-save")
+        sent = json.loads(req.value.post_data)["values"]
+        assert sent == {"llm.models": {"codex-cli": "e2e-luna"},
+                        "llm.reasoning": {"codex-cli": "medium"}}
+        page.wait_for_function(
+            "document.getElementById('settings-msg').textContent.includes('저장했습니다')")
+        assert page.input_value(sel) == "medium"
+        m = measure(page, 1366, 720)  # 추론 수준 칸을 더해도 가장 작은 창에서 스크롤 없음
+        assert not m["pageScroll"] and not m["hScroll"] and m["minFont"] >= 12, m
+        page.click("#ai-item-claude-cli")
+        assert page.locator("#ai-reasoning-sel-claude-cli").count() == 0
+    assert not errors, errors

@@ -182,6 +182,7 @@ def effective_values(s: Settings) -> dict[str, Any]:
         "llm.active": s.llm.active,
         "llm.models": dict(s.llm.models),
         "llm.base_urls": dict(s.llm.base_urls),
+        "llm.reasoning": dict(s.llm.reasoning),
     }
 
 
@@ -341,7 +342,7 @@ def _check_llm(services: Services, store: UserStore, clean: dict[str, Any]) -> d
     llm = services.settings.llm
     errors: dict[str, str] = {}
     stored = store.read_values()
-    for name in ("llm.models", "llm.base_urls"):
+    for name in ("llm.models", "llm.base_urls", "llm.reasoning"):
         if name not in clean:
             continue
         unknown = [k for k in clean[name] if k not in llm.providers]
@@ -352,6 +353,11 @@ def _check_llm(services: Services, store: UserStore, clean: dict[str, Any]) -> d
             fixed = [k for k in clean[name] if not llm.providers[k].options.get("editable_url")]
             if fixed:
                 errors[name] = "주소를 바꿀 수 없는 AI입니다(「직접 입력」만 주소를 적습니다)"
+                continue
+        if name == "llm.reasoning":
+            fixed = [k for k in clean[name] if not llm.reasoning_levels(k)]
+            if fixed:
+                errors[name] = "추론 수준을 고를 수 없는 AI입니다(지금은 Codex만)"
                 continue
         clean[name] = _merged(stored.get(name), clean[name])
     if errors or "llm.active" not in clean:

@@ -842,6 +842,9 @@ class LLMModelOut(BaseModel):
     size_gb: float | None = None
     current: bool = False
     label: str | None = None  # R5: 회사가 붙인 보기 이름(있을 때만)
+    # 2026-11-18 그 모델이 받는 추론 수준과 기본(Codex `debug models`, 필드 추가. 모르면 빈 값)
+    reasoning_levels: list[str] = []
+    default_reasoning: str = ""
 
 
 class LLMModelsOut(BaseModel):
@@ -898,6 +901,10 @@ class LLMProviderOut(BaseModel):
     default_label: str = ""
     # 2026-11-17 로그인된 프로그램이 모델 목록 명령을 주는지(Codex `debug models`, 필드 추가)
     models_from_program: bool = False
+    # 2026-11-18 추론 수준(필드 추가, 지금은 Codex만): 지금 쓸 값과, 모델 목록을 받아 오지 못했을 때
+    # 보일 수준(config.yaml `reasoning_levels`). 빈 목록이면 화면에 「추론 수준」 칸이 없다
+    reasoning: str = ""
+    reasoning_levels: list[str] = []
     # 2026-11-17 아무 PC에서나 AI 연결(필드 추가): 로그인된 프로그램의 상태와
     # [설치 방법 보기]·[로그인하기]
     logged_in: bool | None = None  # 마지막으로 그 프로그램에 물어본 로그인 상태(모르면 None)

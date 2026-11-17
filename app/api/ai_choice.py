@@ -169,6 +169,8 @@ def provider_view(services: Services, provider: ProviderSettings) -> LLMProvider
         recommended_models=recommended_models(provider),
         default_label=DEFAULT_MODEL_LABEL if provider.type == "cli" else "",
         models_from_program=provider.type == "cli" and _program_lists_models(provider),
+        reasoning=llm.reasoning_for(name),
+        reasoning_levels=llm.reasoning_levels(name),
         **program_extra,
     )
 

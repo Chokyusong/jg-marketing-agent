@@ -343,4 +343,6 @@ def test_model_not_supported_on_this_account_is_plain_words():
             make("codex", runner, model=model).generate_json(system="s", user="u", schema=SCHEMA)
         assert info.value.kind == "llm_model_missing"  # 로그인 문제(llm_auth)가 아니다
         assert info.value.message == "이 계정에서는 gpt-6-luna 모델을 쓸 수 없습니다."
-        assert info.value.action == "설정에서 다른 모델을 골라 주세요."
+        # 2026-11-18: 「목록에서 고르기」로 안내(기본값 모델이 이 계정에서 안 될 때도 같은 길)
+        assert info.value.action == ("설정 → AI의 「모델」 목록에서 다른 모델을 골라 주세요"
+                                     "(목록에 있는 모델만 이 계정에서 쓸 수 있습니다).")
