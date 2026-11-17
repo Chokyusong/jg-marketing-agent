@@ -15,7 +15,13 @@ from app.config import LLM_KEY_TYPES, ProviderSettings, Settings
 from app.errors import AppError, ErrorKind
 from app.llm.base import LLMClient
 from app.llm.registry import build_provider
-from app.schemas import LLMProviderOut, LLMProvidersOut, LLMTestOut
+from app.schemas import (
+    FirstRunPathOut,
+    InstallGuideOut,
+    LLMProviderOut,
+    LLMProvidersOut,
+    LLMTestOut,
+)
 
 KIND_OF_TYPE = {"ollama": "local", "openai_compatible": "api", "anthropic": "api", "cli": "program"}
 KIND_LABELS = {"local": "이 PC에서", "api": "API 키로", "program": "로그인된 프로그램으로"}
@@ -136,8 +142,10 @@ def provider_view(services: Services, provider: ProviderSettings) -> LLMProvider
     name = provider.name
     store = settings.source.store() if settings.source is not None else None
     verified, installed = True, True
+    program_extra: dict[str, Any] = {}
     if provider.type == "cli":
         verified, installed = _cli_state(services, name)
+        program_extra = _program_view(services, provider, verified=verified, installed=installed)
     key_type = provider.type in LLM_KEY_TYPES
     return LLMProviderOut(
         name=name,
@@ -161,16 +169,135 @@ def provider_view(services: Services, provider: ProviderSettings) -> LLMProvider
         recommended_models=recommended_models(provider),
         default_label=DEFAULT_MODEL_LABEL if provider.type == "cli" else "",
         models_from_program=provider.type == "cli" and _program_lists_models(provider),
+        **program_extra,
     )
+
+
+def _program_view(
+    services: Services, provider: ProviderSettings, *, verified: bool, installed: bool
+) -> dict[str, Any]:
+    """로그인된 프로그램 한 줄에 더하는 것: 로그인 상태·창, [설치 방법 보기], 물리지 않은 까닭."""
+    from app.llm.cli_guides import GUIDES, NOT_WIRED, NOT_WIRED_PAGE
+    from app.llm.cli_login import LOGIN_COMMANDS
+
+    program = str(provider.options.get("program") or provider.name)
+    view = services.cli_logins.view(provider.name)
+    guide = GUIDES.get(program)
+    out: dict[str, Any] = {
+        "logged_in": view.logged_in if installed else None,
+        "login_window_open": view.window_open,
+        "login_checking": view.checking,
+        "can_open_login": verified and installed and program in LOGIN_COMMANDS,
+        "install_guide": InstallGuideOut(
+            command=guide.command, page=guide.page, shell=guide.shell, notes=list(guide.notes),
+            checked=guide.checked,
+        ) if guide and verified else None,
+    }
+    if not verified:
+        out["not_wired_notes"] = list(NOT_WIRED.get(program, ()))
+        out["not_wired_page"] = NOT_WIRED_PAGE.get(program, "")
+    return out
 
 
 def providers_view(services: Services) -> LLMProvidersOut:
     llm = services.settings.llm
+    items = [provider_view(services, p) for p in llm.providers.values()]
     return LLMProvidersOut(
         active=llm.active,
-        items=[provider_view(services, p) for p in llm.providers.values()],
+        items=items,
         kinds=[{"value": k, "label": v} for k, v in KIND_LABELS.items()],
+        first_run=first_run_paths(items),
     )
+
+
+def first_run_paths(items: list[LLMProviderOut]) -> list[FirstRunPathOut]:
+    """처음 켠 PC에서 AI를 붙이는 세 길(권하는 순서): 구독 프로그램 → API 키 → Ollama.
+
+    「무료」는 공식 가격 페이지에 무료 등급이 적힌 곳(Gemini API)에만 쓴다
+    (app/llm/cli_guides.py)."""
+    from app.llm.cli_guides import (
+        FIRST_RUN_KEY_NAME,
+        FIRST_RUN_KEY_PAGE,
+        OLLAMA_NOTE,
+        OLLAMA_PAGE,
+    )
+
+    by_name = {p.name: p for p in items}
+    programs = [p.name for p in items if p.kind == "program" and p.verified]
+    labels = " · ".join(by_name[n].label for n in programs)
+    key_ai = by_name.get(FIRST_RUN_KEY_NAME)
+    ollama = [p.name for p in items if p.type == "ollama"]
+    paths = [
+        FirstRunPathOut(
+            key="program", title=f"구독 중인 프로그램으로 ({labels})",
+            detail="이미 ChatGPT·Claude 유료 요금제를 쓰고 있다면 그 프로그램을 설치하고 "
+                   "로그인합니다. [설치 방법 보기] → [로그인하기]",
+            providers=programs,
+            ready=any(by_name[n].installed and by_name[n].logged_in is True for n in programs),
+        ),
+    ]
+    if key_ai is not None:
+        paths.append(FirstRunPathOut(
+            key="key", title=f"API 키로 ({key_ai.label})",
+            detail="구글 계정으로 키를 받아 붙여 넣습니다. Gemini API에는 무료 등급이 있습니다"
+                   "(공식 가격 안내 기준, 무료 등급 자료는 구글 제품 개선에 쓰일 수 있음).",
+            providers=[key_ai.name], link=FIRST_RUN_KEY_PAGE, link_label="키 받는 곳 열기",
+            ready=key_ai.key_configured,
+        ))
+    if ollama:
+        paths.append(FirstRunPathOut(
+            key="ollama", title="이 PC에서 (Ollama)",
+            detail=f"영상 자료가 PC 밖으로 나가지 않습니다. {OLLAMA_NOTE}",
+            providers=ollama, link=OLLAMA_PAGE, link_label="Ollama 설치 안내 열기",
+        ))
+    return paths
+
+
+# ---------------------------------------------------------------- [로그인하기](2026-11-17)
+
+
+def program_login(services: Services, name: str) -> bool | None:
+    """그 프로그램의 로그인 상태 명령으로 묻는다(종료 코드 0 = 로그인됨). 물을 수 없으면 None.
+
+    그 프로그램이 저장한 로그인 정보는 읽지 않는다."""
+    provider = services.settings.llm.providers.get(name)
+    if provider is None or provider.type != "cli":
+        return None
+    client: Any = client_for(services, name)
+    try:
+        if not client.verified or client.executable() is None:
+            return None
+        return client.login_status()
+    finally:
+        if client is not services.llm:
+            client.close()
+
+
+def open_program_login(services: Services, name: str) -> Any:
+    """[로그인하기]: 그 프로그램의 자기 로그인 명령을 보이는 명령 창으로 연다(셸 없이 인자 목록)."""
+    from app.llm.cli_login import LOGIN_COMMANDS, login_args
+
+    provider = services.settings.llm.providers.get(name)
+    if provider is None:
+        raise AppError(ErrorKind.LLM_PROVIDER_UNKNOWN, detail=f"'{name}'은(는) 목록에 없습니다.")
+    label = label_of(provider)
+    client: Any = client_for(services, name)
+    try:
+        program = getattr(client, "program", "")
+        exe = client.executable() if provider.type == "cli" else None
+        if provider.type != "cli" or not client.verified or program not in LOGIN_COMMANDS:
+            raise AppError(ErrorKind.LLM_SETTINGS_INVALID,
+                           detail=f"{name}: 로그인 창을 열지 않는 AI",
+                           message=f"{label}은(는) 이 화면에서 로그인 창을 열 수 없습니다.")
+        if exe is None:
+            raise AppError(ErrorKind.LLM_DOWN, detail=f"{name}: 설치되지 않음",
+                           message=f"{label}이(가) 이 PC에 설치돼 있지 않습니다.",
+                           action="[설치 방법 보기]를 눌러 설치한 뒤 다시 눌러 주세요.")
+        env = client.child_env()
+    finally:
+        if client is not services.llm:
+            client.close()
+    return services.cli_logins.open(name, login_args(program, exe), env)
 
 
 # ---------------------------------------------------------------- [연결 확인]
@@ -222,6 +349,8 @@ def _test(services: Services, provider: ProviderSettings, client: Any, label: st
                          f"{label}을(를) 설치하고 로그인한 뒤 다시 [연결 확인]을 눌러 주세요.")
         version = client.version()
         logged_in = client.login_status()
+        # 화면의 「로그인 필요」·[로그인하기]
+        services.cli_logins.remember(provider.name, logged_in)
         if logged_in is False:
             return _fail("not_logged_in", None, f"{label}에 로그인돼 있지 않습니다.",
                          client.spec.login_hint)

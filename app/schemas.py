@@ -831,6 +831,16 @@ class LLMModelsOut(BaseModel):
     note: str = ""
 
 
+class InstallGuideOut(BaseModel):
+    """[설치 방법 보기]: 공식 문서의 설치 명령과 페이지. 이 앱은 설치하지 않는다(2026-11-17)."""
+
+    command: str
+    page: str
+    shell: str
+    notes: list[str] = []
+    checked: str  # 공식 문서로 확인한 날
+
+
 class LLMProviderOut(BaseModel):
     """설정 화면 「AI」 목록 한 줄. 키 값·주소는 싣지 않는다(있는지와 어디서 왔는지만)."""
 
@@ -858,12 +868,34 @@ class LLMProviderOut(BaseModel):
     default_label: str = ""
     # 2026-11-17 로그인된 프로그램이 모델 목록 명령을 주는지(Codex `debug models`, 필드 추가)
     models_from_program: bool = False
+    # 2026-11-17 아무 PC에서나 AI 연결(필드 추가): 로그인된 프로그램의 상태와
+    # [설치 방법 보기]·[로그인하기]
+    logged_in: bool | None = None  # 마지막으로 그 프로그램에 물어본 로그인 상태(모르면 None)
+    login_window_open: bool = False  # [로그인하기]로 연 명령 창이 아직 열려 있는지
+    login_checking: bool = False  # 그 창이 닫혀 로그인 상태를 저절로 묻는 중인지
+    can_open_login: bool = False  # [로그인하기]가 되는지(설치돼 있고 로그인 명령을 아는 프로그램)
+    install_guide: InstallGuideOut | None = None  # [설치 방법 보기](공식 명령과 페이지)
+    not_wired_notes: list[str] = []  # 고를 수 없는 프로그램의 까닭(쉬운 말)
+    not_wired_page: str = ""  # 그 까닭을 적은 공식 페이지
+
+
+class FirstRunPathOut(BaseModel):
+    """처음 켠 PC에서 AI를 붙이는 길 하나(2026-11-17). 순서가 권하는 순서다."""
+
+    key: Literal["program", "key", "ollama"]
+    title: str
+    detail: str
+    providers: list[str]  # 이 길에서 열어 볼 AI 이름(설정 「AI 모델」의 칸)
+    link: str = ""  # 공식 페이지(키 받는 곳·설치 안내)
+    link_label: str = ""
+    ready: bool = False  # 이 길로 이미 쓸 수 있는 AI가 있는지
 
 
 class LLMProvidersOut(BaseModel):
     active: str
     items: list[LLMProviderOut]
     kinds: list[dict[str, str]]
+    first_run: list[FirstRunPathOut] = []  # 2026-11-17 첫 실행 안내(필드 추가)
 
 
 class LLMTestOut(BaseModel):

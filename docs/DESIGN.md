@@ -242,7 +242,13 @@ analyzer / drafter
   - Codex(0.152.1): `codex exec --sandbox read-only --skip-git-repo-check --ephemeral --ignore-user-config --ignore-rules --color never -C <빈 임시 폴더> --disable shell_tool,unified_exec,browser_use,computer_use,apps,plugins,multi_agent,image_generation(하나씩) [-m 모델] -`. 프롬프트는 표준 입력(`-`), 답은 stdout의 마지막 메시지.
   - Claude Code(2.1.312): `claude -p <고정 안내> --output-format json --tools "" --safe-mode --strict-mcp-config --no-session-persistence --disable-slash-commands --permission-mode dontAsk --permission-prompts none --no-chrome --system-prompt <고정 글> [--model 모델]`. 영상 자료는 표준 입력, 답은 JSON의 `result`. `--bare`는 구독 로그인을 쓰지 않아 쓰지 않는다.
   - 공통: 빈 임시 폴더(끝나면 지움), 셸 없이 인자 목록(`shell=False`), Windows 콘솔 창 없음(`CREATE_NO_WINDOW`), 시간 제한(`llm.timeout_seconds`), 이 앱의 키 환경 변수는 자식에게 넘기지 않음. 그 프로그램의 로그인·설정 파일은 읽거나 복사하지 않는다. 로그인 여부는 [연결 확인]에서 그 프로그램의 `codex login status`·`claude auth status`로 묻는다.
-  - Gemini CLI: 이 PC에 설치돼 있지 않아 `--help`로 조건을 확인하지 못했다 → 물리지 않는다(목록에 「설치 안 됨」/「아직 연결 안 함」, 고를 수 없음).
+  - Gemini CLI: 이 PC에 설치돼 있지 않아 `--help`로 조건을 확인하지 못했다 → 물리지 않는다(고를 수 없음). 2026-11-17 다시 확인(공식 문서만, 이 PC에 설치하지 않음): 구글이 2026-06-18부터 개인 무료 계정(Google AI Pro/Ultra·개인용 Code Assist)으로는 쓸 수 없게 했고(developers.googleblog.com 공지 2026-05-19), 로그인 상태를 묻는 명령이 문서에 없다. 뒤를 잇는 Antigravity CLI(`agy`)는 표준 입력을 `--input-format stream-json`에서만 받고, 공식 저장소에 「`-p`가 파일 쓰기를 자동 승인」 이슈가 있으며 상태 명령도 없다 → 위 안전 조건 네 가지를 문서로 확인하지 못해 **둘 다 물리지 않는다.** 화면 이름은 「Gemini (명령줄 프로그램)」, 칸에 까닭(「Antigravity 앱과는 다른 프로그램입니다. 같은 구글 계정으로 로그인합니다.」, 종료 공지, 대신 Gemini API 키 무료 등급)과 공식 공지 링크(`app/llm/cli_guides.py`).
+- **아무 PC에서나 AI 연결(2026-11-17).** 로그인된 프로그램 칸은 상태마다 할 일을 보인다(상태 말 「설치되지 않음」「로그인 필요」「키 없음」「준비됨」「사용 중」).
+  - 설치되지 않음 → [설치 방법 보기]: 공식 설치 명령(PowerShell)·[복사]·공식 설치 페이지·「공식 문서 기준 2026-11-17 확인」(`app/llm/cli_guides.py`의 `GUIDES`). 이 앱은 설치하지 않는다. Claude Code `irm https://claude.ai/install.ps1 | iex`(code.claude.com/docs/en/setup), Codex `irm https://chatgpt.com/codex/install.ps1 | iex`(learn.chatgpt.com/docs/codex/cli.md). 두 데스크톱 앱이 명령줄 프로그램을 PATH에 넣는다는 말은 공식 문서에 없어 「따로 설치합니다」로 안내한다.
+  - 설치됨·로그인 안 됨 → [로그인하기]: 그 프로그램의 **자기 로그인 명령**(`codex login`, `claude auth login` — 이 PC의 `--help`로 확인)을 셸 없이 인자 목록으로 **보이는 새 콘솔 창**(`CREATE_NEW_CONSOLE`)에 연다(`app/llm/cli_login.py`). 빈 임시 폴더, 이 앱의 키 환경 변수 뺌. 창이 열려 있는 동안 다시 열지 않고, 창이 닫히면 로그인 상태 명령으로 한 번 저절로 묻는다(프로필 로그인 창과 같은 `LoginWindows`). 칸을 처음 열 때도 상태를 모르면 한 번 저절로 묻는다. 로그인 정보 파일은 읽지 않는다. `POST /api/llm/providers/{name}/login`.
+  - 로그인됨 → 지금처럼 쓴다.
+  - 첫 실행 안내: 시작 준비 상자(「AI 붙이는 길」 ①②③)와 설정 「AI 모델」 맨 위(`#ai-first-run`, 쓸 수 있는 AI가 있으면 접힘). 권하는 순서 ① 구독 중인 프로그램 → ② API 키(공식 가격 페이지에 무료 등급이 적힌 Gemini API만 「무료 등급」) → ③ Ollama(약 18GB, 이 PC에서 잰 시간). `GET /api/llm/providers`의 `first_run`.
+  - 자동 테스트는 진짜 로그인 명령을 열지 않는다(`tests/conftest.py`가 `cli_login.default_launcher`를 막는다. 가짜 실행기·가짜 창으로 시험).
   - 모델 이름은 `-`로 시작할 수 없다(명령 인자로 들어가므로 `--sandbox` 같은 값을 막는다).
   - 모델 목록(2026-11-17): Codex는 그 프로그램에게 받아 온다 — `codex debug models`("Render the raw model catalog as JSON", 모델을 부르지 않아 사용량이 들지 않음). 위와 같은 조건(셸 없음·콘솔 창 없음·시간 제한 30초·빈 임시 폴더·이 앱의 키 환경 변수 뺌, 로그인·설정 파일은 읽지 않음). 출력 `{"models": [{slug, display_name, visibility, priority, …}]}`에서 `visibility: list`만, `priority` 순서, 화면에는 `display_name · slug`. 모양이 달라도 죽지 않고(JSON이 아니면 `llm_bad_output`), 실패하면 「기본값 (그 프로그램이 정한 모델)」과 「직접 입력…」만 남기고 한 줄 안내. 이 명령에는 `--ignore-user-config`가 없다. 문서의 `codex -m` 예시 이름(gpt-6-*)은 ChatGPT 계정에서 `model_not_found`가 나 `config.yaml`에서 뺐다. Claude Code는 `claude --help`에 목록 명령이 없어 `config.yaml`의 별칭(fable·opus·sonnet)과 전체 이름.
   - 그 계정에서 쓸 수 없는 모델(`model_not_found`, 「… model is not supported …」) → `llm_model_missing`, 「이 계정에서는 ○○ 모델을 쓸 수 없습니다. 설정에서 다른 모델을 골라 주세요.」(글에 「account」가 있어도 로그인 문제로 보지 않는다).
@@ -268,7 +274,7 @@ llm:
               key_optional: true, api_key_env: CUSTOM_LLM_API_KEY, max_tokens_field: max_tokens}
     codex-cli:  {type: cli, label: Codex, program: codex}
     claude-cli: {type: cli, label: Claude Code, program: claude}
-    gemini-cli: {type: cli, label: Gemini 프로그램, program: gemini}   # 화면에 「CLI」를 쓰지 않는다
+    gemini-cli: {type: cli, label: "Gemini (명령줄 프로그램)", program: gemini}   # 화면에 「CLI」를 쓰지 않는다
 ```
 
 주소·모델 이름·실행 옵션은 자주 바뀐다. 바꿀 때 각 회사 문서와 `--help`로 다시 확인하고, 문서에 없는 값을 지어 넣지 않는다.

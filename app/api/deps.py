@@ -28,6 +28,7 @@ from app.browser.screens import Monitor, app_window_monitor, read_monitors
 from app.config import Settings, load_settings, reload_settings
 from app.errors import AppError, ErrorKind, remember_log_secrets
 from app.llm.base import LLMClient, LLMHealth
+from app.llm.cli_login import CLILogins
 from app.llm.registry import build_llm
 from app.ops.ledger import Ledger
 from app.ops.profiles import ProfileService
@@ -65,6 +66,8 @@ class Services:
     rising: RisingService = field(default=None)  # type: ignore[assignment]
     # R5: 고른 AI가 아닌 AI도 [연결 확인]·[모델 불러오기]를 할 때 쓰는 연결(테스트는 가짜)
     llm_transport: httpx.BaseTransport | None = None
+    # 2026-11-17 로그인된 프로그램의 [로그인하기] 창과 마지막 로그인 확인 결과
+    cli_logins: CLILogins = field(default_factory=CLILogins)
 
     def find_chrome(self):
         if self.hooks.chrome_finder is not None:
@@ -198,7 +201,17 @@ def build_services(
         clock=clock,
         app_monitor=services.app_monitor,
     )
+    services.cli_logins.check = lambda name: _program_login(services, name)
+    if hooks.cli_login_launcher is not None:
+        services.cli_logins.launcher = hooks.cli_login_launcher
     return services
+
+
+def _program_login(services: Services, name: str) -> bool | None:
+    """[로그인하기] 창이 닫힌 뒤: 그 프로그램의 로그인 상태 명령으로 묻는다."""
+    from app.api.ai_choice import program_login
+
+    return program_login(services, name)
 
 
 def build_jobs(services: Services, *, clock: Clock = utc_now) -> JobService:

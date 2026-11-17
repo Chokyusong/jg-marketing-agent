@@ -30,3 +30,6 @@ class BrowserHooks:
     app_monitor: Callable[[Any], Any] | None = None
     # R2: 프로필 로그인 확인(프로필 폴더 -> LoginResult). 비우면 창 없는 크롬으로 유튜브를 읽는다
     login_checker: Callable[[Path], Any] | None = None
+    # 2026-11-17 로그인된 프로그램의 [로그인하기]: (인자 목록, 환경 변수) -> 프로세스.
+    # 비우면 새 명령 창
+    cli_login_launcher: Callable[[list[str], dict[str, str]], Any] | None = None

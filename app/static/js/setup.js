@@ -6,7 +6,7 @@
 //   「지금 ○○ — 추천 모델 △△로 바꾸기 [바꾸기]」. [바꾸기]는 프로그램 설정에 모델을 저장한다(.env는 그대로).
 import { api } from './api.js';
 import { focusProfile } from './profiles.js';
-import { focusSetting } from './settings.js';
+import { focusAiPath, focusSetting } from './settings.js';
 import { getState, subscribe } from './state.js';
 import { aiStatusText, refreshStatus, youtubeStatusText } from './topbar.js';
 
@@ -80,6 +80,8 @@ function paintLine(name, line) {
     const local = !ai || !ai.kind || ai.kind === 'local';
     btn.textContent = line.recommend ? '바꾸기' : local ? '모델 확인' : 'AI 확인'; // R5: 고른 AI를 본다
     btn.dataset.recommend = line.recommend || '';
+    // 2026-11-17 첫 실행 안내: AI가 아직 안 되면 붙이는 세 길(권하는 순서)
+    $('setup-ai-paths').hidden = line.done || Boolean(line.recommend);
   }
 }
 
@@ -115,6 +117,10 @@ export function initSetup() {
     else focusSetting('set-model');
   });
   $('setup-profile-btn').addEventListener('click', () => focusProfile($('setup-profile-btn').dataset.profile));
+  $('setup-ai-paths').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-setup-path]');
+    if (button) focusAiPath(button.dataset.setupPath);
+  });
   $('setup-close').addEventListener('click', () => {
     closed = true;
     try {

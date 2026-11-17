@@ -261,7 +261,8 @@ def ai_transport() -> httpx.MockTransport:
 def r1_server(tmp_path: Path, make_config, fixture_json, *, user_dir: Path | None = None,
               key: bool = True, launcher=None, login_checker=None,
               default_target: str | None = None,
-              confirm_before_post: bool | None = None) -> Iterator[dict]:
+              confirm_before_post: bool | None = None,
+              cli_login_launcher=None) -> Iterator[dict]:
     browser = {"headless": True, "typing_delay_ms": [2, 5],
                "screenshot_dir": str(tmp_path / "shots")}
     if default_target is not None:
@@ -296,6 +297,7 @@ def r1_server(tmp_path: Path, make_config, fixture_json, *, user_dir: Path | Non
     hooks = BrowserHooks(driver_factory=factory, youtube_driver_factory=youtube_factory,
                          launcher=launcher or _no_real_chrome,
                          login_checker=login_checker,
+                         cli_login_launcher=cli_login_launcher,  # 2026-11-17 [로그인하기](가짜 창)
                          screens=lambda: [Monitor(0, 0, 1920, 1080, primary=True),
                                           Monitor(0, -1080, 1920, 0)])  # 위쪽 모니터
     llm = ScriptedLLM()

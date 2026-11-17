@@ -122,4 +122,4 @@ llm:
       program: claude
       sends_to: "Anthropic(Claude Code)"
       models: [fable, opus, sonnet, claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5]
-    gemini-cli: {type: cli, label: Gemini 프로그램, program: gemini, sends_to: "Google(Gemini 프로그램)"}  # 화면에 「CLI」를 쓰지 않는다
+    gemini-cli: {type: cli, label: "Gemini (명령줄 프로그램)", program: gemini, sends_to: "Google(Gemini 명령줄 프로그램)"}  # 화면에 「CLI」를 쓰지 않는다

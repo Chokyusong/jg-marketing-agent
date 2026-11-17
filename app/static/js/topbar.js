@@ -108,12 +108,14 @@ export function aiStatusText(ai) {
   const model = ai.model || '기본 모델';
   const title = ai.error ? `${ai.error.message} ${ai.error.action}`.trim() : '';
   if (ai.error && ai.error.kind === 'llm_provider_unknown') return { tone: 'is-bad', text: '설정 확인 필요', title };
+  // 2026-11-17 상태 말을 「설치되지 않음」「로그인 필요」「키 없음」으로 맞춤
+  if (ai.error && ai.error.kind === 'llm_auth') return { tone: 'is-bad', text: `${name} · ${ai.kind === 'program' ? '로그인 필요' : '키 없음'}`, title };
   if (ai.error && AI_SHORT[ai.error.kind]) return { tone: 'is-bad', text: `${name} · ${AI_SHORT[ai.error.kind]}`, title };
   if (ai.kind && ai.kind !== 'local' && ai.error) {
     const short = ai.error.kind === 'llm_model_missing' ? '모델 없음' : '준비 안 됨';
     return { tone: 'is-bad', text: `${name} · ${short}`, title };
   }
-  if (!ai.reachable) return { tone: 'is-bad', text: ai.kind === 'program' ? `${name} · 설치 안 됨` : '꺼져 있음', title };
+  if (!ai.reachable) return { tone: 'is-bad', text: ai.kind === 'program' ? `${name} · 설치되지 않음` : '꺼져 있음', title };
   if (!ai.installed) return { tone: 'is-bad', text: `${ai.model} · 모델 없음`, title };
   return { tone: 'is-ok', text: `${name} · ${model} · ${where}`, title: ai.local ? '' : `영상 자료가 ${ai.sends_to || name}(으)로 전송됩니다` };
 }

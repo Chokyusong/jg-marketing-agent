@@ -5,7 +5,7 @@
 
 - 창 없는(headless) 설치된 크롬. AI는 가짜 LLM(진짜 AI 회사 주소를 부르지 않는다).
 - 사용자 설정 폴더는 임시 폴더, 키 암호화는 가짜(`FAKE_PROTECTOR`).
-- 로그인된 프로그램은 자동 테스트에서 「설치 안 됨」으로 보인다
+- 로그인된 프로그램은 자동 테스트에서 「설치되지 않음」으로 보인다
   (tests/conftest.py가 진짜 실행을 막는다).
 """
 
@@ -58,7 +58,8 @@ def test_pick_ai_confirm_external_save_and_status(app, user_dir):
         kinds = page.locator("#ai-list .ai-kind").all_text_contents()
         assert kinds == ["이 PC에서", "API 키로", "로그인된 프로그램으로"]
         assert "사용 중" in page.text_content("#ai-item-ollama")
-        assert "설치 안 됨" in page.text_content("#ai-item-codex-cli")
+        # 2026-11-17 상태 말 맞춤: 「설치되지 않음」「로그인 필요」「키 없음」「준비됨」
+        assert "설치되지 않음" in page.text_content("#ai-item-codex-cli")
         assert "is-dim" in page.get_attribute("#ai-item-codex-cli", "class")
         assert page.is_visible("#ai-pane-ollama") and page.is_visible("#warmup-btn")
 

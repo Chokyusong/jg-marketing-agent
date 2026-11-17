@@ -110,6 +110,8 @@ export const api = {
   // R5: 글 쓰는 AI 고르기(목록 · 연결 확인 · AI별 모델 목록 · AI별 API 키)
   llmProviders: () => request('/api/llm/providers'),
   llmTest: (name) => request(`/api/llm/providers/${encodeURIComponent(name)}/test`, { method: 'POST' }),
+  // 2026-11-17 [로그인하기]: 그 프로그램의 로그인 명령을 새 명령 창으로 연다
+  llmLogin: (name) => request(`/api/llm/providers/${encodeURIComponent(name)}/login`, { method: 'POST' }),
   llmModelsOf: (name) => request(`/api/llm/models?provider=${encodeURIComponent(name)}`),
   saveLlmKey: (name, key) => request(`/api/settings/llm-key/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify({ key }) }),
   deleteLlmKey: (name) => request(`/api/settings/llm-key/${encodeURIComponent(name)}`, { method: 'DELETE' }),

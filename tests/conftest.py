@@ -102,6 +102,14 @@ def _never_real_youtube(monkeypatch):
     monkeypatch.setattr(cli, "default_runner", blocked_runner)
     monkeypatch.setattr(cli, "default_which", lambda program: None)
 
+    # 2026-11-17 [로그인하기]: 진짜 로그인 명령 창을 열지 않는다(가짜 창을 끼워 시험)
+    from app.llm import cli_login
+
+    def blocked_launcher(args, env):
+        raise AssertionError(f"자동 테스트가 진짜 로그인 명령을 열려고 했다: {args[1:]}")
+
+    monkeypatch.setattr(cli_login, "default_launcher", blocked_launcher)
+
 
 # ---------------------------------------------------------------- 임시 저장소·설정
 

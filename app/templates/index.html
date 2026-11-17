@@ -55,6 +55,10 @@
           <li class="setup-item" id="setup-ai"><i class="dot is-wait" aria-hidden="true"></i><span class="setup-name">AI 모델</span><span class="setup-state" id="setup-ai-state">확인 중</span><button type="button" class="btn btn-small" id="setup-ai-btn">모델 확인</button></li>
           <li class="setup-item" id="setup-profile"><i class="dot is-wait" aria-hidden="true"></i><span class="setup-name">프로필 로그인</span><span class="setup-state" id="setup-profile-state">확인 중</span><button type="button" class="btn btn-small" id="setup-profile-btn" data-profile="{{ profiles[0] }}">{{ profiles[0] }} 로그인</button></li>
         </ul>
+        <p class="setup-paths" id="setup-ai-paths" hidden><span class="setup-paths-name">AI 붙이는 길</span>
+          <button type="button" class="btn btn-text btn-small" data-setup-path="program">① 구독 중인 프로그램(Codex·Claude Code)</button>
+          <button type="button" class="btn btn-text btn-small" data-setup-path="key">② API 키(Gemini 무료 등급)</button>
+          <button type="button" class="btn btn-text btn-small" data-setup-path="ollama">③ 이 PC(Ollama, 약 18GB)</button></p>
         <p class="setup-note">연습 모드는 키와 로그인 없이도 됩니다.</p>
         <button type="button" class="btn btn-text setup-close" id="setup-close" aria-label="시작 준비 닫기">닫기</button>
       </section>

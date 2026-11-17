@@ -55,6 +55,7 @@ let models = null; // GET /api/llm/models 응답
 let screens = null; // GET /api/screens 응답
 let saving = false;
 let pendingFocus = null;
+let pendingPath = null; // 시작 준비에서 고른 「AI를 붙이는 길」(program · key · ollama)
 let resetArmed = null;
 let keyEditing = false;
 
@@ -431,6 +432,9 @@ const LOGIN_HINTS = {
   'codex-cli': '명령 창에서 codex login 으로 그 프로그램에 로그인합니다.',
   'claude-cli': '명령 창에서 claude auth login 으로 그 프로그램에 로그인합니다.',
 };
+const LOGIN_POLL_MS = 1500;
+let loginPoll = null;
+const aiLoginTried = {}; // 이름 → 이번에 로그인 상태를 저절로 물어봤는지(칸을 열 때 한 번만)
 
 let providers = null; // GET /api/llm/providers 응답
 let viewing = null; // 오른쪽에 보이는 AI 이름
@@ -454,9 +458,11 @@ function externalText(p) {
 
 function itemState(p) {
   if (p.kind === 'program') {
-    if (!p.verified) return { tone: 'is-off', text: '아직 연결 안 함' };
-    if (!p.installed) return { tone: 'is-off', text: '설치 안 됨' };
-    return { tone: 'is-ok', text: '설치됨' };
+    if (!p.verified) return { tone: 'is-off', text: '쓸 수 없음' };
+    if (!p.installed) return { tone: 'is-off', text: '설치되지 않음' };
+    if (p.login_window_open || p.login_checking) return { tone: 'is-wait', text: '로그인 중' };
+    if (p.logged_in === false) return { tone: 'is-bad', text: '로그인 필요' };
+    return { tone: 'is-ok', text: '준비됨' };
   }
   if (p.kind === 'local') return { tone: 'is-ok', text: '이 PC' };
   const reason = p.unavailable_reason || '';
@@ -693,20 +699,61 @@ function apiBody(p) {
   ];
 }
 
+// [설치 방법 보기]: 공식 문서의 설치 명령 · [복사] · 공식 페이지. 이 앱은 설치하지 않는다(2026-11-17)
+function installGuide(p) {
+  const g = p.install_guide;
+  if (!g) return null;
+  const command = el('input', { class: 'field field-text is-wide install-command', id: `ai-install-cmd-${p.name}`, type: 'text', readonly: true, value: g.command, 'aria-label': `${p.label} 설치 명령` });
+  return el('details', { class: 'key-guide install-guide', id: `ai-install-${p.name}`, open: !p.installed }, [
+    el('summary', { text: '설치 방법 보기' }),
+    el('ol', {}, [
+      el('li', { text: `${g.shell}을(를) 열고 아래 명령을 붙여 넣어 실행합니다. 이 프로그램이 대신 설치하지는 않습니다.` }),
+      el('li', { class: 'install-row' }, [
+        command,
+        el('button', { type: 'button', class: 'btn btn-small', id: `ai-install-copy-${p.name}`, 'data-ai-action': 'copy', 'data-name': p.name, text: '복사' }),
+      ]),
+      el('li', { text: '설치가 끝나면 이 프로그램을 다시 켜거나 [다시 찾기]를 누르고, [로그인하기]로 로그인합니다.' }),
+    ]),
+    ...g.notes.map((t) => el('p', { class: 'caption', text: t })),
+    el('p', { class: 'caption' }, [
+      el('a', { href: g.page, target: '_blank', rel: 'noopener noreferrer', text: '공식 설치 안내 열기' }),
+      ` · 공식 문서 기준 ${g.checked} 확인`,
+    ]),
+  ]);
+}
+
+function loginState(p) {
+  if (!p.installed) return '설치한 뒤 로그인합니다';
+  if (p.login_window_open) return '로그인 창이 열려 있습니다 · 그 창에서 로그인하고 창을 닫으면 저절로 확인합니다';
+  if (p.login_checking) return '로그인했는지 확인하는 중…';
+  if (p.logged_in === true) return '로그인돼 있습니다';
+  if (p.logged_in === false) return '로그인 필요 · [로그인하기]를 누르면 그 프로그램의 로그인 창이 열립니다';
+  return LOGIN_HINTS[p.name] || '그 프로그램에서 로그인합니다.';
+}
+
 function programBody(p) {
-  let installText = '설치되지 않음 · 그 프로그램을 설치하고 로그인한 뒤 [연결 확인]을 누르세요';
-  if (!p.verified) installText = '이 PC에서 안전하게 실행하는 방법을 확인하지 못해 아직 연결하지 않았습니다';
+  if (!p.verified) {
+    return [
+      ...(p.not_wired_notes.length ? p.not_wired_notes : ['이 PC에서 안전하게 실행하는 방법을 확인하지 못해 연결하지 않았습니다.']).map((t) => el('p', { class: 'caption', text: t })),
+      p.not_wired_page ? el('p', { class: 'caption' }, [el('a', { href: p.not_wired_page, target: '_blank', rel: 'noopener noreferrer', text: '공식 공지 열기' })]) : null,
+    ];
+  }
   const rows = [
-    readRow('설치', flag(p.installed, '설치됨', installText)),
-    readRow('로그인', LOGIN_HINTS[p.name] || '그 프로그램에서 로그인합니다.'),
+    readRow('설치', flag(p.installed, '설치됨', '설치되지 않음 · 아래 [설치 방법 보기]')),
+    readRow('로그인', loginState(p)),
+    modelRow(p, { optional: true }),
   ];
-  if (p.verified) rows.push(modelRow(p, { optional: true }));
+  const busy = p.login_window_open || p.login_checking;
   return [
     el('p', { class: 'caption', text: '이 프로그램이 저장한 로그인 정보는 읽지 않고, 프로그램을 대신 실행합니다. 파일을 읽거나 명령을 실행하는 기능은 끄고 돌립니다.' }),
     el('dl', { class: 'set-list set-form' }, rows.flat()),
     el('div', { class: 'set-actions' }, [
-      el('button', { type: 'button', class: 'btn btn-small', id: `ai-test-${p.name}`, 'data-ai-action': 'test', 'data-name': p.name, disabled: !p.verified, text: '연결 확인' }),
+      p.installed && p.can_open_login && p.logged_in !== true
+        ? el('button', { type: 'button', class: 'btn btn-small is-primary', id: `ai-login-${p.name}`, 'data-ai-action': 'login', 'data-name': p.name, disabled: busy, text: '로그인하기' })
+        : null,
+      el('button', { type: 'button', class: 'btn btn-small', id: `ai-test-${p.name}`, 'data-ai-action': 'test', 'data-name': p.name, disabled: busy, text: p.installed ? '연결 확인' : '다시 찾기' }),
       noteLine(p.name),
+      installGuide(p),
     ]),
   ];
 }
@@ -742,15 +789,49 @@ function aiPane(p, s) {
   ]);
 }
 
+// 첫 실행 안내(2026-11-17): AI를 붙이는 세 길, 권하는 순서대로. 쓸 수 있는 AI가 있으면 접어 둔다
+function pathTarget(path) {
+  const items = path.providers.map(findProvider).filter(Boolean);
+  const ready = items.find((p) => p.installed && p.logged_in !== false && p.verified);
+  return (ready || items.find((p) => p.installed) || items[0] || {}).name || null;
+}
+
+function firstRun(s) {
+  const paths = (providers && providers.first_run) || [];
+  if (!paths.length) return null;
+  const active = findProvider(s.llm.active);
+  const someReady = paths.some((p) => p.ready) || Boolean(active && !active.unavailable_reason && active.kind !== 'local');
+  return el('details', { class: 'first-run', id: 'ai-first-run', open: !someReady }, [
+    el('summary', { text: '처음이라면 · AI를 붙이는 세 가지 길' }),
+    el('ol', { class: 'first-run-list' }, paths.map((path) => el('li', { id: `ai-path-${path.key}` }, [
+      el('strong', { text: path.title }),
+      path.ready ? el('span', { class: 'tag is-ok', text: '준비됨' }) : null,
+      el('span', { class: 'caption', text: ` ${path.detail} ` }),
+      el('button', { type: 'button', class: 'btn btn-text btn-small', 'data-ai-path': path.key, text: '이 길로 보기' }),
+      path.link ? el('a', { class: 'caption', href: path.link, target: '_blank', rel: 'noopener noreferrer', text: path.link_label }) : null,
+    ]))),
+  ]);
+}
+
 function aiGroup(s) {
   if (!providers || !providers.items.length) {
     // 목록을 읽지 못하면 전처럼 Ollama 칸만
     return group('AI 모델', 'set-ai', modelRows(s), ollamaActions());
   }
+  if (pendingPath) {
+    const path = (providers.first_run || []).find((p) => p.key === pendingPath);
+    const name = path ? pathTarget(path) : null;
+    pendingPath = null;
+    if (name) {
+      viewing = name;
+      pendingFocus = `ai-pane-${name}-title`;
+    }
+  }
   if (!findProvider(viewing)) viewing = pendingActive || s.llm.active;
   if (!findProvider(viewing)) viewing = providers.items[0].name;
   return el('section', { class: 'set-group is-ai', id: 'set-ai', 'aria-labelledby': 'set-ai-title' }, [
     el('h3', { id: 'set-ai-title', tabindex: '-1', text: 'AI 모델' }),
+    firstRun(s),
     el('div', { class: 'ai-layout' }, [
       aiList(),
       el('div', { class: 'ai-panes' }, providers.items.map((p) => aiPane(p, s))),
@@ -770,10 +851,29 @@ function repaintUse(name) {
   if (p && row) row.replaceWith(useRow(p));
 }
 
+function autoCheckLogin(name) {
+  const p = findProvider(name);
+  if (!p || p.kind !== 'program' || !p.verified || !p.installed || p.logged_in !== null) return;
+  if (aiLoginTried[name] || p.login_window_open || p.login_checking) return;
+  aiLoginTried[name] = true;
+  const button = $(`ai-test-${name}`);
+  if (button) aiTest(name, button);
+}
+
+function repaintPane(name) {
+  const p = findProvider(name);
+  const pane = $(`ai-pane-${name}`);
+  if (!p || !pane || !data) return;
+  const fresh = aiPane(p, data);
+  fresh.hidden = pane.hidden;
+  pane.replaceWith(fresh);
+}
+
 function showPane(name) {
   if (!findProvider(name)) return;
   viewing = name;
   autoLoadModels(name);
+  autoCheckLogin(name);
   for (const pane of document.querySelectorAll('#settings-body [data-ai-pane]')) pane.hidden = pane.dataset.aiPane !== name;
   repaintAiList();
   const item = $(`ai-item-${name}`);
@@ -850,13 +950,87 @@ async function aiTest(name, button) {
   setNote(name, '확인하는 중…');
   try {
     const res = await api.llmTest(name);
-    setNote(name, `${res.message} ${res.action || ''}`.trim(), res.ok ? 'is-ok' : 'is-bad');
+    aiNotes[name] = { text: `${res.message} ${res.action || ''}`.trim(), tone: res.ok ? 'is-ok' : 'is-bad' };
+    const before = findProvider(name);
+    if (before && before.kind === 'program') {
+      await loadProviders(); // 설치·로그인 상태가 바뀌었을 수 있다
+      repaintPane(name);
+      repaintAiList();
+      for (const p of (providers ? providers.items : [])) repaintUse(p.name);
+      // 2026-11-17 [로그인하기]가 있으면 명령을 치라고 하지 않고 그 단추를 가리킨다
+      const after = findProvider(name);
+      if (res.result === 'not_logged_in' && after && after.can_open_login) {
+        aiNotes[name] = { text: `${after.label}에 로그인돼 있지 않습니다. [로그인하기]를 누르면 그 프로그램의 로그인 창이 열립니다.`, tone: 'is-bad' };
+      }
+    }
+    setNote(name, aiNotes[name].text, aiNotes[name].tone);
     if (res.ok && findProvider(name) && canList(findProvider(name))) aiLoadModels(name);
   } catch (error) {
     setNote(name, `${error.message || ''} ${error.action || ''}`.trim(), 'is-bad');
   } finally {
+    const now = $(`ai-test-${name}`);
+    if (now) now.disabled = false;
     button.disabled = false;
   }
+}
+
+// [로그인하기]: 그 프로그램의 자기 로그인 명령을 새 명령 창으로 연다. 창이 닫히면 서버가 저절로
+// 로그인 상태를 묻고, 여기서는 그 결과가 나올 때까지 목록을 다시 읽는다
+async function aiLogin(name, button) {
+  button.disabled = true;
+  setNote(name, '로그인 창을 여는 중…');
+  try {
+    await api.llmLogin(name);
+    aiNotes[name] = { text: '명령 창이 열렸습니다. 그 창의 안내대로 로그인한 뒤 창을 닫으세요. 닫으면 저절로 확인합니다.', tone: '' };
+    await loadProviders();
+    repaintPane(name);
+    repaintAiList();
+    scheduleLoginPoll();
+  } catch (error) {
+    button.disabled = false;
+    setNote(name, `${error.message || ''} ${error.action || ''}`.trim(), 'is-bad');
+  }
+}
+
+function loginBusy() {
+  return Boolean(providers && providers.items.some((p) => p.login_window_open || p.login_checking));
+}
+
+function scheduleLoginPoll() {
+  clearTimeout(loginPoll);
+  loginPoll = null;
+  if (!loginBusy()) return;
+  loginPoll = setTimeout(async () => {
+    const was = new Set(providers.items.filter((p) => p.login_window_open || p.login_checking).map((p) => p.name));
+    await loadProviders();
+    if (!providers) return;
+    for (const p of providers.items) {
+      if (!was.has(p.name) || p.login_window_open || p.login_checking) continue;
+      if (p.logged_in === true) aiNotes[p.name] = { text: '로그인됐습니다. [이 AI 쓰기]로 고를 수 있습니다.', tone: 'is-ok' };
+      else if (p.logged_in === false) aiNotes[p.name] = { text: '아직 로그인돼 있지 않습니다. [로그인하기]를 다시 눌러 주세요.', tone: 'is-bad' };
+      else aiNotes[p.name] = { text: '로그인했는지 확인하지 못했습니다. [연결 확인]을 눌러 주세요.', tone: '' };
+      repaintPane(p.name);
+      refreshStatus();
+    }
+    repaintAiList();
+    for (const p of providers.items) repaintUse(p.name);
+    scheduleLoginPoll();
+  }, LOGIN_POLL_MS);
+}
+
+async function aiCopy(name, button) {
+  const input = $(`ai-install-cmd-${name}`);
+  if (!input) return;
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(input.value);
+    ok = true;
+  } catch {
+    input.select(); // 복사 권한이 없으면 골라 두어 Ctrl+C로 복사할 수 있게
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+  }
+  button.textContent = ok ? '복사함' : 'Ctrl+C로 복사';
+  setTimeout(() => { button.textContent = '복사'; }, RESET_WAIT_MS);
 }
 
 // 그 AI의 모델 목록을 받아 와 고르는 칸을 채운다. 받아 오는 중·실패는 목록 아래 한 줄로
@@ -909,6 +1083,17 @@ function onAiClick(event) {
     showPane(view.dataset.aiView);
     return;
   }
+  const pathBtn = event.target.closest('[data-ai-path]');
+  if (pathBtn && providers) {
+    const path = (providers.first_run || []).find((p) => p.key === pathBtn.dataset.aiPath);
+    const name = path ? pathTarget(path) : null;
+    if (name) {
+      showPane(name);
+      const title = $(`ai-pane-${name}-title`);
+      if (title) { title.scrollIntoView({ block: 'nearest' }); title.focus({ preventScroll: true }); }
+    }
+    return;
+  }
   const button = event.target.closest('[data-ai-action]');
   if (!button || button.disabled) return;
   const name = button.dataset.name;
@@ -922,6 +1107,8 @@ function onAiClick(event) {
   else if (action === 'key-cancel') { aiKeyEditing[name] = false; render(data); }
   else if (action === 'key-delete') aiDeleteKey(name, button);
   else if (action === 'test') aiTest(name, button);
+  else if (action === 'login') aiLogin(name, button);
+  else if (action === 'copy') aiCopy(name, button);
   else if (action === 'models') aiLoadModels(name);
 }
 
@@ -1226,6 +1413,15 @@ function applyFocus() {
   const target = node.disabled ? node.closest('.set-group').querySelector('h3') : node;
   target.scrollIntoView({ block: 'nearest' });
   target.focus({ preventScroll: true });
+}
+
+// 시작 준비 상자의 「AI를 붙이는 길」에서: 설정 화면을 열고 그 길의 AI 칸으로(2026-11-17)
+export function focusAiPath(key) {
+  pendingPath = key;
+  pendingFocus = 'set-ai-title';
+  pendingActive = null;
+  confirmFor = null;
+  showScreen('settings');
 }
 
 // 시작 준비 상자에서: 설정 화면을 열고 그 칸으로

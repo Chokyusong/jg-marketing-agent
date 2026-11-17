@@ -21,6 +21,7 @@ from app.schemas import (
     LLMLoadedOut,
     LLMModelOut,
     LLMModelsOut,
+    LLMProviderOut,
     LLMProvidersOut,
     LLMTestOut,
     WarmupOut,
@@ -78,6 +79,18 @@ def providers(services: Annotated[Services, Depends(get_services)]) -> LLMProvid
 def test_provider(name: str, services: Annotated[Services, Depends(get_services)]) -> LLMTestOut:
     """[연결 확인]. 글을 만들지 않는다(API 키 AI는 모델 목록, 프로그램은 로그인 상태 명령)."""
     return ai_choice.check_provider(services, name)
+
+
+@router.post("/providers/{name}/login", response_model=LLMProviderOut)
+def open_program_login(
+    name: str, services: Annotated[Services, Depends(get_services)]
+) -> LLMProviderOut:
+    """[로그인하기]: 그 프로그램의 자기 로그인 명령을 보이는 명령 창으로 연다(2026-11-17).
+
+    로그인은 사람이 그 창에서 한다. 창이 닫히면 로그인 상태 명령으로 한 번 저절로 묻는다."""
+    ai_choice.open_program_login(services, name)
+    provider = services.settings.llm.providers[name]
+    return ai_choice.provider_view(services, provider)
 
 
 # 추천 목록은 문서로 확인한 이름이지만 계정에 따라 못 쓰는 것이 있다(Codex 실측, 2026-11-17)

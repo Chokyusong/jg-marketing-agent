@@ -162,6 +162,16 @@ select { padding-right: 6px; cursor: pointer; }
 .setup-state { color: var(--sub); }
 .setup-item.is-done .setup-state { color: var(--ok); }
 .setup-note { margin-left: auto; color: var(--sub); font-size: 12px; }
+/* 2026-11-17 첫 실행 안내: AI를 붙이는 세 길(시작 준비 상자 · 설정 「AI 모델」 맨 위) */
+.setup-paths { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 13px; }
+.setup-paths-name { color: var(--text); font-weight: 500; }
+.setup-paths .btn { padding-left: 4px; padding-right: 4px; }
+.first-run { margin: 0 0 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.first-run summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.first-run-list { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 4px; font-size: 13px; }
+.first-run-list .tag { margin-left: 6px; }
+.install-row { display: flex; gap: 6px; align-items: center; }
+.install-command { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 .setup-close { color: var(--sub); }
 .col-tabs { display: none; }
 .column { display: flex; flex-direction: column; min-height: 0; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
