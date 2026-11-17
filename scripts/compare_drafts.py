@@ -17,11 +17,16 @@
 - 영상마다 처음 통과한 초안을 승인한다(다음 영상이 「이미 쓴 표현」·V11을 받는 실제 흐름).
 - 결과: `--out-json`(초안 전문·시도별 글·다시 쓰기 까닭·시간)과 `--out-md`(초안 전문 표 + 지표 +
   다듬기 검사 S1~S5로 센 남은 수). `--before`에 예전 결과 JSON을 주면 같은 영상끼리 나란히 놓는다.
+- 2026-11-17: 결과 파일은 임시 폴더를 지우기 **전에** 쓴다. `--out-json`은 영상 하나가 끝날 때마다
+  덮어써(`"finished": false`) 중간에 죽어도 그때까지의 결과가 남는다. DB 연결·서비스를 닫고
+  나가며, 임시 폴더를 지우지 못하면(Windows에서 파일이 아직 잡혀 있을 때 등) 결과는 그대로 두고
+  경고 한 줄만.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import shutil
@@ -30,7 +35,7 @@ import sys
 import tempfile
 import time
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -83,8 +88,12 @@ def make_settings(
 def run(
     services: Services, order: Sequence[str], *, drafts_per_video: int = 2,
     titles: dict[str, str] | None = None, log=print,
+    on_video: Callable[[list[dict[str, Any]]], None] | None = None,
 ) -> list[dict[str, Any]]:
-    """영상마다 분석 1번 + 초안 N개. 처음 통과한 초안은 승인한다."""
+    """영상마다 분석 1번 + 초안 N개. 처음 통과한 초안은 승인한다.
+
+    `on_video`: 영상 하나가 끝날 때마다(오류로 건너뛴 영상도) 그때까지의 목록으로 부른다.
+    """
     llm = services.require_llm()
     seen: list[str] = []
     real_generate = llm.generate_json
@@ -106,6 +115,8 @@ def run(
         except AppError as exc:
             row["error"] = f"{exc.kind}: {exc.detail}"
             log(f"{vid} 분석 오류 {row['error']}")
+            if on_video is not None:
+                on_video(videos)
             continue
         row.update(
             analysis_s=round(time.monotonic() - started, 1), concern=analysis.concern,
@@ -140,6 +151,8 @@ def run(
                 except AppError:
                     pass
         log(f"{vid}: 초안 {len(row['drafts'])}개")
+        if on_video is not None:
+            on_video(videos)
     return videos
 
 
@@ -283,6 +296,90 @@ def _split(text: str) -> list[str]:
     return [x.strip() for x in text.split(",") if x.strip()]
 
 
+def write_json(path: Path | None, out: dict[str, Any]) -> None:
+    """결과 JSON을 덮어쓴다(옆 파일에 쓴 뒤 바꿔 넣어, 쓰다가 죽어도 앞 결과가 깨지지 않게)."""
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    part = path.with_name(path.name + ".part")
+    part.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(part, path)
+
+
+def remove_temp(path: Path) -> None:
+    """임시 폴더를 지운다. 못 지워도 결과는 이미 썼으니 경고 한 줄만(Windows WinError 32 등)."""
+    try:
+        shutil.rmtree(path)
+    except OSError as exc:
+        print(f"경고: 임시 폴더를 지우지 못했습니다(결과 파일은 이미 썼습니다): {path} "
+              f"({type(exc).__name__})", file=sys.stderr)
+
+
+def _copy_db(src: Path, dst: Path) -> None:
+    """DB 사본을 임시 폴더로 복사하고 분석·초안 표를 비운다(연결은 닫고 나온다)."""
+    shutil.copy(src, dst)
+    # `with sqlite3.connect()`는 커밋만 하고 닫지 않는다 → 닫지 않으면 Windows에서 파일이 잡혀 있다
+    with contextlib.closing(sqlite3.connect(dst)) as conn, conn:
+        conn.execute("DELETE FROM drafts")
+        conn.execute("DELETE FROM analyses")
+
+
+def _compare(
+    args: argparse.Namespace, out: dict[str, Any], fixtures: list[dict[str, Any]],
+    order: list[str], labels: tuple[str, str], tmp: Path,
+) -> str:
+    """임시 폴더 안에서 돌리고, 나가기 전에 결과 파일을 쓴다. 돌려주는 것은 표(Markdown)."""
+    db_path = tmp / "compare.sqlite3"
+    if args.db is not None:
+        _copy_db(args.db, db_path)
+    settings = make_settings(args.ai, db_path, model=args.model, env_file=args.env_file,
+                             timeout=args.timeout)
+    services = build_services(settings, transport=youtube_transport(fixtures), clock=utc_now)
+
+    def save(videos: list[dict[str, Any]]) -> None:
+        out["videos"] = videos
+        write_json(args.out_json, out)
+
+    try:
+        llm = services.require_llm()
+        out["model"] = str(getattr(llm, "model", "") or args.model)
+        warmup = getattr(llm, "warmup", None)
+        if callable(warmup):
+            started = time.monotonic()
+            warmup()
+            out["load_s"] = round(time.monotonic() - started, 1)
+        prepare(services, fixtures)
+        titles = {c["video_id"]: c.get("title", "") for c in fixtures}
+        out["videos"] = run(services, order, drafts_per_video=args.drafts, titles=titles,
+                            on_video=save)
+        contexts = {}
+        for vid in order:
+            try:
+                contexts[vid] = services.context.search_text(services.context.current(vid))
+            except AppError:
+                contexts[vid] = ""
+        rules = services.drafts.rules
+        out["finished"] = True
+        write_json(args.out_json, out)
+        before = None
+        if args.before:
+            before = json.loads(args.before.read_text(encoding="utf-8")).get("videos", [])
+        table = markdown_table(out["videos"], before=before, labels=labels, brand=rules.brand,
+                               disclosure=rules.disclosure, contexts=contexts)
+        if args.out_md:
+            args.out_md.parent.mkdir(parents=True, exist_ok=True)
+            args.out_md.write_text(table, encoding="utf-8")
+        return table
+    finally:
+        unload = getattr(services.llm, "unload", None)
+        if callable(unload):
+            try:
+                unload()
+            except Exception:  # noqa: BLE001 — 내리지 못해도 결과는 남긴다
+                pass
+        services.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     fixtures = load_contexts(args.fixtures_dir)
@@ -291,55 +388,14 @@ def main(argv: list[str] | None = None) -> int:
         fixtures = [c for c in fixtures if c["video_id"] in wanted]
     order = _split(args.videos)
     order += [c["video_id"] for c in fixtures if c["video_id"] not in order]
-    labels = tuple((_split(args.labels) + ["전", "후"])[:2])
-    out: dict[str, Any] = {"ai": args.ai, "model": args.model, "videos": []}
-    with tempfile.TemporaryDirectory() as tmp:
-        db_path = Path(tmp) / "compare.sqlite3"
-        if args.db is not None:
-            shutil.copy(args.db, db_path)
-            with sqlite3.connect(db_path) as conn:
-                conn.execute("DELETE FROM drafts")
-                conn.execute("DELETE FROM analyses")
-        settings = make_settings(args.ai, db_path, model=args.model, env_file=args.env_file,
-                                 timeout=args.timeout)
-        services = build_services(settings, transport=youtube_transport(fixtures), clock=utc_now)
-        try:
-            llm = services.require_llm()
-            out["model"] = str(getattr(llm, "model", "") or args.model)
-            warmup = getattr(llm, "warmup", None)
-            if callable(warmup):
-                started = time.monotonic()
-                warmup()
-                out["load_s"] = round(time.monotonic() - started, 1)
-            prepare(services, fixtures)
-            titles = {c["video_id"]: c.get("title", "") for c in fixtures}
-            out["videos"] = run(services, order, drafts_per_video=args.drafts, titles=titles)
-            contexts = {}
-            for vid in order:
-                try:
-                    contexts[vid] = services.context.search_text(services.context.current(vid))
-                except AppError:
-                    contexts[vid] = ""
-            rules = services.drafts.rules
-        finally:
-            unload = getattr(services.llm, "unload", None)
-            if callable(unload):
-                try:
-                    unload()
-                except Exception:  # noqa: BLE001 — 내리지 못해도 결과는 남긴다
-                    pass
-            services.close()
-    if args.out_json:
-        args.out_json.parent.mkdir(parents=True, exist_ok=True)
-        args.out_json.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
-    before = None
-    if args.before:
-        before = json.loads(args.before.read_text(encoding="utf-8")).get("videos", [])
-    table = markdown_table(out["videos"], before=before, labels=labels, brand=rules.brand,
-                           disclosure=rules.disclosure, contexts=contexts)
-    if args.out_md:
-        args.out_md.parent.mkdir(parents=True, exist_ok=True)
-        args.out_md.write_text(table, encoding="utf-8")
+    names = (_split(args.labels) + ["전", "후"])[:2]
+    labels = (names[0], names[1])
+    out: dict[str, Any] = {"ai": args.ai, "model": args.model, "finished": False, "videos": []}
+    tmp = Path(tempfile.mkdtemp(prefix="jg-compare-"))
+    try:
+        table = _compare(args, out, fixtures, order, labels, tmp)
+    finally:
+        remove_temp(tmp)
     sys.stdout.write(table)
     return 0
 

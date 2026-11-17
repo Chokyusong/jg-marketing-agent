@@ -5,11 +5,14 @@
 - 표: 초안 전문(전·후 나란히), 지표, 다듬기 검사로 남은 수.
 """
 
+import json
+import tempfile
 from pathlib import Path
 
 import httpx
 import pytest
 
+from app import db
 from app.api.deps import build_services
 from app.errors import AppError, ErrorKind
 from app.llm.registry import build_llm
@@ -99,3 +102,103 @@ def test_run_and_table_with_fake_llm(tmp_db_path, fake_llm):
     # 한 열만
     alone = C.markdown_table(videos, brand=rules.brand, disclosure=rules.disclosure)
     assert "| 영상 | # | 후 |" in alone and "예전 글" not in alone
+
+
+# ------------------------------------------------ 2026-11-17 --db 경로(Windows WinError 32)
+
+ANALYSIS = {"topic": "권태기", "concern": "설렘이 사라진 3년 연애", "tone": "차분",
+            "viewer_needs": "권태기를 넘기는 법",
+            "evidence": [{"quote": "만나도 각자 휴대폰만 봐요", "source": "transcript"}]}
+GOOD = ("'만나도 각자 휴대폰만 봐요'라는 말이 오래 남네요. 운명원 연애 사주 잘 본다던데 "
+        "한번 보고 싶어요.")
+
+
+def _with_fake_llm(monkeypatch, llm):
+    """main()이 만드는 서비스에 가짜 LLM을 끼운다(AI·인터넷 없이)."""
+    llm.model = "fake"
+    llm.close = lambda: None
+    real = C.build_services
+
+    def build(settings, **kwargs):
+        services = real(settings, llm_transport=httpx.MockTransport(_llm_off), **kwargs)
+        if services.llm is not None:
+            services.llm.close()
+        services.llm = llm
+        return services
+
+    monkeypatch.setattr(C, "build_services", build)
+
+
+def _record_temp(monkeypatch) -> list[Path]:
+    made: list[Path] = []
+    real = tempfile.mkdtemp
+
+    def mkdtemp(*args, **kwargs):
+        made.append(Path(real(*args, **kwargs)))
+        return str(made[-1])
+
+    monkeypatch.setattr(C.tempfile, "mkdtemp", mkdtemp)
+    return made
+
+
+def _db_copy(tmp_path: Path) -> Path:
+    src = tmp_path / "app-copy.sqlite3"
+    db.init_db(src)
+    return src
+
+
+def test_db_path_writes_result_files_and_cleans_up(tmp_path, fake_llm, monkeypatch, capsys):
+    vid = E.load_contexts(CONTEXTS, limit=1)[0]["video_id"]
+    _with_fake_llm(monkeypatch, fake_llm([ANALYSIS, {"body": GOOD, "used_quote":
+                                                     "만나도 각자 휴대폰만 봐요",
+                                                     "tone_label": "공감형"}]))
+    made = _record_temp(monkeypatch)
+    src = _db_copy(tmp_path)
+    before = src.read_bytes()
+    out_json, out_md = tmp_path / "out" / "r.json", tmp_path / "out" / "r.md"
+
+    assert C.main(["--ai", "ollama", "--db", str(src), "--fixtures", vid, "-d", "1",
+                   "--out-json", str(out_json), "--out-md", str(out_md)]) == 0
+
+    data = json.loads(out_json.read_text(encoding="utf-8"))
+    assert data["finished"] is True and data["model"] == "fake"
+    assert [v["video_id"] for v in data["videos"]] == [vid]
+    assert GOOD in data["videos"][0]["drafts"][0]["body"]  # 앞에 광고 표기가 붙는다
+    assert GOOD in out_md.read_text(encoding="utf-8")
+    assert src.read_bytes() == before  # 원본 DB는 읽기만
+    # 서비스·DB 연결을 닫고 나와 임시 폴더가 지워진다(Windows에서 파일이 잡혀 있으면 남는다)
+    assert made and not made[0].exists()
+    assert "경고" not in capsys.readouterr().err
+    assert not list(out_json.parent.glob("*.part"))
+
+
+def test_json_keeps_finished_videos_when_a_later_video_crashes(tmp_path, fake_llm, monkeypatch):
+    two = E.load_contexts(CONTEXTS, limit=2)
+    assert len(two) == 2
+    ids = [c["video_id"] for c in two]
+    # 첫 영상만 응답을 준비한다 → 둘째 영상에서 가짜 LLM이 AssertionError로 죽는다
+    _with_fake_llm(monkeypatch, fake_llm([ANALYSIS, {"body": GOOD, "used_quote":
+                                                     "만나도 각자 휴대폰만 봐요",
+                                                     "tone_label": "공감형"}]))
+    made = _record_temp(monkeypatch)
+    out_json = tmp_path / "partial.json"
+
+    with pytest.raises(AssertionError):
+        C.main(["--ai", "ollama", "--db", str(_db_copy(tmp_path)), "--fixtures", ",".join(ids),
+                "-d", "1", "--out-json", str(out_json)])
+
+    data = json.loads(out_json.read_text(encoding="utf-8"))
+    assert data["finished"] is False
+    assert [v["video_id"] for v in data["videos"]] == [ids[0]]
+    assert GOOD in data["videos"][0]["drafts"][0]["body"]  # 앞에 광고 표기가 붙는다
+    assert made and not made[0].exists()  # 죽어도 닫고 지운다
+
+
+def test_temp_cleanup_failure_is_one_warning(tmp_path, monkeypatch, capsys):
+    def boom(path):
+        raise PermissionError(32, "다른 프로세스가 파일을 사용 중")
+
+    monkeypatch.setattr(C.shutil, "rmtree", boom)
+    C.remove_temp(tmp_path / "x")
+    err = capsys.readouterr().err
+    assert err.count("\n") == 1 and err.startswith("경고: 임시 폴더를 지우지 못했습니다")
