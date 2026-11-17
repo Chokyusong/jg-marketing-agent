@@ -43,6 +43,10 @@
   (「재회운이 있는지」). 모델이 쓴 초안에만 본다
 - S20 남의 마음 짐작(D-2): 영상 반응에서 영상 속 사람의 마음을 짐작해 평함(「~다니 미련인가
   싶겠어요」) — 보는 내 반응으로(「그 마음 너무 알겠다ㅠㅠ」). 모델이 쓴 초안에만 본다
+- S21 꼴 보기 그대로(D-1, 루나 실제 실행 뒤): 알고 싶은 것이 프롬프트의 꼴 보기 문구(`WISH_FORMS`,
+  「이 사람이 인연인지」「재회운이 있는지」)와 같음. 모델이 쓴 초안에만 본다
+- S22 알고 싶은 것 자리(D-1, 루나 실제 실행 뒤): 운명원 문장 안에서 「저도」가 이름 앞에 나옴
+  (「저도 맞는 사람을 만날지 요즘 운명원이 … 저도 …」). 모델이 쓴 초안에만 본다
 - S14 잇는 문장의 새 평판(2026-11-18): 운명원 문장 바로 앞 문장(잇는 문장 자리)에 설정에 없는
   운명원 평판·사례(`validator.invented_repute` — 예약·방송·연예인·가격·위치·경력·적중률·구체 사례·
   남이 받아 본 결과). 운명원 대목 자체는 규칙 검사 V14가 막는다
@@ -77,6 +81,7 @@ from app.llm.prompts import (
     BRIDGE_WORDS,
     LEAD_HOWS,
     REASON_WISH,
+    WISH_FORMS,
     Pieces,
     _present,
     brand_part,
@@ -212,6 +217,7 @@ def has_reputation(text: str, brand: str) -> bool:
 
 # S20(2026-11-18 D-2): 영상 속 사람의 마음을 짐작해 평하는 꼴 「~인가/~나 싶겠다」(「미련인가
 # 싶겠어요」). 「힘들었겠어요」 같은 공감은 그대로 둔다
+_ME_TOO = re.compile(r"(?<![가-힣])(?:저도|나도)\s")  # S22: 운명원 문장 안, 이름 앞의 「저도」
 _GUESS_MIND = re.compile(r"[가-힣]*(?:인가|은가|는가|한가|운가|던가|나)\s?싶(?:겠|었겠)[가-힣]*")
 # S19: 잇는 문장과 알고 싶은 것이 함께 쓰면 어색한 같은 낱말(쉬운 잇는 말 + 짝)
 _SHARED_WORDS = (*(w for w in BRIDGE_WORDS if len(w) >= 2), "짝", "때가")
@@ -423,6 +429,24 @@ def _story_issues(
                 f"'{same}'을(를) 되풀이했습니다 — 알고 싶은 것은 다른 말로 쓰세요(예: '인연' → "
                 "'재회운이 있는지', '궁합' → '이 사람이랑 잘 맞을지')"
             )
+    if is_wish(reason) and any(fold(form) == fold(reason) for _, form in WISH_FORMS):
+        issues.append(
+            f"S21 꼴 보기 그대로: '{reason}'은 프롬프트의 꼴 보기 문구 그대로입니다 — 이 영상의 "
+            "고민에서 알고 싶은 것을 내 말로 새로 쓰세요"
+        )
+    for sentence in _sentences(body):
+        at = sentence.find(brand)
+        me = _ME_TOO.search(sentence[:at]) if at > 0 else None
+        words = sentence[me.end():at].split() if me else []
+        while words and not is_wish(" ".join(words)):  # 뒤의 때 말(「요즘」)을 떼어 본다
+            words.pop()
+        if words:  # 처지 한마디(「저도 차이는 편이라 요즘 운명원이 …」)는 걸지 않는다
+            issues.append(
+                f"S22 알고 싶은 것 자리: '{sentence[:at].strip()}' — '저도'가 {brand} 앞에 "
+                f"나왔습니다. 알고 싶은 것은 {brand} 문장 뒤, 가 보겠다는 말 앞에 한 번만 쓰세요"
+                "('저도 [알고 싶은 것] + 끝말')"
+            )
+            break
     first = _sentences(body)[0] if _sentences(body) else ""
     guess = _GUESS_MIND.search(first) if brand not in first else None
     if guess:

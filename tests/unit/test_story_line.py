@@ -207,10 +207,36 @@ def test_target_sample_passes_and_reads_as_one_story():
         issues = [i for i in _style(text, key_phrases=keys, context=TARGET_CONTEXT,
                                     need_bridge=True, bridge_wanted=True,
                                     reason_wanted=P.REASON_WISH) if not i.startswith("S1 ")]
-        assert issues == [], issues
+        # 「재회운이 있는지」는 꼴 보기 문구 그대로라 모델 초안이면 S21로 새로 쓰게 한다
+        # (그 밖의 문제는 없다)
+        assert _codes(issues) == ["S21"], issues
     assert P.reason_kind(TARGET, BRAND) == P.REASON_WISH
     assert P.intent_reason(TARGET, BRAND) == "재회운이 있는지"
     assert P.bridge_sentence(TARGET, BRAND) == "다시 만날 인연은 따로 있나 봐요."
+
+
+def test_s21_copying_a_form_example_word_for_word():
+    # 루나 실제 실행 24개 중 2개가 꼴 보기 문구를 그대로 옮겼다(「이 사람이 인연인지」)
+    for _, form in P.WISH_FORMS:
+        text = f"{REACTION}{LEAD}저도 {form} 한번 보러 가려구요."
+        assert "S21" in _codes(_style(text, reason_wanted=P.REASON_WISH)), form
+    own = REACTION + LEAD + "저도 이 사람이랑 끝까지 갈지 한번 보러 가려구요."
+    assert "S21" not in _codes(_style(own, reason_wanted=P.REASON_WISH))
+    # 정하지 않은 글(사람이 고친 글)은 보지 않는다
+    copied = REACTION + LEAD + "저도 이 사람이 인연인지 한번 보러 가려구요."
+    assert "S21" not in _codes(_style(copied))
+
+
+def test_s22_wish_written_before_the_brand():
+    # 루나 실제 실행에서 나온 꼴: 알고 싶은 것이 운명원 문장 앞에 붙고 「저도」가 두 번
+    bad = ("[광고] 썸/연애 고민을 차분하게 풀어가는 말이 은근 와닿네요... 저도 맞는 사람을 만날지 "
+           "요즘 운명원이 연애 쪽 사주를 진짜 잘 맞춘다고 소문났던데, 저도 기회 되면 보러 가 볼 "
+           "생각이에요")
+    assert "S22" in _codes(_style(bad, key_phrases=[], reason_wanted=P.REASON_WISH))
+    # 처지 한마디의 「저도」가 따로 한 문장이면 괜찮다
+    fine = (REACTION + "저도 미련 많은 편이라.. " + LEAD
+            + "저도 이 사람이랑 맞는지 한번 보러 가려구요.")
+    assert "S22" not in _codes(_style(fine, reason_wanted=P.REASON_WISH))
 
 
 # --- D-2: 내 반응 · 처지 한마디 -------------------------------------------------------------
