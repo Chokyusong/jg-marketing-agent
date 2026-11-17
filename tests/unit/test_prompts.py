@@ -535,3 +535,14 @@ def test_polish_prompt_fixes_only_awkward_parts():
     assert check_schema({"body": "b", "changed": True}, P.POLISH_SCHEMA) == []
     assert check_schema({"body": "b"}, P.POLISH_SCHEMA)
 
+
+
+def test_prompts_say_to_rephrase_video_speech_instead_of_gluing_a_particle():
+    # 2026-11-18(기획 담당): 「말하는 거예요가 답인가 봐」「헤어지자는 거야부터」 → 내 말로
+    system = P.draft_system(brand="운명원", disclosure="[광고]", facts=[])
+    assert "영상 속 말을 가져올 때는 내 말로 바꿔 쓴다('~라는 말', '~하는 게', '~다니')" in system
+    assert ("'그때그때 말하는 거예요가 답인가 봐' ✗ → '그때그때 말하는 게 답인가 봐'"
+            in system)
+    assert "'헤어지자는 거야부터 떠오를 듯' ✗ → '헤어지자는 말부터 떠오를 듯'" in system
+    polish = P.polish_system(brand="운명원", disclosure="[광고]")
+    assert "'헤어지자는 거야부터' → '헤어지자는 말부터'" in polish

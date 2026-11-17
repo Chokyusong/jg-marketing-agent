@@ -218,3 +218,43 @@ def test_s3_going_to_unmyeongwon_or_going_to_see_a_reading_is_fine():
     assert codes("[광고] 그 말 공감. 운명원 잘 본다던데 연애 사주 한번 보러 가 봐야겠다.") == []
     assert codes("[광고] 그 말 공감. 운명원 잘 본다던데 연애 운세 한번 보고 싶다.") == []
     assert codes("[광고] 그 말 공감. 운명원 잘 본다던데 다음에 한번 가 봐야겠네요.") == []
+
+
+# S9(2026-11-18, 기획 담당이 Codex 초안 28개에서 찾음): 영상 속 말을 따옴표 없이 옮기고 끝난 말에
+# 조사를 바로 붙인 꼴. 사람은 「말하는 게」「헤어지자는 말부터」로 쓴다.
+S9_TAIL = " 요즘 운명원이 연애사주를 되게 잘 본다고 하던데, 저도 조만간 한번 가보려구요."
+
+
+@pytest.mark.parametrize("head, shown", [
+    ("[광고] 카페 사진 하나에도 좋아한다니, 그때그때 말하는 거예요가 답인가 봐...", "거예요가"),
+    ("[광고] 애인이 저렇게 말하면 헤어지자는 거야부터 떠오를 듯...", "거야부터"),
+    ("[광고] 연락 문제는 원래 그렇잖아를 몇 번째 듣는 건지.", "그렇잖아를"),
+    ("[광고] 다 괜찮아요만 반복하는 사람 은근 많죠.", "괜찮아요만"),
+])
+def test_s9_particle_glued_to_a_finished_sentence(head, shown):
+    got = issues(head + S9_TAIL)
+    assert [i[:2] for i in got] == ["S9"]
+    assert f"'{shown}'" in got[0] or shown in got[0]
+    assert "'~라는 말', '~하는 게', '~다니'" in got[0]
+
+
+@pytest.mark.parametrize("head", [
+    "[광고] 카페 사진 하나에도 좋아한다니, 그때그때 말하는 게 답인가 봐...",
+    "[광고] 애인이 저렇게 말하면 헤어지자는 말부터 떠오를 듯...",
+    "[광고] 요가 수업에서 만난 사이라니 설렌다.",  # 낱말 「요가」
+    "[광고] 그냥 솔직하게 말해요. 가끔은 그게 답이에요.",  # 문장이 끝나고 새 문장
+    "[광고] 그냥 솔직하게 말해요 가끔은 그게 답이더라.",  # 띄어 씀
+    "[광고] 좋아요가 이렇게 많은 이유가 있네요.",  # 누르는 단추 이름
+    "[광고] 만나다가 헤어지는데도 또 생각난다니 ㅠㅠ",  # 「~다가」「~는데도」
+    "[광고] 헤어지자는 말을 먼저 한다고 지는 게 아니라는 말에 공감.",  # 「~다는」「~라는」
+    "[광고] '그때그때 말하는 거예요'가 정답 같아요.",  # 따옴표로 묶음
+])
+def test_s9_leaves_normal_forms_alone(head):
+    assert codes(head + S9_TAIL) == []
+
+
+def test_s9_never_fires_on_the_models_or_prompt_examples():
+    from app.llm import prompts as P
+
+    texts = list(P.BRAND_MODELS) + [ex.body for ex in P.GOOD_EXAMPLES + P.BAD_EXAMPLES]
+    assert [t for t in texts if S._ENDED_PARTICLE.search(t)] == []
