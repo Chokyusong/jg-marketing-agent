@@ -369,6 +369,255 @@ def ending_choices(
     return [f"저도 {whens[k % len(whens)]} {actions[k % len(actions)]}" for k in range(n)]
 
 
+# ---------------------------------------------------------------- 조각 배정(2026-11-18)
+# 기획 담당이 같은 영상 고치기 전·후 28개를 견줬다: 조각을 권하기만 하니 모델이 「요새 · 꽤 · 잘
+# 본다고 하던데 · 한번 가 보려고요」로 쏠렸다(요새 16, 꽤 12, 「잘 본다」 22, 「가 보려고요」 13,
+# ④ 통째 같은 것 5번 넘게). 이제 **코드가 초안마다 조각을 정해 준다**: 때 · 연애 사주 · 세기 말 ·
+# 잘한다는 말(평판) · 들은 꼴 · 끝말(언제 + 가 보겠다는 말)을 앞서 보인 초안에 덜 쓴 것부터,
+# 같으면 무작위로 고른다. 다시 쓸 때(규칙·다듬기·검수 어느 까닭이든)도 같은 배정을 준다.
+# 잘한다는 말: 「잘 본다」만 늘지 않게 다섯 동사가 몫을 나눈다. 틀(이름·연애 사주·세기 말), 사전
+# 꼴(「~다」), 줄기(「~기로 유명하다던데」 앞)
+PIECE_VERBS: tuple[tuple[str, str, str], ...] = (
+    ("{brand_i} {love}를 {how}", "잘 본다", "잘 보"),
+    ("{brand}에서 {love}를 {how}", "잘 봐준다", "잘 봐주"),
+    ("{brand_i} {love}를 {how}", "잘 맞춘다", "잘 맞추"),
+    ("{brand} {love}가 {how}", "잘 맞는다", "잘 맞"),
+    ("{brand} {love}가 {how}", "정확하다", "정확하"),
+)
+# 들은 꼴: ("da", 꼴)은 사전 꼴 「~다」 뒤에, ("stem", 꼴)은 줄기 뒤에, ("friend", 꼴)은 「친구가
+# {brand} {love} {how} ~다」 뒤에 붙는다. 같은 설정(연애사주를 잘 본다)을 다른 말로 옮긴 들은
+# 평판(유명·소문·얘기가 많음·후기·추천)도 여기 든다 — 새 사실은 넣지 않는다(V14)
+PIECE_HEARS: tuple[tuple[str, str], ...] = (
+    ("da", "고 하던데"), ("da", "고 하더라구요"), ("da", "고들 하던데"),
+    ("da", "는 얘기를 들었는데"), ("da", "는 이야기가 있던데"), ("da", "는 얘기가 있더라구요"),
+    ("da", "던데"), ("da", "고 소문났던데"), ("da", "고 입소문이 났던데"),
+    ("da", "는 얘기가 많던데"), ("da", "는 후기가 많던데"),
+    ("stem", "기로 유명하다던데"), ("friend", "고 추천하던데"),
+)
+# 「잘 맞는다」「정확하다」는 효능 말이라 들은 얘기 꼴로만 받는다(V10). 소문·입소문·후기·추천과
+# 붙이면 V10에 걸려 이 짝은 배정하지 않는다(규칙을 넓히지 않고 배정에서 뺐다 — 2026-11-18)
+PIECE_SKIP: frozenset[tuple[int, int]] = frozenset(
+    (v, h) for v in (3, 4) for h in (7, 8, 10, 12)
+)
+# 동사 없이 통째로 쓰는 들은 평판(잘한다는 말 자리의 여섯째 몫)
+PIECE_WHOLES: tuple[str, ...] = (
+    "{brand_i} {love}로 {how} 유명하던데",
+    "주변에서 {love}는 {brand_r} 많이 추천하던데",
+    "{love}는 {brand_ira} 말이 많던데",
+)
+PIECE_HOWS: tuple[str, ...] = (*LEAD_HOWS, "")  # 세기 말 없이도
+# 잘한다는 말이 쓰였는지 알아보는 표(띄어쓰기 뺀 꼴). 마지막은 통째 꼴
+_VERB_MARKS: tuple[tuple[str, ...], ...] = (
+    ("잘본다", "잘보기로", "잘봐요"), ("잘봐준다", "잘봐주기로"), ("잘맞춘다", "잘맞추기로"),
+    ("잘맞는다", "잘맞기로"), ("정확하다", "정확하기로"),
+    ("유명하던데", "많이추천하던데", "말이많던데"),
+)
+
+
+@dataclass(frozen=True)
+class Pieces:
+    """이번 초안의 운명원 대목 조각(코드가 정한다). `verb`가 len(PIECE_VERBS)면 통째 꼴
+    (`PIECE_WHOLES[hear]`), 아니면 `PIECE_HEARS[hear]`."""
+
+    time: str
+    love: str
+    how: str
+    verb: int
+    hear: int
+    when: str
+    action: str
+
+    def lead(self, brand: str) -> str:
+        """꺼내는 말(때 + 이름 + 연애 사주 + 세기 말 + 잘한다는 말 + 들은 꼴)."""
+        names = name_forms(brand)
+        how = self.how
+        if self.verb >= len(PIECE_VERBS):
+            body = PIECE_WHOLES[self.hear].format(love=self.love, how=how, **names)
+        else:
+            frame, word, stem = PIECE_VERBS[self.verb]
+            kind, tail = PIECE_HEARS[self.hear]
+            if kind == "friend":
+                body = f"친구가 {brand} {self.love} {how} {word}{tail}"
+            else:
+                body = frame.format(love=self.love, how=how, **names) + " " + (
+                    word + tail if kind == "da" else stem + tail)
+        return re.sub(r"\s+", " ", f"{self.time} {body}").strip()
+
+    def joined(self, brand: str) -> str:
+        """꺼내는 말 + 「저도」 + 끝말(「~요」로 끝나면 문장을 끊고, 아니면 쉼표로 잇는다)."""
+        lead = self.lead(brand)
+        joint = ". " if lead.endswith(("요", "여")) else ", "
+        return f"{lead}{joint}저도 {self.ending()}"
+
+    def ending(self) -> str:
+        """끝말(언제 + 가 보겠다는 말). 「저도」와 까닭은 앞에 붙는다."""
+        return f"{self.when} {self.action}"
+
+    def describe(self, brand: str) -> list[tuple[str, str]]:
+        """프롬프트에 보일 조각 이름과 말."""
+        whole = self.verb >= len(PIECE_VERBS)
+        if whole:
+            repute = PIECE_WHOLES[self.hear].format(
+                love=self.love, how=self.how, **name_forms(brand))
+            hear = "(평판 말에 들어 있음)"
+        else:
+            frame, word, stem = PIECE_VERBS[self.verb]
+            kind, tail = PIECE_HEARS[self.hear]
+            repute = word if kind != "stem" else stem + "기로"
+            hear = ("친구가 … " if kind == "friend" else "~") + tail.strip()
+        return [("때", self.time), ("연애 사주", self.love), ("세기 말", self.how or "(없음)"),
+                ("평판", re.sub(r"\s+", " ", repute).strip()), ("들은 꼴", hear),
+                ("끝말", self.ending())]
+
+    def marks(self) -> dict[str, str]:
+        """배정한 조각이 글에 있는지 볼 표(띄어쓰기 뺀 꼴, 빈 글이면 보지 않는다).
+        잘한다는 말은 사전 꼴로 본다(줄기 「잘 맞」은 「잘 맞춘다」 안에도 있다)."""
+        if self.verb >= len(PIECE_VERBS):
+            verb, hear = _VERB_MARKS[-1][self.hear], ""
+        else:
+            _, word, stem = PIECE_VERBS[self.verb]
+            kind, tail = PIECE_HEARS[self.hear]
+            verb = fold(stem + "기로") if kind == "stem" else fold(word)
+            hear = fold(tail) if len(fold(tail)) > 2 else ""
+        return {"때": fold(self.time), "세기 말": fold(self.how), "평판": verb,
+                "들은 꼴": hear, "끝말": fold(self.action)}
+
+
+def _verb_of(text: str) -> int:
+    """글에 쓴 잘한다는 말의 몫(번호, 없으면 -1)."""
+    flat = fold(text)
+    for i, marks in enumerate(_VERB_MARKS):
+        if any(m in flat for m in marks):
+            return i
+    return -1
+
+
+def _hear_of(text: str) -> int:
+    """글에 쓴 들은 꼴(`PIECE_HEARS` 번호, 없으면 -1). 긴 것부터 찾는다."""
+    flat = fold(text)
+    order = sorted(range(len(PIECE_HEARS)), key=lambda i: -len(fold(PIECE_HEARS[i][1])))
+    return next((i for i in order if fold(PIECE_HEARS[i][1]) in flat), -1)
+
+
+def _least_index(count: Sequence[int], recent: Sequence[int], rng: random.Random,
+                 avoid: set[int] = frozenset()) -> list[int]:
+    tie = [rng.random() for _ in count]
+    return sorted(range(len(count)), key=lambda i: (i in avoid, recent[i], count[i], tie[i]))
+
+
+def lead_part(text: str, brand: str) -> str:
+    """④ 꺼내는 말: 운명원이 든 문장에서 「저도」 앞까지(쉼표·끝 공백 뺌). 없으면 빈 글."""
+    sentences = _sentences(text)
+    hit = next((s for s in sentences if brand and brand in s), "")
+    if not hit:
+        return ""
+    return hit.split("저도", 1)[0].strip(" ,")
+
+
+def brand_part(text: str, brand: str) -> str:
+    """운명원 대목: 운명원이 든 첫 문장부터 끝까지(없으면 빈 글)."""
+    sentences = _sentences(text)
+    at = next((i for i, s in enumerate(sentences) if brand and brand in s), -1)
+    return " ".join(s.strip() for s in sentences[at:]) if at >= 0 else ""
+
+
+def ending_part(text: str, brand: str) -> str:
+    """⑤ 끝말: 운명원 대목 안의 첫 「저도」부터 끝까지(없으면 빈 글)."""
+    part = brand_part(text, brand)
+    at = part.find("저도")
+    return part[at:] if at >= 0 else ""
+
+
+def assign_pieces(
+    brand: str, used_texts: Sequence[str], *, avoid: Sequence[str] = (),
+    rng: random.Random | None = None, keep: Pieces | None = None,
+) -> Pieces:
+    """이번 초안의 조각을 정한다(2026-11-18). 조각마다 앞서 보인 초안(`used_texts`, 최신이 앞)에
+    덜 쓴 것 — 최근 `RECENT_TEXTS`개 글 먼저, 다음 전체 횟수, 같으면 무작위. 같은 영상 앞 초안
+    (`avoid`)에 쓴 것은 뒤로. `keep`이 있으면 그대로 돌려준다(다시 쓸 때 같은 배정).
+
+    잘한다는 말은 여섯 몫(동사 다섯 + 통째 꼴)으로 나눠 「잘 본다」가 쏠리지 않게 한다. 꺼내는 말이
+    앞서 보인 초안과 통째로 같아지면 다음 들은 꼴로 바꾼다."""
+    if keep is not None:
+        return keep
+    rng = rng if rng is not None else random.Random()
+    # 조각은 제자리에서만 센다(영상 반응의 「요즘」이나 「꽤」를 세지 않게)
+    full_used, full_avoid = used_texts, avoid
+    used_texts = [x for x in (lead_part(t, brand) for t in full_used) if x]
+    avoid = [x for x in (lead_part(t, brand) for t in full_avoid) if x]
+    used_ends = [x for x in (ending_part(t, brand) for t in full_used) if x]
+    avoid_ends = [x for x in (ending_part(t, brand) for t in full_avoid) if x]
+    time = _least_used(LEAD_TIMES, used_texts, avoid, rng)[0]
+    love = _least_used(LEAD_LOVES, used_texts, avoid, rng)[0]
+    # 세기 말: 일곱 가지 + 「없이」(여덟째 몫, 세기 말이 없는 글을 그 몫으로 센다)
+    hows_seen = [_present(LEAD_HOWS, t) for t in used_texts]
+    hows_avoid = set().union(*(_present(LEAD_HOWS, t) for t in avoid)) if avoid else set()
+    n_how = len(PIECE_HOWS)
+    how_count = [sum((i in s) if i < n_how - 1 else (not s) for s in hows_seen)
+                 for i in range(n_how)]
+    how_recent = [sum((i in s) if i < n_how - 1 else (not s) for s in hows_seen[:RECENT_TEXTS])
+                  for i in range(n_how)]
+    how = PIECE_HOWS[_least_index(how_count, how_recent, rng, hows_avoid)[0]]
+    verbs_seen = [_verb_of(t) for t in used_texts]
+    total = len(PIECE_VERBS) + 1
+    count = [verbs_seen.count(i) for i in range(total)]
+    recent = [verbs_seen[:RECENT_TEXTS].count(i) for i in range(total)]
+    avoided = {_verb_of(t) for t in avoid}
+    verb = _least_index(count, recent, rng, avoided)[0]
+    if verb >= len(PIECE_VERBS):
+        options = PIECE_WHOLES
+        seen = [next((k for k, m in enumerate(_VERB_MARKS[-1]) if m in fold(t)), -1)
+                for t in used_texts]
+    else:
+        options = tuple(h for _, h in PIECE_HEARS)
+        seen = [_hear_of(t) for t in used_texts]
+    hc = [seen.count(i) for i in range(len(options))]
+    hr = [seen[:RECENT_TEXTS].count(i) for i in range(len(options))]
+    hears = [h for h in _least_index(hc, hr, rng) if (verb, h) not in PIECE_SKIP]
+    whens = _least_used(END_WHENS, used_ends, avoid_ends, rng)
+    actions = _least_used(END_ACTIONS, used_ends, avoid_ends, rng)
+    leads = {fold(t) for t in [*used_texts, *avoid]}
+    pick = None
+    for hear in hears:
+        # 세기 말 자리가 없는 통째 꼴(「주변에서 … 많이 추천하던데」)이면 세기 말도 없다
+        bare = verb >= len(PIECE_VERBS) and "{how}" not in PIECE_WHOLES[hear]
+        pick = Pieces(time, love, "" if bare else how, verb, hear, whens[0], actions[0])
+        if fold(pick.lead(brand)) not in leads:
+            break
+    assert pick is not None
+    return pick
+
+
+def pieces_of(text: str, brand: str, *, rng: random.Random | None = None) -> Pieces | None:
+    """글에서 조각을 읽어 낸다(AI 검수 뒤 다시 쓸 때 앞 초안과 같은 배정을 주려고). 하나라도 못
+    찾으면 None(그때는 새로 정한다)."""
+    lead, end = lead_part(text, brand), ending_part(text, brand)
+    times = _present(LEAD_TIMES, lead)
+    loves = _present(LEAD_LOVES, lead)
+    hows = _present(LEAD_HOWS, lead)
+    verb = _verb_of(lead)
+    whens = _present(END_WHENS, end)
+    actions = _present(END_ACTIONS, end)
+    if not times or not loves or verb < 0 or not whens or not actions:
+        return None
+    if verb >= len(PIECE_VERBS):
+        flat = fold(lead)
+        hear = next((k for k, m in enumerate(_VERB_MARKS[-1]) if m in flat), -1)
+    else:
+        hear = _hear_of(lead)
+    if hear < 0:
+        return None
+
+    def longest(found: set[int], options: Sequence[str]) -> str:
+        return max((options[i] for i in found), key=len)
+
+    return Pieces(
+        time=longest(times, LEAD_TIMES), love=longest(loves, LEAD_LOVES),
+        how=longest(hows, LEAD_HOWS) if hows else "", verb=verb, hear=hear,
+        when=longest(whens, END_WHENS), action=longest(actions, END_ACTIONS),
+    )
+
+
 # ⑤ 안의 까닭(2026-11-18 기획 담당): 「저도 + (이 영상 고민에서 온 짧은 까닭) + 언제 + 가 보겠다는
 # 말」 — 「저도 썸이 답답해서 조만간 한번 가보려구요」「저도 재회 문제로 기회 되면 한번 가
 # 보려고요」「저도 맞는지 확인하러 가 보려고요」. 까닭은 「~서·~때문에·~문제로·~러·~ㄹ지/는지」로
@@ -821,7 +1070,8 @@ def draft_system(
         "보는 사람 자리에서 반응해도 좋고, 맞는 처지 한마디가 없으면 붙이지 않는다.\n"
         f"③ {brand} 대목 — 두 토막 45~55자쯤. {brand}은 '연애 사주 잘 봐주는 곳으로 유명한 "
         "곳'이다. "
-        "**다섯 조각을 다 넣는다**(하나라도 빠지면 검사에 걸린다): "
+        "**다섯 조각을 다 넣는다**(하나라도 빠지면 검사에 걸린다). **이번 초안에 쓸 조각은 요청 "
+        "글이 정해 준다 — 그 조각 그대로 쓴다**(아래는 조각의 종류다): "
         f"⑴ 때(요즘·요새·최근·최근에) ⑵ 이름({with_i(brand)}·{brand}에서·{brand}) "
         "⑶ 연애 사주(연애사주·연애 쪽 사주) "
         "⑷ 잘 본다는 평판을 들은 얘기로((그렇게·진짜·엄청·특히·되게·꽤) + 잘 본다·잘 봐준다·잘 "
@@ -838,7 +1088,7 @@ def draft_system(
         "넣으면 앞 문장과 더 이어진다. ② 잇는 문장과 이 까닭 가운데 **적어도 하나는** 넣고, 둘 "
         "다 넣으면 더 좋다(길이가 넘치면 까닭을 뺀다). 꼴만 따른다: 이 영상의 고민 한 줄을 12자 "
         "안의 내 말로 줄이고 "
-        "'~서', '~때문에', '~문제로', '~러'로 끝낸다('저도 [까닭] 조만간 한번 가 보려고요'). "
+        "'~서', '~때문에', '~문제로', '~러'로 끝낸다('저도 [까닭] + 요청 글이 정해 준 끝말'). "
         "까닭 문구는 영상마다 새로 쓴다 — 예시나 앞 초안의 까닭을 그대로 쓰지 않는다. "
         "까닭은 고민 한 줄·핵심 말에서 가져오고 지어내지 않는다 — 영상 속 "
         "숫자·사정·애인을 내 것으로 옮기지 않는다('저도 3년 만난 남친 때문에' ✗), 써 본 척하지 "
@@ -965,6 +1215,7 @@ def draft_user(
     bridge: bool = False,
     used_bridges: Sequence[str] = (),
     thin: bool = False,
+    pieces: Pieces | None = None,
 ) -> str:
     """초안 요청. 다시 쓸 때는 앞의 본문과 실패 문구(`Validation.failure_lines()`)를 넣는다.
 
@@ -982,6 +1233,8 @@ def draft_user(
     넣는다.
     `thin`: 자막이 없는 영상(제목·설명·인기 댓글만, 2026-11-18). 제목 낱말을 되풀이하지 말고 인기
     댓글에 나온 사연·말을 ① 영상 반응의 재료로 쓰게 한다.
+    `pieces`: 코드가 정한 이번 초안의 운명원 대목 조각(`assign_pieces`, 2026-11-18). 주면
+    `hearsay`·`endings` 권유 대신 이 조각을 그대로 쓰라고 한다(다시 쓸 때도 같은 조각).
     """
     target_lo, target_hi = body_target(min_body=min_body, max_body=max_body, max_chars=max_chars)
     concern = analysis.get("concern", "")
@@ -1026,14 +1279,22 @@ def draft_user(
         f"고민 한 줄('{concern}')을 그대로 옮기지 말고, 영상 반응과 {brand}에 가 보겠다는 말로 "
         "바꿔 쓴다(써 본 척 없이 의향까지만).",
     ]
-    if hearsay:
+    if pieces is not None:
+        named = " / ".join(f"{k}='{v}'" for k, v in pieces.describe(brand))
+        parts.append(
+            f"이번 초안의 {brand} 대목: {named} — 이 조각은 정해져 있다(바꾸지 않는다). "
+            f"이어 쓰면: '{pieces.joined(brand)}'. "
+            "다른 때·세기 말·잘한다는 말·들은 꼴·끝말을 쓰면 다시 쓰게 된다. 까닭을 넣으면 "
+            f"'저도' 바로 뒤에: '저도 [까닭] {pieces.ending()}'."
+        )
+    elif hearsay:
         parts.append(
             f"{brand}을 꺼내는 말은 이번에 이런 식으로(권유일 뿐이다 — 조각을 바꿔도 되지만 "
             "때·이름·"
             "연애 사주·잘 본다는 들은 얘기는 다 넣는다): "
             + " / ".join(f"'{h}'" for h in hearsay)
         )
-    if endings:
+    if endings and pieces is None:
         parts.append(
             "바람의 끝말은 이번에 이런 식으로(목록에 없는 말도 되지만 가 보겠다는 뜻은 넣는다): "
             + " / ".join(f"'{e}'" for e in endings)
@@ -1042,13 +1303,15 @@ def draft_user(
         parts.append(
             "이번 끝말에는 '저도' 뒤, 가 보겠다는 말 앞에 이 영상의 고민에서 온 짧은 까닭(12자 "
             f"안)을 넣는다 — 고민 한 줄('{concern}')을 쉬운 내 말로 줄여 '~서·~때문에·~문제로·"
-            "~러'로 끝낸다('저도 [까닭] 조만간 한번 가 보려고요'). 지어내지 않고, 영상 속 숫자·"
-            "사정·애인을 내 것으로 옮기지 않는다."
+            "~러'로 끝낸다('저도 [까닭] + "
+            + (f"{pieces.ending()}'" if pieces is not None else "끝말'")
+            + "). 지어내지 않고, 영상 속 숫자·사정·애인을 내 것으로 옮기지 않는다."
         )
     elif reason is False:
         parts.append(
-            "같은 영상의 앞 초안에 까닭을 넣었으니 이번 끝말은 까닭 없이 본보기 꼴('저도 조만간 "
-            "한번 가보려구요')로 써도 된다."
+            "같은 영상의 앞 초안에 까닭을 넣었으니 이번 끝말은 까닭 없이 본보기 꼴('저도 "
+            + (f"{pieces.ending()}'" if pieces is not None else "+ 끝말'")
+            + ")로 써도 된다."
         )
     if bridge:
         parts.append(
@@ -1131,8 +1394,8 @@ def polish_system(*, brand: str, disclosure: str) -> str:
         "2. 틀린 조사·어미·띄어쓰기('이유여쭤보고' → '이유 물어보고', '없었네라는 말에' → "
         "'없었다는 말에', 끝난 말에 바로 붙인 조사 '헤어지자는 거야부터' → '헤어지자는 말부터')\n"
         "3. 억지로 끼운 말(영상 속 용어를 바람에 끼운 것: '내짝 찾기 언제 되는지' → '나도 언제 짝 "
-        "만나는지'). '저도' 뒤 가 보겠다는 말 앞의 짧은 까닭('저도 [까닭] 조만간 한번 가 "
-        "보려고요'의 [까닭])은 그대로 둔다\n"
+        "만나는지'). '저도' 뒤 가 보겠다는 말 앞의 짧은 까닭('저도 [까닭] + 끝말'의 "
+        "[까닭])과 운명원 대목의 때·세기 말·평판·들은 꼴·끝말은 그대로 둔다\n"
         "4. 영상 속 숫자·사정을 그대로 내 것으로 옮긴 문장, 인터뷰한 유명인의 일을 내 일처럼 "
         "쓴 문장 → 숫자 없는 내 말이나 보는 사람 자리의 반응으로(비슷한 처지라는 공감은 "
         "그대로 둔다)\n"

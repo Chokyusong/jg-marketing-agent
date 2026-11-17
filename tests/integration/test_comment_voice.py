@@ -138,8 +138,9 @@ def test_draft_prompt_carries_key_phrases_tones_and_hearsay(setup):
     user = user_prompts(llm)[1]
     assert "[핵심 말] '장거리', '하루에 한 번 연락', '기대치 차이'" in user
     assert "[말투] 이번 말투는 다음 중" in user
-    assert "운명원을 꺼내는 말은 이번에 이런 식으로" in user
-    assert "바람의 끝말은 이번에 이런 식으로" in user
+    # 2026-11-18: 권유 목록 대신 코드가 정해 준 조각(때·평판·들은 꼴·끝말)
+    assert "이번 초안의 운명원 대목: 때='" in user and "/ 끝말='" in user
+    assert "운명원을 꺼내는 말은 이번에 이런 식으로" not in user
     assert "과제가 보여 준 예시 댓글" in llm.calls[1]["kwargs"]["system"]
 
 
@@ -193,7 +194,8 @@ def test_next_video_cannot_reuse_the_last_approved_tone(setup):
     enum = llm.calls[3]["kwargs"]["schema"]["properties"]["tone_label"]["enum"]
     assert "한탄형" not in enum and len(enum) == 3
     # 앞 영상에서 쓴 운명원 꺼내는 말의 조각(잘 본다 · 고 하던데)은 이번 권유에서 뒤로 밀린다
-    line = next(x for x in user_prompts(llm)[3].splitlines() if "꺼내는 말은" in x)
+    line = next(x for x in user_prompts(llm)[3].splitlines()
+                if x.startswith("이번 초안의 운명원 대목:"))
     assert "잘 본다고 하던데" not in line
     assert "이미 쓴 첫 반응(다른 영상에 승인됨)" in user_prompts(llm)[3]
 

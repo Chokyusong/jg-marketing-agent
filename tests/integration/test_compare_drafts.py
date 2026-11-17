@@ -7,6 +7,7 @@
 
 import json
 import random
+import re
 import tempfile
 from pathlib import Path
 
@@ -208,17 +209,21 @@ def test_temp_cleanup_failure_is_one_warning(tmp_path, monkeypatch, capsys):
 
 # ------------------------------------------------ 2026-11-17 꺼내는 말·끝말이 영상마다 흩어지는지
 
-HEARSAY_HEAD = "운명원을 꺼내는 말은"
-ENDING_HEAD = "바람의 끝말은"
+# 2026-11-18: 권유 목록 대신 코드가 정해 준 조각 줄(「이번 초안의 운명원 대목: … 이어 쓰면:
+# '꺼내는 말, 저도 끝말'」)
+PIECES_HEAD = "이번 초안의 운명원 대목:"
 
 
-def _first_quoted(prompt: str, head: str) -> str:
-    line = next(x for x in prompt.splitlines() if x.startswith(head))
-    return line.split(": ", 1)[1].split("'")[1]
+def _assigned(prompt: str) -> tuple[str, str]:
+    line = next(x for x in prompt.splitlines() if x.startswith(PIECES_HEAD))
+    joined = line.split("이어 쓰면: '", 1)[1].split("'", 1)[0]
+    lead, ending = re.split(r"[,.] 저도 ", joined, maxsplit=1)
+    return lead, "저도 " + ending
 
 
 class FirstChoiceLLM:
-    """권한 첫 번째 꺼내는 말·끝말을 그대로 쓰는 가짜 AI(실제 모델이 첫 권유를 따른다고 칠 때)."""
+    """정해 준 꺼내는 말·끝말을 그대로 쓰는 가짜 AI(실제 모델이 조각을 따른다고 칠 때).
+    2026-11-18 전에는 권유 목록의 첫 번째를 썼다."""
 
     model = "fake-first-choice"
 
@@ -238,8 +243,7 @@ class FirstChoiceLLM:
             return {"topic": "연애 고민", "concern": "이 관계를 계속 가도 될까", "tone": "차분",
                     "viewer_needs": "고민을 덜고 싶다", "is_love": True,
                     "evidence": [{"quote": quote, "source": "comment"}], "key_phrases": []}
-        lead = _first_quoted(user, HEARSAY_HEAD)
-        ending = _first_quoted(user, ENDING_HEAD)
+        lead, ending = _assigned(user)
         self.leads.append(lead)
         self.endings.append(ending)
         joint = ". " if lead.endswith(("요", "여")) else ", "  # 끝말은 「저도 …」로 시작한다

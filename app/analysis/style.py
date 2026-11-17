@@ -27,6 +27,9 @@
   **모델이 쓴 초안에만** 본다(`need_bridge`) — 사람이 고친 글과 대표 본보기 10개는 그대로 둔다.
 - S12 잇는 문장 되풀이: 잇는 문장이 앞서 보인 초안(다른 영상 포함)이나 프롬프트의 좋은 예의 잇는
   문장과 같거나 거의 같음(맞춤법을 지우고 70% 넘게 같음)
+- S15 정해 준 조각과 다름(2026-11-18): 코드가 초안마다 정해 준 운명원 대목 조각(때·세기 말·
+  평판·들은 꼴·끝말, `prompts.assign_pieces`)이 글에 없거나, ④ 꺼내는 말이 앞서 보인 초안과
+  통째로 같음. **모델이 쓴 초안에만** 본다(`pieces`) — 사람이 고친 글은 그대로 둔다
 - S14 잇는 문장의 새 평판(2026-11-18): 운명원 문장 바로 앞 문장(잇는 문장 자리)에 설정에 없는
   운명원 평판·사례(`validator.invented_repute` — 예약·방송·연예인·가격·위치·경력·적중률·구체 사례·
   남이 받아 본 결과). 운명원 대목 자체는 규칙 검사 V14가 막는다
@@ -57,7 +60,18 @@ from app.analysis.validator import (
     normalize,
     strip_hashtags,
 )
-from app.llm.prompts import bridge_sentence, copied_model, fold, intent_reason, with_i
+from app.llm.prompts import (
+    LEAD_HOWS,
+    Pieces,
+    _present,
+    brand_part,
+    bridge_sentence,
+    copied_model,
+    fold,
+    intent_reason,
+    lead_part,
+    with_i,
+)
 
 SOFT_MAX_TOTAL = 110
 # 1~5회차 실제 초안: 다른 영상 초안끼리 가장 닮은 것이 0.55, 같은 영상 두 초안은 0.18~0.67,
@@ -206,6 +220,8 @@ def style_issues(
     used_reasons: Sequence[str] = (),
     need_bridge: bool = False,
     used_bridges: Sequence[str] = (),
+    pieces: Pieces | None = None,
+    used_leads: Sequence[str] = (),
 ) -> list[str]:
     """다시 쓰게 할 까닭들(없으면 빈 목록).
 
@@ -215,6 +231,8 @@ def style_issues(
     `need_bridge`: 참이면 잇는 문장·까닭이 둘 다 없는 글을 S11로 잡는다(모델이 쓴 초안만).
     `used_bridges`: 앞서 보인 초안·좋은 예의 잇는 문장(S12, 없으면 보지 않는다).
     `context`는 S13(해시태그로만 있는 낱말을 댓글에 씀, 2026-11-18)에도 쓴다.
+    `pieces`: 코드가 정해 준 이번 초안의 운명원 대목 조각(S15, 없으면 보지 않는다).
+    `used_leads`: 앞서 보인 초안들의 ④ 꺼내는 말(`prompts.lead_part`, S15).
     """
     issues: list[str] = []
     body = _body(text, disclosure)
@@ -309,6 +327,8 @@ def style_issues(
             f"S12 잇는 문장 되풀이: '{bridge}'은 앞서 쓴 잇는 문장('{old_bridge}')과 거의 같습니다 "
             "— 이 영상 고민에 맞는 다른 말로 쓰세요"
         )
+    if pieces is not None and brand:
+        issues += piece_issues(body, brand, pieces, used_leads)
     tag = hashtag_word(body, context)
     if tag:
         issues.append(
@@ -376,6 +396,35 @@ def hashtag_word(body: str, context: str) -> str:
         if len(n) >= 3 and n not in plain and n in body_n:
             return tag
     return ""
+
+
+def piece_issues(
+    body: str, brand: str, pieces: Pieces, used_leads: Sequence[str] = ()
+) -> list[str]:
+    """S15(2026-11-18): 정해 준 조각이 글에 없거나 ④가 앞서 보인 초안과 통째로 같음."""
+    part = brand_part(body, brand)
+    if not part:
+        return []
+    flat = fold(part)
+    named = dict(pieces.describe(brand))
+    missing = [name for name, mark in pieces.marks().items() if mark and mark not in flat]
+    lead = lead_part(body, brand)
+    if not pieces.how and _present(LEAD_HOWS, lead):
+        missing.append("세기 말")  # 세기 말 없이로 정했는데 넣음
+    out: list[str] = []
+    if missing:
+        shown = " / ".join(f"{n}='{named[n]}'" for n in missing)
+        out.append(
+            f"S15 정해 준 조각과 다름: {shown}을(를) 그대로 쓰세요 — {brand} 대목은 "
+            f"'{pieces.joined(brand)}' 꼴로(까닭은 '저도' 뒤에)"
+        )
+    mine = fold(lead)
+    if mine and any(mine == fold(u) for u in used_leads if u):
+        out.append(
+            f"S15 꺼내는 말 되풀이: '{lead}'은 앞서 보인 초안과 똑같습니다 — 정해 준 조각으로 "
+            "다시 쓰세요"
+        )
+    return out
 
 
 def repeated_bridge(bridge: str, used: Sequence[str]) -> str:

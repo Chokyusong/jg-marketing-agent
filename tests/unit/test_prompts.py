@@ -561,7 +561,9 @@ def test_draft_system_shows_reasons_from_the_concern_and_what_not_to_make_up():
     for example in ("썸이 답답해서", "속마음이 궁금해서", "재회 문제로", "맞는지 확인하러"):
         assert example not in SYSTEM, example
     assert ("꼴만 따른다: 이 영상의 고민 한 줄을 12자 안의 내 말로 줄이고 '~서', '~때문에', "
-            "'~문제로', '~러'로 끝낸다('저도 [까닭] 조만간 한번 가 보려고요')") in SYSTEM
+            "'~문제로', '~러'로 끝낸다('저도 [까닭] + 요청 글이 정해 준 끝말')") in SYSTEM
+    # 2026-11-18(기획 담당): 까닭 예시에서 끝말을 뺐다 — 끝말은 코드가 초안마다 정해 준다
+    assert "조만간 한번 가 보려고요" not in SYSTEM
     assert "예시나 앞 초안의 까닭을 그대로 쓰지 않는다" in SYSTEM
     assert "(이 까닭 문구는 그대로 쓰지 않는다)" in SYSTEM
     assert "까닭은 고민 한 줄·핵심 말에서 가져오고 지어내지 않는다" in SYSTEM
@@ -571,7 +573,8 @@ def test_draft_system_shows_reasons_from_the_concern_and_what_not_to_make_up():
     assert [P.intent_reason(ex.body, "운명원") for ex in with_reason] == ["이 썸 끝이 궁금해서"]
     assert len(P.GOOD_EXAMPLES) - len(with_reason) == 3
     polish = P.polish_system(brand="운명원", disclosure="[광고]")
-    assert "짧은 까닭('저도 [까닭] 조만간 한번 가 보려고요'의 " in polish
+    assert "짧은 까닭('저도 [까닭] + 끝말'의 [까닭])" in polish
+    assert "운명원 대목의 때·세기 말·평판·들은 꼴·끝말은 그대로 둔다" in polish
     assert "썸이 답답해서" not in polish
 
 
@@ -583,7 +586,8 @@ def test_draft_user_asks_for_a_reason_until_one_draft_has_it():
     assert f"고민 한 줄('{concern}')을 쉬운 내 말로 줄여 '~서·~때문에·~문제로·~러'로" in want
     assert "썸이 답답해서" not in want
     free = P.draft_user(**base, reason=False)
-    assert "이번 끝말은 까닭 없이 본보기 꼴('저도 조만간 한번 가보려구요')로 써도 된다" in free
+    # 2026-11-18(기획 담당): 끝말 예시는 빼고, 조각을 정해 주면 그 끝말로
+    assert "이번 끝말은 까닭 없이 본보기 꼴('저도 + 끝말')로 써도 된다" in free
     assert "짧은 까닭(12자" not in free
     plain = P.draft_user(**base)
     assert "이번 끝말에는" not in plain and "까닭 없이" not in plain

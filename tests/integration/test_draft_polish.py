@@ -117,8 +117,9 @@ def test_another_draft_must_differ_from_the_earlier_one(setup):
     assert "같은 영상에 이미 쓴 초안 — 이것과 다른 글로 쓴다" in prompt
     assert f"- [광고] {GOOD_BODY}" in prompt
     assert "앞 초안에 쓴 핵심 말('하루에 한 번 연락') 말고 다른 핵심 말로 시작한다" in prompt
-    hearsay = next(x for x in prompt.splitlines() if x.startswith("운명원을 꺼내는 말은"))
-    # 앞 초안이 쓴 꺼내는 말의 조각(잘 본다 · 고 하던데)은 권하지 않는다(2026-11-17 조각별 목록)
+    hearsay = next(x for x in prompt.splitlines() if x.startswith("이번 초안의 운명원 대목:"))
+    # 앞 초안이 쓴 꺼내는 말의 조각(잘 본다 · 고 하던데)은 정해 주지 않는다(2026-11-18 조각 배정,
+    # 예전에는 권유 목록에서 뺐다)
     assert "잘 본다고 하던데" not in hearsay
     assert "- S4 앞 초안과 비슷함: 같은 영상의 앞 초안과 100% 같습니다" in retry
 

@@ -84,6 +84,10 @@ POLISH_DRAFTS = False
 # `tests/conftest.py`가 끈다 — 그 전에 짠 가짜 초안들은 잇는 문장 없이 썼고 응답을 하나씩만
 # 준비해서, 켜 두면 다시 쓰기 차례가 하나씩 밀린다. S11 자체의 시험은 켜고 본다.
 BRIDGE_CHECK = True
+# 다듬기 검사 S15(정해 준 운명원 조각과 다름·④ 통째 되풀이, 2026-11-18)를 모델 초안에 쓸지.
+# S11과 같은 까닭으로 자동 테스트는 `tests/conftest.py`가 끈다(그 전에 짠 가짜 초안은 정해 준
+# 조각을 모른다). 프롬프트의 조각 배정은 늘 켜져 있다. S15 자체의 시험은 켜고 본다.
+PIECE_CHECK = True
 # 꺼내는 말·끝말을 돌려 쓸 때 보는 「보인 초안」 수(최근 것부터, 2026-11-17)
 SHOWN_TEXTS = 30
 DraftStatus = str  # 'draft' | 'approved' | 'superseded'
@@ -212,6 +216,8 @@ class DraftService:
         self._last_shown = ""  # 바로 앞에 보인 초안(다듬기 검사 S8)
         self._used_reasons: list[str] = []  # 앞서 보인 초안들의 ⑤ 까닭(다듬기 검사 S10)
         self._used_bridges: list[str] = []  # 앞서 보인 초안들의 잇는 문장(다듬기 검사 S12)
+        self._pieces: prompts.Pieces | None = None  # 이번 초안의 운명원 대목 조각(S15)
+        self._used_leads: list[str] = []  # 앞서 보인 초안들의 ④ 꺼내는 말(S15)
 
     @property
     def rules(self):
@@ -516,6 +522,14 @@ class DraftService:
             b for b in (prompts.bridge_sentence(t, rules.brand) for t in [*avoid_bodies, *shown])
             if b
         ))
+        # 2026-11-18 조각 배정: 운명원 대목의 때·연애 사주·세기 말·평판·들은 꼴·끝말을 코드가
+        # 덜 쓴 것부터 정해 준다. AI 검수 뒤 다시 쓸 때는 앞 초안의 조각 그대로(같은 배정)
+        keep = prompts.pieces_of(exclude.body, rules.brand) if exclude is not None else None
+        pieces = prompts.assign_pieces(
+            rules.brand, shown, avoid=avoid_bodies, rng=self.rng, keep=keep)
+        self._pieces = pieces
+        self._used_leads = [x for x in (prompts.lead_part(t, rules.brand)
+                                        for t in [*avoid_bodies, *shown]) if x]
         # S8: 바로 앞에 보인 초안과 같은 본보기를 그대로 옮기지 않게
         self._last_shown = shown[0] if shown else ""
         return SimpleNamespace(
@@ -523,7 +537,7 @@ class DraftService:
             previous=previous, avoid_bodies=avoid_bodies, avoid_phrases=avoid_phrases,
             avoid_tones=avoid_tones, tones=tones, schema=schema, used_closings=used_closings,
             hearsay=hearsay, endings=endings, used_openings=used_openings, want_reason=want_reason,
-            thin=thin,
+            thin=thin, pieces=pieces,
         )
 
     def _draft_prompt(
@@ -555,6 +569,7 @@ class DraftService:
             bridge=True,
             used_bridges=self._used_bridges,
             thin=kit.thin,
+            pieces=kit.pieces,
         )
 
     def _style(
@@ -566,6 +581,7 @@ class DraftService:
             last_shown=self._last_shown, used_reasons=self._used_reasons,
             need_bridge=BRIDGE_CHECK,
             used_bridges=[*self._used_bridges, *prompts.EXAMPLE_BRIDGES],
+            pieces=self._pieces if PIECE_CHECK else None, used_leads=self._used_leads,
         )
 
     def _polish(
