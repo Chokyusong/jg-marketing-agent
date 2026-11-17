@@ -391,10 +391,20 @@ def test_closing_sentence_splits_after_jamo_marks():
 # ---------------------------------------------------------------- C1 다듬기
 
 
-def test_draft_system_puts_the_viewer_in_the_viewers_seat():
-    assert "**내 자리는 보는 사람이다.**" in SYSTEM
-    assert "영상 속 사람의 처지를 내 일처럼 옮기지 않는다('저도 부모님 반대로…'" in SYSTEM
-    assert "'보는 제가 다 " in SYSTEM
+def test_draft_system_allows_a_similar_situation_but_not_a_copied_story():
+    # 기획 담당 2026-11-17: 비슷한 처지라는 공감은 허용, 막을 것은 사연 복사·내 일이 될 수 없는 것
+    assert "**비슷한 처지라고 말하는 건 좋다**('완전 제 얘기네요'" in SYSTEM
+    assert "하지 않을 것은 둘뿐이다" in SYSTEM
+    assert "**숫자·사정을 그대로 내 것으로 옮기기**" in SYSTEM
+    assert "'저도 오래 만나다 보니 권태기인지 헷갈려서' ○" in SYSTEM
+    assert "**내 일이 될 수 없는 것**을 내 일처럼 쓰기" in SYSTEM
+    assert "'보는 제가 다 답답하네'" in SYSTEM
+    assert "내 자리는 보는 사람이다" not in SYSTEM and "'우리 관계·우리 인연'" not in SYSTEM
+
+
+def test_draft_system_says_ga_bwayagetda_takes_no_fortune_or_timing():
+    assert "운세·시기 같은 목적어도 받지 않는다" in SYSTEM
+    assert "'제 연애 운세 한번 가 봐야겠네요' ✗" in SYSTEM
 
 
 def test_draft_system_keeps_key_phrases_out_of_the_wish_and_endings_light():
@@ -446,7 +456,8 @@ def test_polish_prompt_fixes_only_awkward_parts():
         "말이 안 되거나 앞뒤가 안 맞는 문장",
         "틀린 조사·어미·띄어쓰기",
         "억지로 끼운 말",
-        "내 일처럼 쓴 문장 → 보는 사람 자리의 반응으로",
+        "영상 속 숫자·사정을 그대로 내 것으로 옮긴 문장",
+        "비슷한 처지라는 공감은 그대로 둔다",
         "그 밖에는 그대로 둔다",
         "멀쩡한 문장을 더 예쁘게 바꾸지 않는다",
         "새 사실·후기·효능·애인 이야기를 더하지 않는다",

@@ -128,27 +128,70 @@ def test_s3_ga_bwayagetda_alone_or_after_gunggeumhaeseo_is_fine():
     assert codes("[광고] 그 말 공감. 운명원 잘 본다던데 언제 오는지 한번 보고 싶다.") == []
 
 
+# ---------------------------------------------------------------- 7회차 손질(8회차부터 잡음)
+
+R2_CONTEXT = (
+    "동아리 선배를 2년째 좋아해요\n3년 사귄 남자친구와 대화가 줄었어요. 석 달 동안 연락만 기다렸고 "
+    "5년 만난 사람과 결혼하려는데 부모님이 반대해요"
+)
+
+
+def ctx_codes(text, context=R2_CONTEXT):
+    return [i[:2] for i in S.style_issues(text, brand="운명원", disclosure="[광고]",
+                                          context=context)]
+
+
 @pytest.mark.parametrize(("text", "shown"), [
-    ("[광고] 같은 이유로 싸울까 봐 연락 못 하는 거 완전 내 얘기네... "
-     "운명원 얘기 자주 보이던데 한번 보고 싶다.",
-     "완전 내 얘기"),
-    ("[광고] 설레지가 않아서 고민이래요 ㅠㅠ 딱 제 얘기. 운명원 얘기 자주 보이던데 한번 보고 싶다.",
-     "딱 제 얘기"),
-    ("[광고] 5년이 아깝대요. 요즘 운명원 얘기 자주 보이던데 "
-     "우리도 이어질 수 있는지 보고 싶다.", "우리도"),
-    ("[광고] 5년이 아깝대요. 요즘 운명원 잘 본다던데 우리 "
-     "인연이 이어질지 한번 보고 싶다.", "우리 인연"),
+    # 7회차 실제 초안: 영상 속 숫자를 내 일처럼
+    ("[광고] 휴대폰만 본다는 말이 남네요. 3년 사귄 관계라 권태기인지 식은 건지 모르겠어서, "
+     "운명원 연애 사주 잘 본다던데 다음에 한번 가 봐야겠네요.", "3년"),
+    ("[광고] 2년째 마음이 정리 안 돼서 고백도 못 해봤어요 ㅠㅠ 요즘 운명원 얘기 자주 보이던데 "
+     "이번엔 이어질지 한번 물어보고 싶어요.", "2년"),
+    ("[광고] 반대한다는 말에 마음이 무거워지네요. 저도 5년이란 시간이 아까워 두렵습니다. "
+     "요즘 운명원 연애 사주 잘 본다던데 한번 보고 싶다.", "5년"),
+    ("[광고] 저도 석 달째 연락만 기다리는 중... 운명원 잘 본다던데 한번 보고 싶다.", "석 달"),
 ])
-def test_s5_someone_elses_story_written_as_mine(text, shown):
-    got = issues(text, R1_KEYS + ["5년", "같은 이유로 싸울"])
+def test_s5_number_from_the_video_written_as_mine(text, shown):
+    got = S.style_issues(text, brand="운명원", disclosure="[광고]", context=R2_CONTEXT)
     assert [i[:2] for i in got] == ["S5"] and f"'{shown}'" in got[0]
-    assert "보는 사람 자리에서" in got[0]
+    assert "숫자 없이 내 말로" in got[0] and "비슷한 처지라고 말하는 것은 괜찮습니다" in got[0]
 
 
-def test_s5_keeps_a_vague_my_story_as_the_viewer_voice():
-    # 핵심 말이 든 장면이 아니면(막연한 공감) 시청자 말투로 둔다(2026-11-17 결정)
-    text = (
-        "[광고] 연애가 원래 이렇게 어려운 건가 싶네요. 완전 제 "
-        "얘기. 운명원 잘 본다던데 한번 보고 싶다."
-    )
-    assert codes(text, R1_KEYS) == []
+@pytest.mark.parametrize("text", [
+    # 비슷한 처지라는 공감은 시청자 말투(기획 담당 2026-11-17)
+    "[광고] 같은 이유로 싸울까 봐 연락 못 하는 거 완전 내 얘기네... 운명원 얘기 자주 보이던데 "
+    "한번 보고 싶다.",
+    "[광고] 저도 비슷해서 남 얘기 같지 않아요. 운명원 잘 본다던데 한번 보고 싶다.",
+    "[광고] 맨날 연애하면 차이기만 했던 1인... 운명원 잘 본다던데 우리 인연도 한번 보고 싶다.",
+    "[광고] 저도 오래 만나다 보니 권태기인지 헷갈려서. 운명원 잘 본다던데 우리도 한번 보고 싶다.",
+    # 숫자를 영상 얘기로 받으면 괜찮다
+    "[광고] 3년 사귀었는데 대화가 줄었대요 ㅠㅠ 운명원 잘 본다던데 한번 보고 싶다.",
+    "[광고] 5년 만나도 반대라니... 운명원 잘 본다던데 한번 보고 싶다.",
+    "[광고] 3년이면 진짜 식은 건지 모르겠네. 운명원 잘 본다던데 한번 보고 싶다.",
+    "[광고] 5년을 만난 사람인데 고민 많으시죠. 운명원 잘 본다던데 한번 보고 싶다.",
+    # 영상에 없는 숫자는 내 처지 한마디
+    "[광고] 저도 7년째 솔로... 운명원 잘 본다던데 한번 보고 싶다.",
+])
+def test_s5_allows_a_similar_situation_and_numbers_taken_as_the_videos(text):
+    assert ctx_codes(text) == []
+
+
+def test_s5_needs_the_video_text():
+    text = "[광고] 2년째 마음이 정리 안 돼요. 운명원 잘 본다던데 한번 보고 싶다."
+    assert ctx_codes(text) == ["S5"] and ctx_codes(text, context="") == []
+
+
+@pytest.mark.parametrize("text", [
+    "[광고] 그 말 공감. 요즘 운명원 연애 사주 잘 본다던데 제 연애 운세 한번 가 봐야겠네요.",
+    "[광고] 그 말 공감. 운명원 잘 본다던데 연애 시기 다음에 한번 가 봐야겠어요.",
+    "[광고] 그 말 공감. 운명원 잘 본다던데 궁합 가 봐야겠다.",
+])
+def test_s3_fortune_or_timing_cannot_take_ga_bwayagetda(text):
+    got = issues(text)
+    assert [i[:2] for i in got] == ["S3"] and "운세·시기는 가는 곳이 아니니" in got[0]
+
+
+def test_s3_going_to_unmyeongwon_or_going_to_see_a_reading_is_fine():
+    assert codes("[광고] 그 말 공감. 운명원 잘 본다던데 연애 사주 한번 보러 가 봐야겠다.") == []
+    assert codes("[광고] 그 말 공감. 운명원 잘 본다던데 연애 운세 한번 보고 싶다.") == []
+    assert codes("[광고] 그 말 공감. 운명원 잘 본다던데 다음에 한번 가 봐야겠네요.") == []

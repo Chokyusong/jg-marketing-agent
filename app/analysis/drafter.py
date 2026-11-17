@@ -162,6 +162,7 @@ class DraftService:
         self.disclose_default = bool(disclose_default)  # R3: 설정의 「광고 표기 기본값」
         self.polish = bool(polish)
         self.last_run: dict[str, Any] = {}  # 마지막 초안 만들기의 과정(시도별 글·다듬기)
+        self._context_text = ""  # 지금 초안을 만드는 영상의 자료 글(다듬기 검사 S5)
 
     @property
     def rules(self):
@@ -325,6 +326,12 @@ class DraftService:
         endings = prompts.ending_choices(previous, avoid=avoid_bodies)
         used_openings = [prompts.opening_sentence(t, disclosure=rules.disclosure) for t in previous]
 
+        try:  # S5(영상 숫자를 내 것으로)를 볼 영상 자료 글
+            context_text = self.context.search_text(self.context.current(video_id))
+        except AppError:
+            context_text = ""
+        self._context_text = context_text
+
         # (실패 수, 다듬기 문제 수, 글, 말투, 검사, 차례, 다듬기 문제)
         best: tuple[int, int, str, str, Validation, int, list[str]] | None = None
         run: dict[str, Any] = {"attempts": [], "polish": {}}
@@ -435,7 +442,7 @@ class DraftService:
     ) -> list[str]:
         return style.style_issues(
             text, brand=self.rules.brand, disclosure=mark, key_phrases=key_phrases,
-            earlier=earlier,
+            earlier=earlier, context=self._context_text,
         )
 
     def _polish(

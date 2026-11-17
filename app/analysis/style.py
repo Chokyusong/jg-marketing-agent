@@ -9,13 +9,15 @@
   (「내짝 찾기 언제 되는지 궁금해지네요」)
 - S3 띄어쓰기·말꼴: 「이유여쭤보고」처럼 붙여 씀, 「없었네라는 말에」처럼 말끝에 바로 「라는」
 - S4 같은 영상 앞 초안과 비슷함: [다른 댓글 만들기]가 거의 같은 글을 내지 않게
-- S5 남의 일을 내 일로: 영상의 핵심 말이 든 장면을 「완전 내 얘기」라고 하거나(그 문장이나 바로
-  앞 문장), 없는 애인과의 「우리 관계·사이·인연」. 6회차 사연 영상 초안 5개가 사연 속 일을 내 일처럼
-  썼다. 막연한 「완전 제 얘기네요」 자체는 시청자 말투로 둔다(2026-11-17 결정, V9).
+- S5 영상 사연을 내 것으로: 영상 속 **숫자**(「3년 사귄」「2년째」「석 달」)를 영상 얘기라는
+  표지(「~대요」「~라니」「~다는 말에」) 없이 내 일처럼 옮긴 문장. 비슷한 처지라고 말하는 것
+  (「완전 제 얘기네요」「저도 비슷해서」「우리 사이」)은 시청자 말투로 둔다(기획 담당 2026-11-17:
+  막을 것은 사연 복사와 내 일이 될 수 없는 것 둘뿐 — 뒤의 것은 프롬프트로만 막는다).
 
-S3는 6회차에서 「~인지 한번 가 봐야겠어요」(「언제인지 한번 가 봐야겠네요」)도 잡는다 —
-「가 봐야겠다」는 물음을 받지 못한다(「~인지 한번 보고 싶다」, 「궁금해서 다음에 한번 가
-봐야겠네요」로).
+S3는 「~인지 한번 가 봐야겠어요」(「언제인지 한번 가 봐야겠네요」)와 「제 연애 운세 한번 가
+봐야겠네요」도 잡는다 — 「가 봐야겠다」는 물음도, 운세·시기 같은 목적어도 받지 못한다
+(「~인지 한번 보고 싶다」, 「궁금해서 다음에 한번 가 봐야겠네요」로). 1~7회차 초안 112개에
+대 보니 목적어 꼴은 「연애 운세 한번 가 봐야겠네요」 2개만 걸렸다.
 
 문구는 규칙 검사처럼 「무엇이 걸렸고 — 어떻게 고치면 되는지」 한 줄이다.
 """
@@ -45,9 +47,21 @@ _NE_RANEUN = re.compile(r"[가-힣]*네라는\s?말")
 # 괜찮다)
 _ASK_GO = re.compile(r"[가-힣]+지\s+((?:[가-힣]+\s+){0,3}?)가\s?봐야")
 _ASK_GO_OK = re.compile(r"궁금|싶어서|알고\s?싶|물어보러|보러|여쭈러")
-# 남의 일을 내 일로: 영상 속 사연·말을 내 얘기라고 하거나, 없는 애인과의 관계를 「우리」로
-_MY_STORY = re.compile(r"(?:완전|딱|진짜)?\s?(?:내|제)\s?얘기|(?:나|저)잖아")
-_OUR = re.compile(r"우리\s?(?:관계|사이|인연|둘|커플|연애)|우리도")
+# 「운세·시기 (한번) 가 봐야겠다」: 가는 곳이 아닌 것을 「가 봐야」의 목적어로
+_THING_GO = re.compile(
+    r"(?<![가-힣])(?:연애\s?)?(?:운세|연애운|시기|타이밍|궁합|사주|앞날|미래|결말)(?:을|를|도)?\s+"
+    r"(?:(?:한번|한\s번|다음에|꼭|언제)\s+)*가\s?봐야"
+)
+# 영상 속 숫자: 「3년」「2년째」「6개월」「석 달」「두 달」
+_NUMBER = re.compile(
+    r"\d+\s?(?:년|개월|달|주|살|번|일|시간|명|월|차)|"
+    r"(?<![가-힣])(?:한|두|세|석|넉|네|다섯|여섯|일곱|여덟|아홉|열)\s?달(?![라려리콤])"
+)
+# 영상 얘기로 받는 표지(이게 있으면 숫자를 옮겨도 내 일이 아니다)
+_ABOUT_VIDEO = re.compile(
+    r"말에|말이|대요|래요|댔|랬|대\b|래\b|라니|다니|다는|라는|던데|다고|라고|사연|영상|댓글|"
+    r"그분|이분|보니|듣고|봤는데|셨|시죠|시네|으시"
+)
 # 운명원 꺼내는 말의 표지(앞 초안과 같은 틀인지 볼 때)
 HEARSAY_MARKS = (
     "잘 본다던데", "잘 본다고", "보이던데", "많이들 본다", "하던데", "눈에 띄던데", "들었", "소문",
@@ -96,9 +110,14 @@ def style_issues(
     disclosure: str,
     key_phrases: Sequence[str] = (),
     earlier: Sequence[str] = (),
+    context: str = "",
     max_total: int = SOFT_MAX_TOTAL,
 ) -> list[str]:
-    """다시 쓰게 할 까닭들(없으면 빈 목록). `earlier`: 같은 영상에 앞서 쓴 초안 글."""
+    """다시 쓰게 할 까닭들(없으면 빈 목록).
+
+    `earlier`: 같은 영상에 앞서 쓴 초안 글. `context`: 영상 자료 글(S5 숫자 대조, 없으면 S5를
+    보지 않는다).
+    """
     issues: list[str] = []
     body = _body(text, disclosure)
     if len(text) > max_total:
@@ -135,29 +154,41 @@ def style_issues(
             f"S3 띄어쓰기·말꼴: '{ask.group(0)}'은 앞뒤가 안 맞습니다 — '~인지 한번 보고 싶다'로 "
             "쓰거나, 물음 없이 '다음에 한번 가 봐야겠네요'로 쓰세요"
         )
-    mine = _OUR.search(body) or _claimed_scene(body, key_phrases)
-    if mine:
+    thing = _THING_GO.search(body)
+    if thing:
         issues.append(
-            f"S5 남의 일을 내 일로: '{mine.group(0).strip()}' — 나는 영상을 본 사람입니다. 영상 속 "
-            "사람의 일을 내 일로 만들지 말고 '보는 제가 다 답답하네', '남 일 같지 않네'처럼 보는 "
-            "사람 자리에서 반응하세요(없는 애인과의 '우리 관계'도 쓰지 않습니다)"
+            f"S3 띄어쓰기·말꼴: '{thing.group(0)}'은 어색합니다 — 운세·시기는 가는 곳이 아니니 "
+            "'연애 운세 한번 보고 싶다'나 '다음에 한번 가 봐야겠네요'로 쓰세요"
+        )
+    copied = _copied_number(body, context, brand)
+    if copied:
+        issues.append(
+            f"S5 영상 사연을 내 것으로: '{copied}'는 영상 속 사연의 숫자입니다 — 내 일처럼 "
+            "옮기지 말고 '저도 오래 만나다 보니'처럼 숫자 없이 내 말로 쓰거나, '~했대요'처럼 "
+            "영상 얘기로 받으세요(비슷한 처지라고 말하는 것은 괜찮습니다)"
         )
     issues += _same_video(body, brand=brand, disclosure=disclosure, key_phrases=key_phrases,
                           earlier=earlier)
     return issues
 
 
-def _claimed_scene(body: str, key_phrases: Sequence[str]) -> re.Match[str] | None:
-    """핵심 말이 든 장면(그 문장이나 바로 앞 문장)을 「내 얘기」라고 한 곳."""
-    sentences = _sentences(body)
-    for i, s in enumerate(sentences):
-        m = _MY_STORY.search(s)
-        if not m:
+def _copied_number(body: str, context: str, brand: str) -> str:
+    """영상 자료에 있는 숫자를 영상 얘기라는 표지 없이 쓴 문장의 그 숫자(없으면 빈 글)."""
+    if not context:
+        return ""
+    ctx = normalize(context)
+    for s in _sentences(body):
+        if brand and brand in s:
+            # 운명원을 꺼내는 들은 얘기(「~던데」)는 영상 얘기 표지가 아니다
+            s = s.split(brand, 1)[0]
+        if _ABOUT_VIDEO.search(s):
             continue
-        near = " ".join(sentences[max(0, i - 1) : i + 1])
-        if any(k and contains_key_phrase(near, k) for k in key_phrases):
-            return m
-    return None
+        for m in _NUMBER.finditer(s):
+            if s[m.end():].lstrip().startswith(("이면", "면")):
+                continue  # 「3년이면 진짜 식은 건지」: 영상 속 숫자를 두고 하는 말
+            if normalize(m.group(0)) in ctx:
+                return m.group(0)
+    return ""
 
 
 def _same_video(

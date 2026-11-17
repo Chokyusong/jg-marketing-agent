@@ -216,3 +216,20 @@ def test_polish_off_makes_no_extra_call(setup):
     llm = use([ANALYSIS, draft(GOOD_BODY)])
     services.drafts.generate(VID)
     assert len(llm.calls) == 2 and services.drafts.last_run["polish"] == {}
+
+
+COPIED_NUMBER = (  # S5: 영상 속 숫자(「1년차」)를 내 일처럼
+    "하루에 한 번 연락 갖고 싸웠다는 댓글 보니 남 일 같지 않네요ㅠㅠ 저도 1년차라 자주 싸워요. "
+    "운명원 연애 사주 잘 본다던데 이번 인연은 오래 갈지 알면 좋겠어요."
+)
+
+
+def test_number_copied_from_the_video_is_written_again(setup):
+    # 영상 자료 글(제목 「장거리 연애 1년차…」)을 다듬기 검사에 넘겨 숫자 복사를 잡는다
+    _, services, use = setup
+    llm = use([ANALYSIS, draft(COPIED_NUMBER), draft(GOOD_BODY)])
+    d = services.drafts.generate(VID)
+    assert d.passed and d.body == f"[광고] {GOOD_BODY}" and d.attempts == 2
+    first = services.drafts.last_run["attempts"][0]
+    assert first["failures"] == [] and [i[:2] for i in first["issues"]] == ["S5"]
+    assert "- S5 영상 사연을 내 것으로: '1년'" in user_prompts(llm)[2]
