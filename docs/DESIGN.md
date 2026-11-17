@@ -418,7 +418,7 @@ llm:
   - 칸: `llm.active`(고른 AI 이름), `llm.models`(AI 이름 → 모델), `llm.base_urls`(「직접 입력」 주소). `llm.models`·`llm.base_urls`는 보낸 이름만 바꾸고 빈 글이면 그 이름을 지운다.
   - `llm.active`는 준비된 AI만 받는다: 목록에 있음 · 지원하는 종류 · (API 키 AI) 키 있음 · (「직접 입력」) 주소 있음 · 모델 있음 · (프로그램) 확인한 프로그램이고 설치됨. 아니면 422와 이유(「API 키를 먼저 넣어 주세요」 등).
   - 저장하면 바로 적용(다음 분석·초안이 새 AI로). 게시 중이면 409.
-  - API: `GET /api/llm/providers`(목록·준비 상태, 바깥에 묻지 않음), `POST /api/llm/providers/{이름}/test`([연결 확인]: API 키 AI는 모델 목록 — 글을 만들지 않아 요금이 들지 않는 호출, 프로그램은 그 프로그램의 로그인 상태 명령), `GET /api/llm/models?provider=<이름>`(인자가 없으면 전과 같이 Ollama).
+  - API: `GET /api/llm/providers`(목록·준비 상태, 바깥에 묻지 않음), `POST /api/llm/providers/{이름}/test`([연결 확인]: API 키 AI는 모델 목록 — 글을 만들지 않아 요금이 들지 않는 호출, 프로그램은 그 프로그램의 로그인 상태 명령), `GET /api/llm/models?provider=<이름>`(인자가 없으면 전과 같이 Ollama. 2026-11-17: 받아 오지 못하거나 목록 명령이 없으면 `config.yaml` `llm.providers.<이름>.models`의 추천 목록 — 공식 문서로 확인한 이름만 — 을 `recommended`로, 출처를 `source`(api · recommended · none)로, 한 줄을 `note`로 함께 준다. 화면의 「모델」은 고르는 목록 + 맨 아래 「직접 입력…」).
   - **AI API 키**: `PUT`·`DELETE /api/settings/llm-key/{이름}`. AI마다 따로 DPAPI로 암호화해 `llm_keys/<이름>.bin`에 둔다(유튜브 키 파일과 그 동작은 그대로). 읽는 순서는 프로그램에 저장한 키 > `.env`(`api_key_env`) > 없음. 응답에는 있는지와 출처만. 저장한 키는 비밀값 목록에 들어가 오류 문구에서 가리고, 로그는 모든 줄에서 가린다(`app/errors.remember_log_secrets`).
 - **모델(Ollama)**: 프로그램에서 고른 모델(`llm.model`) > `.env`의 `OLLAMA_MODEL` > 코드 기본값. 다른 AI의 모델은 `llm.models`.
   모델 목록은 `GET /api/llm/models`(Ollama `/api/tags`). 일반 모델이 위, 코드용·임베딩용은 아래에 표시만 다르게.

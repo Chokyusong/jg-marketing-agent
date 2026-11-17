@@ -7,7 +7,7 @@
 **되는 것**
 - **설정에서 AI 바꾸기 (R5, 2026-11-17)** — 파일을 열지 않고 [저장]하면 다음 분석·초안부터 그 AI로 쓴다(다시 켜지 않음)
   - 설정 「AI 모델」: 왼쪽 목록에서 고른다 — 이 PC에서(Ollama) · API 키로(ChatGPT(OpenAI) · Claude(Anthropic) · Gemini(Google) · Grok(xAI) · 직접 입력) · 로그인된 프로그램으로(Codex · Claude Code. Gemini 프로그램은 아직 연결 안 함)
-  - API 키 AI: 키를 넣고 [키 저장](AI마다 따로 Windows가 암호화, 「저장됨」만 보임) → [모델 불러오기]로 그 회사의 목록에서 고르거나 직접 적기 → [연결 확인](모델 목록만 읽어 요금이 들지 않음) → [이 AI 쓰기] → [저장]
+  - API 키 AI: 키를 넣고 [키 저장](AI마다 따로 Windows가 암호화, 「저장됨」만 보임) → 「모델」 목록에서 고르기(키가 있으면 그 회사의 목록을 저절로 받아 오고, 못 받으면 `config.yaml` `llm.providers.<이름>.models`의 추천 목록 — 공식 문서로 확인한 이름만. 맨 아래 「직접 입력…」, [목록 다시 받기]) → [연결 확인](모델 목록만 읽어 요금이 들지 않음) → [이 AI 쓰기] → [저장]
   - 이 PC 밖으로 보내는 AI는 「영상 제목·설명·자막·댓글이 ○○(으)로 전송됩니다. 요금이 들 수 있습니다」를 보이고 한 번 더 확인한다
   - 로그인된 프로그램은 이 PC에 이미 로그인된 Codex·Claude Code를 대신 실행한다: 빈 임시 폴더, 도구 끔(읽기 전용), 한 번 실행, 시간 제한, 영상 자료는 표준 입력으로, 창 없음. 그 프로그램의 로그인 파일은 읽지 않는다
   - 위 줄 오른쪽 칩과 아래 줄에 「AI 이름 · 모델 · 이 PC/외부」. 미리 불러오기·추천 모델 안내는 Ollama만
@@ -179,8 +179,8 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | `POST /api/settings/youtube-key/test` | R2 [연결 확인]: 1단위짜리 호출. `result`: ok·no_key·rejected·quota·network·error와 쉬운 말 한 줄 |
 | `GET /api/llm/loaded` | R4: 모델이 지금 메모리에 올라가 있는지(`loaded`: 참·거짓·모름 null)와 처음 불러올 때 기다리는 초(`cold_timeout_seconds`). 모델을 부르지 않는다 |
 | `GET /api/videos/rising` | R4: 뜨기 직전 영상(초안까지만). 선택 입력 `exclude_shorts`. 영상마다 `views_per_hour`·`rising`, 응답에 `mode: rising`·`rising`(조건)·`checked`(본 영상 수). 검색 100 + 상세 1단위, 같은 요청 10분 저장 |
-| `GET /api/llm/models` | R2: 이 PC의 Ollama 모델(일반 → 코드용 → 임베딩용), 지금 모델과 설치 여부. R5: `?provider=<이름>`이면 그 AI의 모델 목록(API 키 AI는 그 회사의 목록, 프로그램은 `manual_only`) |
-| `GET /api/llm/providers` | R5: 고를 수 있는 AI 목록(이름 · 종류 · 보내는 곳 · 키 있음 · 모델 · 준비 안 된 이유). 바깥에 묻지 않는다 |
+| `GET /api/llm/models` | R2: 이 PC의 Ollama 모델(일반 → 코드용 → 임베딩용), 지금 모델과 설치 여부. R5: `?provider=<이름>`이면 그 AI의 모델 목록(API 키 AI는 그 회사의 목록, 프로그램은 `manual_only`). 2026-11-17: 받아 오지 못하면 추천 목록(`recommended`·`source`·`note` 추가) |
+| `GET /api/llm/providers` | R5: 고를 수 있는 AI 목록(이름 · 종류 · 보내는 곳 · 키 있음 · 모델 · 준비 안 된 이유). 바깥에 묻지 않는다. 2026-11-17: 추천 모델(`recommended_models`)과 프로그램의 「기본값」 이름(`default_label`) 추가 |
 | `POST /api/llm/providers/{name}/test` | R5 [연결 확인]: API 키 AI는 모델 목록(글을 만들지 않음), 프로그램은 버전·로그인 상태. `result`: ok·no_key·rejected·rate_limited·network·not_installed·not_logged_in·no_url·not_wired·error |
 | `PUT`·`DELETE /api/settings/llm-key/{name}` | R5: AI별 API 키 저장(`{"key"}`)·지우기. 응답은 있는지와 출처만 |
 | `GET /api/screens` | R2: 크롬 창을 띄울 모니터 목록(이름 · 고르면 쓸 안전한 위치). 2026-11-17: 지금 고른 것(`screen`: auto · 모니터 ID)과 「지금은 모니터 2(위쪽)에 뜹니다」(`where`·`auto_where`·`note`) 추가 |

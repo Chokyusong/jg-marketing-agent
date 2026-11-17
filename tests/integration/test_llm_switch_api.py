@@ -326,3 +326,91 @@ def test_switch_to_claude_code_with_fake_runner(client, monkeypatch):
 def test_unknown_provider_in_api(client):
     assert client.post("/api/llm/providers/없는것/test").status_code == 503
     assert client.get("/api/llm/models", params={"provider": "없는것"}).status_code == 503
+
+
+
+# ---------------------------------------------------------------- 모델 고르는 목록(2026-11-17)
+
+
+def recommended(base_config, name):
+    return base_config["llm"]["providers"][name].get("models") or []
+
+
+def test_providers_carry_recommended_models_and_program_default(client, base_config):
+    items = {p["name"]: p for p in client.get("/api/llm/providers").json()["items"]}
+    assert items["openai"]["recommended_models"] == recommended(base_config, "openai")
+    assert items["claude"]["recommended_models"] == recommended(base_config, "claude")
+    assert items["openai"]["recommended_models"]  # 문서로 확인한 이름이 config.yaml에 있다
+    assert items["openai"]["default_label"] == ""
+    assert items["codex-cli"]["default_label"] == "기본값 (그 프로그램이 정한 모델)"
+    assert items["custom"]["recommended_models"] == []  # 확인할 이름이 없으면 비워 둔다
+
+
+def test_model_list_from_api_when_key_is_saved(client, ai, base_config):
+    ai.add("GET", "/v1/models", json={"data": [{"id": "m-2"}, {"id": "m-1"}]})
+    client.put("/api/settings/llm-key/openai", json={"key": openai_key()})
+    data = client.get("/api/llm/models", params={"provider": "openai"}).json()
+    assert data["source"] == "api" and [i["name"] for i in data["items"]] == ["m-1", "m-2"]
+    assert data["recommended"] == recommended(base_config, "openai") and data["note"] == ""
+
+
+@pytest.mark.parametrize("status", [401, 500])
+def test_model_list_failure_falls_back_to_recommended(client, ai, base_config, status):
+    ai.add("GET", "/v1/models", status_code=status, json={"error": {"message": "x"}})
+    client.put("/api/settings/llm-key/openai", json={"key": openai_key()})
+    data = client.get("/api/llm/models", params={"provider": "openai"}).json()
+    assert data["reachable"] is False and data["items"] == []
+    assert data["source"] == "recommended"
+    assert data["recommended"] == recommended(base_config, "openai")
+    assert data["note"] == "목록을 받아 오지 못해 추천 목록을 보입니다"
+
+
+def test_model_list_without_key_shows_recommended_without_calling(client, ai, base_config):
+    data = client.get("/api/llm/models", params={"provider": "claude"}).json()
+    assert data["error"]["kind"] == "llm_auth" and data["source"] == "recommended"
+    assert data["recommended"] == recommended(base_config, "claude")
+    assert "API 키를 넣으면" in data["note"]
+    assert not [r for r in ai.requests if r.url.host == "api.anthropic.com"]  # 바깥에 묻지 않았다
+
+
+def test_empty_api_list_also_falls_back(client, ai, base_config):
+    ai.add("GET", "/v1/models", json={"data": []})
+    client.put("/api/settings/llm-key/openai", json={"key": openai_key()})
+    data = client.get("/api/llm/models", params={"provider": "openai"}).json()
+    assert data["source"] == "recommended" and data["recommended"]
+
+
+def test_no_recommended_list_leaves_only_typing(client):
+    ollama = client.get("/api/llm/models", params={"provider": "ollama"}).json()
+    assert ollama["reachable"] is False and ollama["source"] == "none"
+    assert ollama["recommended"] == [] and "직접 입력" in ollama["note"]
+
+
+def test_program_models_are_recommended_names(client, base_config):
+    data = client.get("/api/llm/models", params={"provider": "claude-cli"}).json()
+    assert data["manual_only"] is True and data["items"] == []
+    assert data["source"] == "recommended"
+    assert data["recommended"] == recommended(base_config, "claude-cli")
+
+
+def test_typed_model_name_is_saved_even_if_not_in_any_list(client, base_config):
+    """「직접 입력…」으로 적은 이름도 그대로 저장되고, 다시 읽어도 사라지지 않는다."""
+    name = "my-own-model-9"
+    assert name not in recommended(base_config, "openai")
+    res = put(client, **{"llm.models": {"openai": name}})
+    assert res.status_code == 200, res.text
+    items = {p["name"]: p for p in client.get("/api/llm/providers").json()["items"]}
+    assert items["openai"]["model"] == name
+    data = client.get("/api/llm/models", params={"provider": "openai"}).json()
+    assert data["current"] == name
+
+
+def test_bad_recommended_entries_are_ignored():
+    from app.api.ai_choice import recommended_models
+    from app.config import ProviderSettings
+
+    p = ProviderSettings("x", "openai_compatible",
+                         options={"models": ["a", " a ", True, None, {"b": 1}, 7, "", "c"]})
+    assert recommended_models(p) == ["a", "7", "c"]
+    assert recommended_models(ProviderSettings("y", "openai_compatible",
+                                               options={"models": "a,b"})) == []

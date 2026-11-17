@@ -80,27 +80,47 @@ def test_provider(name: str, services: Annotated[Services, Depends(get_services)
     return ai_choice.check_provider(services, name)
 
 
+NOTE_FALLBACK = "목록을 받아 오지 못해 추천 목록을 보입니다"
+NOTE_NO_LIST = "목록을 받아 오지 못했습니다 · 「직접 입력…」으로 적을 수 있습니다"
+NOTE_NO_KEY = "API 키를 넣으면 목록을 받아 옵니다 · 지금은 추천 목록을 보입니다"
+
+
+def _fallback(recommended: list[str], *, no_key: bool = False) -> dict:
+    """받아 오지 못했을 때: 추천 목록이 있으면 그것, 없으면 「직접 입력…」만(2026-11-17)."""
+    if not recommended:
+        return {"recommended": [], "source": "none", "note": NOTE_NO_LIST}
+    return {"recommended": recommended, "source": "recommended",
+            "note": NOTE_NO_KEY if no_key else NOTE_FALLBACK}
+
+
 def _provider_models(services: Services, name: str) -> LLMModelsOut:
     llm_cfg = services.settings.llm
     provider = llm_cfg.providers.get(name)
     if provider is None:
         raise AppError(ErrorKind.LLM_PROVIDER_UNKNOWN, detail=f"'{name}'은(는) 목록에 없습니다.")
     current = llm_cfg.model_for(name)
-    if provider.type == "cli":  # 목록을 주는 명령이 없다 → 직접 적는다
+    recommended = ai_choice.recommended_models(provider)
+    if provider.type == "cli":  # 목록 명령이 없다 → 추천 목록 · 직접 입력
         return LLMModelsOut(
             reachable=True, current=current, current_installed=bool(current), items=[],
-            provider=name, manual_only=True,
+            provider=name, manual_only=True, recommended=recommended,
+            source="recommended" if recommended else "none",
         )
     client = ai_choice.client_for(services, name)
     try:
         if provider.type == "ollama":
-            return _ollama_models(client, current).model_copy(update={"provider": name})
+            out = _ollama_models(client, current).model_copy(
+                update={"provider": name, "recommended": recommended})
+            if not out.reachable:
+                out = out.model_copy(update=_fallback(recommended))
+            return out
         try:
             found = client.list_models()  # type: ignore[attr-defined]
         except AppError as exc:
+            no_key = exc.kind == ErrorKind.LLM_AUTH and not llm_cfg.api_keys.get(name)
             return LLMModelsOut(
                 reachable=False, current=current, current_installed=False, items=[],
-                provider=name, error=_problem(exc),
+                provider=name, error=_problem(exc), **_fallback(recommended, no_key=no_key),
             )
     finally:
         if client is not services.llm:
@@ -112,9 +132,14 @@ def _provider_models(services: Services, name: str) -> LLMModelsOut:
         for m in found
     ]
     items.sort(key=lambda i: i.name.lower())
+    if not items:  # 닿았지만 빈 목록: 추천 목록으로
+        return LLMModelsOut(
+            reachable=True, current=current, current_installed=False, items=[],
+            provider=name, **_fallback(recommended),
+        )
     return LLMModelsOut(
         reachable=True, current=current, current_installed=any(i.current for i in items),
-        items=items, provider=name,
+        items=items, provider=name, recommended=recommended,
     )
 
 

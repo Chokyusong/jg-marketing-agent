@@ -40,6 +40,13 @@ def open_ai(page) -> None:
     page.wait_for_function(AI_LOADED)
 
 
+def type_model(page, name: str, model: str) -> None:
+    """2026-11-17 「모델」은 고르는 목록: 맨 아래 「직접 입력…」을 고르면 글 칸이 나온다."""
+    page.select_option(f"#ai-model-sel-{name}", "__custom__")
+    assert page.is_visible(f"#ai-model-{name}")
+    page.fill(f"#ai-model-{name}", model)
+
+
 def test_pick_ai_confirm_external_save_and_status(app, user_dir):
     base = app["base"]
     key = "sk-" + "e2e" * 12  # 실행할 때 조립한 가짜 키
@@ -74,7 +81,7 @@ def test_pick_ai_confirm_external_save_and_status(app, user_dir):
         assert (user_dir / "llm_keys" / "openai.bin").is_file()
 
         # 모델 적기 → [이 AI 쓰기] → 같은 글로 한 번 확인 → [쓰기]
-        page.fill("#ai-model-openai", "m-test-1")
+        type_model(page, "openai", "m-test-1")
         assert page.is_enabled("#ai-use-openai")
         page.click("#ai-use-openai")
         confirm = page.text_content("#ai-confirm-openai")
@@ -126,7 +133,7 @@ def test_cancel_external_confirm_keeps_current_ai(app):
         page.wait_for_function(STATUS_LOADED)
         open_ai(page)
         page.click("#ai-item-claude")
-        page.fill("#ai-model-claude", "c-test")
+        type_model(page, "claude", "c-test")
         page.click("#ai-use-claude")
         assert page.is_visible("#ai-confirm-claude")
         page.click("#ai-confirm-claude >> text=취소")
@@ -157,7 +164,7 @@ def test_ai_group_fits_without_page_scroll(app, size):
             page.click(f"#ai-item-{name}")
             if name == "openai":
                 page.click("#ai-pane-openai .key-guide > summary")
-                page.fill("#ai-model-openai", "m-1")
+                type_model(page, "openai", "m-1")
                 page.click("#ai-use-openai")  # 확인 상자까지 펼친 가장 긴 상태
             m = measure(page, *size)
             where = f"{name} {size}"
@@ -170,4 +177,77 @@ def test_ai_group_fits_without_page_scroll(app, size):
         m = measure(page, *size)
         assert not m["pageScroll"] and not m["hScroll"], ("work", size)
         assert m["minFont"] >= 12, ("work", size, m["minFont"], m["minFontAt"])
+    assert not errors, errors
+
+
+def test_model_field_is_a_list_refilled_after_key_save(app):
+    """2026-11-17 「모델」은 고르는 목록: 추천 목록 → 키 저장 뒤 받아 온 목록,
+    맨 아래 「직접 입력…」.
+
+    저장된 모델이 목록에 없어도 사라지지 않고 고른 상태로 보인다. 받아 오는 곳은 가짜 AI 회사."""
+    base = app["base"]
+    key = "sk-" + "m" * 36  # 실행할 때 조립한 가짜 키
+    saved = {"values": {"llm.models": {"openai": "keep-me"}}}
+    assert httpx.put(base + "/api/settings", json=saved, trust_env=False).status_code == 200
+    with headless_page(base) as (page, errors):
+        page.goto(base + "/")
+        page.wait_for_function(STATUS_LOADED)
+        open_ai(page)
+        page.click("#ai-item-openai")
+        options = page.locator("#ai-model-sel-openai option").all_text_contents()
+        assert options[0] == "모델을 고르세요" and options[-1] == "직접 입력…", options
+        assert "keep-me · 저장된 모델" in options and len(options) > 3  # 추천 목록 + 저장된 값
+        assert page.input_value("#ai-model-sel-openai") == "keep-me"
+        assert not page.is_visible("#ai-model-openai")  # 빈 글 칸만 두지 않는다
+        assert "API 키를 넣으면" in page.text_content("#ai-models-note-openai")
+
+        page.fill("#ai-key-openai", key)
+        page.click("#ai-key-save-openai")
+        page.wait_for_function("(document.getElementById('ai-models-note-openai') || {})"
+                               ".textContent?.includes('받아 온 모델 2개')")
+        options = page.locator("#ai-model-sel-openai option").all_text_contents()
+        assert options[1:3] == ["e2e-model-a", "e2e-model-b"], options
+        assert page.input_value("#ai-model-sel-openai") == "keep-me"
+        page.select_option("#ai-model-sel-openai", "e2e-model-b")
+        assert not page.is_visible("#ai-model-openai")
+        with page.expect_request(lambda r: r.url.endswith("/api/settings")
+                                 and r.method == "PUT") as req:
+            page.click("#settings-save")
+        sent = json.loads(req.value.post_data)["values"]
+        assert sent == {"llm.models": {"openai": "e2e-model-b"}}
+        page.wait_for_function(
+            "document.getElementById('settings-msg').textContent.includes('저장했습니다')")
+
+        # 로그인된 프로그램: 맨 위 「기본값 (그 프로그램이 정한 모델)」이 기본
+        page.click("#ai-item-claude-cli")
+        first = page.locator("#ai-model-sel-claude-cli option").first.text_content()
+        assert first == "기본값 (그 프로그램이 정한 모델)"
+        assert page.input_value("#ai-model-sel-claude-cli") == ""
+        texts = page.locator("#ai-model-sel-claude-cli option").all_text_contents()
+        assert "sonnet" in texts and texts[-1] == "직접 입력…"
+        assert key not in page.content()
+    assert not errors, errors
+
+
+def test_ollama_model_list_has_custom_entry(app):
+    """2026-11-17: 이 PC 모델 목록 맨 아래에도 「직접 입력…」.
+
+    고르면 글 칸이 나오고 적은 이름을 저장한다."""
+    base = app["base"]
+    with headless_page(base) as (page, errors):
+        page.goto(base + "/")
+        page.wait_for_function(STATUS_LOADED)
+        open_ai(page)
+        page.wait_for_function(
+            "[...document.querySelectorAll('#set-model option')]"
+            ".some(o => o.value === '__custom__')")
+        assert not page.is_visible("#set-model-custom")
+        page.select_option("#set-model", "__custom__")
+        assert page.is_visible("#set-model-custom")
+        assert page.is_disabled("#settings-save")  # 이름을 적기 전에는 바꾼 것이 없다
+        page.fill("#set-model-custom", "my-ollama:1b")
+        with page.expect_request(lambda r: r.url.endswith("/api/settings")
+                                 and r.method == "PUT") as req:
+            page.click("#settings-save")
+        assert json.loads(req.value.post_data)["values"] == {"llm.model": "my-ollama:1b"}
     assert not errors, errors

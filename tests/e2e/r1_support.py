@@ -240,6 +240,22 @@ def fake_youtube_driver(mode: str, seen: list[str], video_id: str, *,
     return driver
 
 
+E2E_MODELS = ["e2e-model-a", "e2e-model-b"]  # 가짜 AI 회사가 돌려주는 모델 목록(2026-11-17)
+
+
+def ai_transport() -> httpx.MockTransport:
+    """API 키 AI의 모델 목록(`GET …/models`)만 답하는 가짜.
+
+    그 밖의 요청은 503(바깥에 나가지 않는다)."""
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": m} for m in E2E_MODELS]})
+        return httpx.Response(503, json={"error": {"message": "e2e: 바깥 호출 없음"}})
+
+    return httpx.MockTransport(handle)
+
+
 @contextmanager
 def r1_server(tmp_path: Path, make_config, fixture_json, *, user_dir: Path | None = None,
               key: bool = True, launcher=None, login_checker=None,
@@ -288,7 +304,7 @@ def r1_server(tmp_path: Path, make_config, fixture_json, *, user_dir: Path | Non
         built.llm_error = None
 
     app = create_app(settings, transport=youtube_transport(fixture_json), browser_hooks=hooks,
-                     on_build=use_fake_llm)
+                     on_build=use_fake_llm, llm_transport=ai_transport())
     app.state.services.get()  # 먼저 만들어 둔다(가짜 LLM을 끼운다)
     server = ServerThread(app, open_listen_socket())
     server.start()

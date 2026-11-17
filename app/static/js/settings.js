@@ -297,6 +297,9 @@ function modelOption(item) {
   return el('option', { value: item.name, text: `${item.name}${size}${KIND_NOTE[item.kind] || ''}` });
 }
 
+// 모델 칸 맨 아래에 늘 있는 「직접 입력…」(고르면 그때 글 칸이 나온다, 2026-11-17)
+const CUSTOM_MODEL = '__custom__';
+
 function fillModels() {
   const select = $('set-model');
   if (!select || !data) return;
@@ -305,20 +308,36 @@ function fillModels() {
   const items = models && models.reachable ? models.items : [];
   const options = items.map(modelOption);
   if (!items.some((i) => i.name === current)) options.unshift(el('option', { value: current, text: `${current}${models && models.reachable ? ' · 이 PC에 없음' : ''}` }));
+  options.push(el('option', { value: CUSTOM_MODEL, text: '직접 입력…' }));
   select.replaceChildren(...options);
   select.value = [...select.options].some((o) => o.value === chosen) ? chosen : current;
+  showOllamaCustom();
   paintModelStatus();
   markDirty();
+}
+
+function showOllamaCustom() {
+  const select = $('set-model');
+  const input = $('set-model-custom');
+  if (!select || !input) return;
+  const custom = select.value === CUSTOM_MODEL;
+  input.hidden = !custom;
+  if (custom && document.activeElement === select) input.focus();
 }
 
 function paintModelStatus() {
   const node = $('model-status');
   if (!node || !data) return;
   const select = $('set-model');
-  const name = select ? select.value : data.llm.model;
+  const custom = $('set-model-custom');
+  let name = select ? select.value : data.llm.model;
+  if (name === CUSTOM_MODEL) name = custom ? custom.value.trim() : '';
   let tone = 'is-ok';
   let text;
-  if (data.llm.error && data.llm.type === 'ollama') {
+  if (select && select.value === CUSTOM_MODEL && !name) {
+    tone = '';
+    text = '이 PC의 Ollama에 설치된 모델 이름을 적으세요.';
+  } else if (data.llm.error && data.llm.type === 'ollama') {
     tone = 'is-bad';
     text = `${data.llm.error.message} ${data.llm.error.action}`.trim();
   } else if (!models) {
@@ -355,9 +374,11 @@ function modelRows(s) {
   const current = s.edit.values['llm.model'];
   initial['llm.model'] = current;
   const select = el('select', { id: 'set-model', 'data-key': 'llm.model' }, [el('option', { value: current, text: current })]);
-  select.addEventListener('change', paintModelStatus);
+  select.addEventListener('change', () => { showOllamaCustom(); paintModelStatus(); });
+  const custom = el('input', { class: 'field field-text', type: 'text', id: 'set-model-custom', maxlength: '200', autocomplete: 'off', spellcheck: 'false', 'aria-label': '모델 이름 직접 입력', placeholder: '모델 이름을 적으세요', hidden: true });
+  custom.addEventListener('input', paintModelStatus);
   return [
-    [label('모델', 'set-model', 'llm.model'), el('dd', { class: 'set-field' }, [select, errSpan('set-model')])],
+    [label('모델', 'set-model', 'llm.model'), el('dd', { class: 'set-field' }, [select, custom, errSpan('set-model')])],
     readRow('상태', el('span', { id: 'model-status', class: 'flag-line', text: '모델 목록을 읽는 중…' })),
     readRow('지금 모델', el('span', { id: 'model-now', text: llm.type === 'ollama' || !llm.type
       ? `${llm.model || '–'} · ${llm.local ? '이 PC 안에서 돌아갑니다' : '외부 서비스(영상 자료가 그 회사로 갑니다)'}`
@@ -417,7 +438,10 @@ let pendingActive = null; // [이 AI 쓰기]로 고른 이름(저장 전)
 let confirmFor = null; // 바깥 전송 확인을 기다리는 이름
 const aiKeyEditing = {};
 const aiNotes = {}; // 이름 → { text, tone } (연결 확인 · 키 저장 결과)
-const aiModelLists = {}; // 이름 → 받아 온 모델 이름들
+const aiModelLists = {}; // 이름 → 받아 온 모델 이름들(받아 오지 못하면 추천 목록)
+const aiModelNotes = {}; // 이름 → 목록 아래 한 줄
+const aiModelCustom = {}; // 이름 → 「직접 입력…」을 고른 상태인지
+const aiModelTried = {}; // 이름 → 이번에 목록을 받아 와 봤는지(칸을 열 때 한 번만 저절로)
 
 function findProvider(name) {
   return providers ? providers.items.find((p) => p.name === name) || null : null;
@@ -544,20 +568,94 @@ function keyRow(p) {
   ])];
 }
 
+// 2026-11-17 「모델」은 고르는 목록: ① 받아 온 목록 → ② config.yaml 추천 목록 → ③ 맨 아래 「직접 입력…」.
+// 로그인된 프로그램은 맨 위 「기본값 (그 프로그램이 정한 모델)」(빈 값)이 기본. 저장할 값은 늘
+// 글 칸(#ai-model-<이름>)에 두고, 목록은 그 칸을 채운다(「직접 입력…」일 때만 글 칸이 보인다)
+function modelNames(p) {
+  const fetched = aiModelLists[p.name];
+  return fetched && fetched.length ? fetched : (p.recommended_models || []);
+}
+
+function modelOptions(p, optional, value) {
+  const names = modelNames(p);
+  const saved = savedModel(p);
+  const options = [el('option', { value: '', text: optional ? (p.default_label || '기본값 (그 프로그램이 정한 모델)') : '모델을 고르세요' })];
+  for (const name of names) options.push(el('option', { value: name, text: name }));
+  for (const extra of [saved, value]) {
+    // 저장된 값이 목록에 없어도 사라지지 않게 목록에 넣어 고른 상태로 보인다
+    if (extra && !names.includes(extra) && !options.some((o) => o.value === extra)) {
+      options.push(el('option', { value: extra, text: extra === saved ? `${extra} · 저장된 모델` : extra }));
+    }
+  }
+  options.push(el('option', { value: CUSTOM_MODEL, text: '직접 입력…' }));
+  return options;
+}
+
+function modelNote(p) {
+  if (aiModelNotes[p.name]) return aiModelNotes[p.name];
+  const fetched = aiModelLists[p.name];
+  if (fetched && fetched.length) return `받아 온 모델 ${fetched.length}개`;
+  if (p.needs_key && !p.key_configured && (p.recommended_models || []).length) return 'API 키를 넣으면 목록을 받아 옵니다 · 지금은 추천 목록을 보입니다';
+  return '';
+}
+
 function modelRow(p, { optional = false } = {}) {
   const id = `ai-model-${p.name}`;
-  const list = aiModelLists[p.name] || [];
+  const saved = savedModel(p);
+  const custom = Boolean(aiModelCustom[p.name]);
   const input = el('input', {
-    class: 'field field-text ai-model-input', type: 'text', id, 'data-ai-model': p.name, list: `ai-models-${p.name}`,
-    maxlength: '200', autocomplete: 'off', spellcheck: 'false', value: savedModel(p),
-    placeholder: optional ? '비우면 그 프로그램의 기본 모델' : '목록에서 고르거나 직접 적기',
+    class: 'field field-text ai-model-input', type: 'text', id, 'data-ai-model': p.name,
+    maxlength: '200', autocomplete: 'off', spellcheck: 'false', value: saved,
+    'aria-label': `${p.label} 모델 이름 직접 입력`, placeholder: '모델 이름을 적으세요', hidden: !custom,
   });
-  return [el('dt', {}, [el('label', { for: id, text: '모델' })]), el('dd', { class: 'set-field' }, [
+  const select = el('select', { id: `ai-model-sel-${p.name}`, class: 'ai-model-select', 'data-ai-model-select': p.name }, modelOptions(p, optional, saved));
+  select.value = custom ? CUSTOM_MODEL : saved;
+  return [el('dt', {}, [el('label', { for: `ai-model-sel-${p.name}`, text: '모델' })]), el('dd', { class: 'set-field' }, [
+    select,
     input,
-    el('datalist', { id: `ai-models-${p.name}` }, list.map((name) => el('option', { value: name }))),
-    p.models_listable ? el('button', { type: 'button', class: 'btn btn-small', 'data-ai-action': 'models', 'data-name': p.name, text: '모델 불러오기' }) : null,
-    el('span', { class: 'caption', id: `ai-models-note-${p.name}`, text: list.length ? `받아 온 모델 ${list.length}개` : '' }),
+    p.models_listable ? el('button', { type: 'button', class: 'btn btn-small', id: `ai-models-btn-${p.name}`, 'data-ai-action': 'models', 'data-name': p.name, text: '목록 다시 받기' }) : null,
+    el('span', { class: 'caption', id: `ai-models-note-${p.name}`, role: 'status', text: modelNote(p) }),
   ])];
+}
+
+// 받아 온 목록으로 고르는 칸을 다시 채운다(지금 고른 값은 그대로)
+function refillModelSelect(name) {
+  const p = findProvider(name);
+  const select = $(`ai-model-sel-${name}`);
+  const input = $(`ai-model-${name}`);
+  if (!p || !select || !input) return;
+  const value = input.value.trim();
+  select.replaceChildren(...modelOptions(p, p.kind === 'program', value));
+  select.value = aiModelCustom[name] ? CUSTOM_MODEL : value;
+  const note = $(`ai-models-note-${name}`);
+  if (note) note.textContent = modelNote(p);
+}
+
+function onModelSelect(event) {
+  const select = event.target;
+  const name = select.dataset ? select.dataset.aiModelSelect : null;
+  if (!name) return;
+  const input = $(`ai-model-${name}`);
+  if (!input) return;
+  if (select.value === CUSTOM_MODEL) {
+    aiModelCustom[name] = true;
+    input.hidden = false;
+    input.focus();
+  } else {
+    aiModelCustom[name] = false;
+    input.hidden = true;
+    input.value = select.value;
+  }
+  repaintUse(name);
+  markDirty();
+}
+
+// 칸을 열 때 한 번: 키가 있으면(또는 키가 필요 없고 주소가 있으면) 목록을 받아 온다
+function autoLoadModels(name) {
+  const p = findProvider(name);
+  if (!p || !p.models_listable || p.type === 'ollama' || aiModelTried[name]) return;
+  if (!(p.key_configured || (!p.needs_key && (savedUrl(p) || !p.url_editable)))) return;
+  aiLoadModels(name);
 }
 
 function urlRow(p) {
@@ -665,6 +763,7 @@ function repaintUse(name) {
 function showPane(name) {
   if (!findProvider(name)) return;
   viewing = name;
+  autoLoadModels(name);
   for (const pane of document.querySelectorAll('#settings-body [data-ai-pane]')) pane.hidden = pane.dataset.aiPane !== name;
   repaintAiList();
   const item = $(`ai-item-${name}`);
@@ -705,6 +804,7 @@ async function aiSaveKey(name) {
     aiNotes[name] = { text: '저장했습니다. 값은 다시 보이지 않습니다. [연결 확인]으로 키가 통하는지 볼 수 있습니다.', tone: 'is-ok' };
     await load({ keepMessage: true });
     refreshStatus();
+    aiLoadModels(name); // 키를 넣었으니 모델 목록을 다시 받아 온다
   } catch (error) {
     if (button) button.disabled = false;
     setNote(name, `${error.message || ''} ${error.action || ''}`.trim(), 'is-bad');
@@ -741,6 +841,7 @@ async function aiTest(name, button) {
   try {
     const res = await api.llmTest(name);
     setNote(name, `${res.message} ${res.action || ''}`.trim(), res.ok ? 'is-ok' : 'is-bad');
+    if (res.ok && findProvider(name) && findProvider(name).models_listable) aiLoadModels(name);
   } catch (error) {
     setNote(name, `${error.message || ''} ${error.action || ''}`.trim(), 'is-bad');
   } finally {
@@ -748,25 +849,30 @@ async function aiTest(name, button) {
   }
 }
 
-async function aiLoadModels(name, button) {
+// 그 AI의 모델 목록을 받아 와 고르는 칸을 채운다. 받아 오는 중·실패는 목록 아래 한 줄로
+async function aiLoadModels(name) {
+  aiModelTried[name] = true;
+  const button = () => $(`ai-models-btn-${name}`);
   const note = () => $(`ai-models-note-${name}`);
-  button.disabled = true;
-  if (note()) note().textContent = '모델 목록을 받아 오는 중…';
+  if (button()) button().disabled = true;
+  aiModelNotes[name] = '모델 목록을 받아 오는 중…';
+  if (note()) note().textContent = aiModelNotes[name];
   try {
     const res = await api.llmModelsOf(name);
-    if (!res.reachable) {
-      if (note()) note().textContent = res.error ? `${res.error.message} ${res.error.action}`.trim() : '목록을 받아 오지 못했습니다';
-      return;
+    if (res.source === 'api' && res.items.length) {
+      aiModelLists[name] = res.items.map((i) => i.name);
+      aiModelNotes[name] = `받아 온 모델 ${res.items.length}개`;
+    } else {
+      aiModelLists[name] = res.recommended || [];
+      aiModelNotes[name] = res.note || '목록을 받아 오지 못해 추천 목록을 보입니다';
     }
-    aiModelLists[name] = res.items.map((i) => i.name);
-    const list = $(`ai-models-${name}`);
-    if (list) list.replaceChildren(...res.items.map((i) => el('option', { value: i.name, text: i.label || '' })));
-    if (note()) note().textContent = res.items.length ? `받아 온 모델 ${res.items.length}개 · 칸을 눌러 고르세요` : '받아 온 모델이 없습니다 · 직접 적어 주세요';
-  } catch (error) {
-    if (note()) note().textContent = `${error.message || ''} ${error.action || ''}`.trim();
+  } catch {
+    aiModelLists[name] = [];
+    aiModelNotes[name] = '목록을 받아 오지 못해 추천 목록을 보입니다';
   } finally {
-    button.disabled = false;
+    if (button()) button().disabled = false;
   }
+  refillModelSelect(name);
 }
 
 function aiChoose(name) {
@@ -805,7 +911,7 @@ function onAiClick(event) {
   else if (action === 'key-cancel') { aiKeyEditing[name] = false; render(data); }
   else if (action === 'key-delete') aiDeleteKey(name, button);
   else if (action === 'test') aiTest(name, button);
-  else if (action === 'models') aiLoadModels(name, button);
+  else if (action === 'models') aiLoadModels(name);
 }
 
 function onAiInput(event) {
@@ -1024,8 +1130,13 @@ export function changedValues() {
   for (const node of document.querySelectorAll('#settings-body [data-key]')) {
     const key = node.dataset.key;
     if (node.disabled || !(key in initial)) continue;
-    const value = controlValue(node);
+    let value = controlValue(node);
     if (key === 'browser.window_screen' && !value) continue;
+    if (key === 'llm.model' && value === CUSTOM_MODEL) {
+      // 「직접 입력…」: 글 칸에 적은 이름(비어 있으면 보내지 않는다)
+      value = $('set-model-custom') ? $('set-model-custom').value.trim() : '';
+      if (!value) continue;
+    }
     if (!same(value, initial[key])) out[key] = value;
   }
   return { ...out, ...aiChanges() };
@@ -1085,6 +1196,7 @@ function render(s) {
   $('key-test').addEventListener('click', testKey);
   if (models) fillModels();
   if (screens) fillScreens();
+  if (providers) autoLoadModels(viewing);
   markDirty();
   applyFocus();
 }
@@ -1248,6 +1360,7 @@ export function applyWorkDefaults(s) {
 export function initSettings() {
   const body = $('settings-body');
   body.addEventListener('input', onAiInput);
+  body.addEventListener('change', onModelSelect);
   body.addEventListener('keydown', onAiInput);
   body.addEventListener('click', onAiClick);
   body.addEventListener('input', markDirty);

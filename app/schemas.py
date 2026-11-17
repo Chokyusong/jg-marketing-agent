@@ -808,6 +808,12 @@ class LLMModelsOut(BaseModel):
     provider: str = ""
     manual_only: bool = False
     error: ProblemOut | None = None
+    # 2026-11-17 모델 고르는 목록(필드 추가): config.yaml `llm.providers.<이름>.models` 추천 목록,
+    # 보일 목록의 출처(api 받아 옴 · recommended 추천 · none 없음 → 「직접 입력…」만),
+    # 받아 오지 못했을 때 한 줄
+    recommended: list[str] = []
+    source: Literal["api", "recommended", "none"] = "api"
+    note: str = ""
 
 
 class LLMProviderOut(BaseModel):
@@ -831,6 +837,10 @@ class LLMProviderOut(BaseModel):
     installed: bool
     verified: bool  # 안전하게 실행하는 방법을 확인한 프로그램인지(아니면 고를 수 없다)
     unavailable_reason: str | None = None  # 고를 수 없는 이유(쉬운 한국어)
+    # 2026-11-17 모델 고르는 목록(필드 추가): 추천 목록(받아 오기 전에 바로 보인다)과, 로그인된
+    # 프로그램의 맨 위 칸 이름(「기본값 (그 프로그램이 정한 모델)」, 값은 빈 글)
+    recommended_models: list[str] = []
+    default_label: str = ""
 
 
 class LLMProvidersOut(BaseModel):

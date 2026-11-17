@@ -48,8 +48,11 @@ llm:
   keep_alive: "30m"       # 답한 뒤 모델을 메모리에 두는 시간
   context_chars: 6000     # 모델에 넣을 영상 자료 길이 한도(3단계)
   # R5: 설정 화면의 「AI」에서 고르는 목록. 비밀값은 없다 — 키는 프로그램 설정(사용자 폴더에 암호화)
-  # > .env의 api_key_env 이름(개발용) 순서로 읽는다. 모델 이름은 여기에 박지 않는다(각 AI의 목록에서
-  # 고르거나 직접 적는다). 주소는 각 회사 문서로 확인한 것(app/llm/*.py 머리말에 날짜·출처).
+  # > .env의 api_key_env 이름(개발용) 순서로 읽는다. 주소는 각 회사 문서로 확인한 것(app/llm/*.py 머리말).
+  # models: 「모델」 고르는 목록의 추천 목록(2026-11-17). 그 AI의 모델 목록을 받아 오지 못할 때(키 없음·
+  # 연결 실패)와 목록을 주지 않는 프로그램에서 보인다. **공식 문서로 확인한 이름만** 적는다(확인한 날짜와
+  # 출처는 항목 옆 주석). 확인하지 못한 AI는 비워 둔다 — 화면에는 「직접 입력…」이 늘 있다.
+  # 코드에는 모델 이름을 박지 않는다.
   providers:
     ollama: {type: ollama, label: Ollama}   # 주소·모델은 .env의 OLLAMA_BASE_URL, OLLAMA_MODEL
     openai:
@@ -60,12 +63,16 @@ llm:
       api_key_env: OPENAI_API_KEY
       json_mode: true
       max_tokens_field: max_completion_tokens
+      # 2026-11-17 developers.openai.com/api/docs/models 「Flagship models」의 Model ID
+      models: [gpt-6-astra, gpt-6.1-sol, gpt-6.1-terra, gpt-6-luna]
     claude:
       type: anthropic
       label: Claude(Anthropic)
       sends_to: Anthropic
       base_url: "https://api.anthropic.com"
       api_key_env: ANTHROPIC_API_KEY
+      # 2026-11-17 claude-api 스킬(Anthropic 공식 모델 ID 목록)
+      models: [claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5, claude-fable-5-2]
     gemini:
       type: openai_compatible
       label: Gemini(Google)
@@ -74,6 +81,8 @@ llm:
       api_key_env: GEMINI_API_KEY
       json_mode: false
       max_tokens_field: ""
+      # 2026-11-17 ai.google.dev/gemini-api/docs/models(→ aistudio.google.com/docs/models)의 「Stable」만
+      models: [gemini-3.8-flash, gemini-3.6-flash, gemini-3.5-flash-lite, gemini-3.1-flash-lite]
     grok:
       type: openai_compatible
       label: Grok(xAI)
@@ -82,6 +91,8 @@ llm:
       api_key_env: XAI_API_KEY
       json_mode: true
       max_tokens_field: max_completion_tokens
+      # 2026-11-17 docs.x.ai/docs/models 표의 글 모델(추론 전용·에이전트용 변형은 뺐다)
+      models: [grok-4.7, grok-4.6, grok-4.5, grok-4.3]
     custom:
       type: openai_compatible
       label: 직접 입력
@@ -92,6 +103,21 @@ llm:
       api_key_env: CUSTOM_LLM_API_KEY
       json_mode: false
       max_tokens_field: max_tokens
-    codex-cli: {type: cli, label: Codex, program: codex, sends_to: "OpenAI(Codex)"}
-    claude-cli: {type: cli, label: Claude Code, program: claude, sends_to: "Anthropic(Claude Code)"}
+      models: []              # 사람이 넣는 주소라 추천할 이름이 없다
+    # 로그인된 프로그램은 목록을 주는 명령이 없다. 맨 위 「기본값 (그 프로그램이 정한 모델)」이 기본이고
+    # 아래는 문서로 확인한 이름. Codex: 2026-11-17 developers.openai.com/codex/models(→ learn.chatgpt.com
+    # /docs/models)의 `codex -m` 예시(gpt-6.1-terra는 Codex 0.159.0 이상). Claude Code: 2026-11-17
+    # `claude --help`의 --model 별칭(fable·opus·sonnet)과 claude-api 스킬의 전체 이름
+    codex-cli:
+      type: cli
+      label: Codex
+      program: codex
+      sends_to: "OpenAI(Codex)"
+      models: [gpt-6-astra, gpt-6.1-sol, gpt-6.1-terra, gpt-6-luna]
+    claude-cli:
+      type: cli
+      label: Claude Code
+      program: claude
+      sends_to: "Anthropic(Claude Code)"
+      models: [fable, opus, sonnet, claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5]
     gemini-cli: {type: cli, label: Gemini 프로그램, program: gemini, sends_to: "Google(Gemini 프로그램)"}  # 화면에 「CLI」를 쓰지 않는다

@@ -97,6 +97,24 @@ def readiness(
     return None
 
 
+DEFAULT_MODEL_LABEL = "기본값 (그 프로그램이 정한 모델)"
+
+
+def recommended_models(provider: ProviderSettings) -> list[str]:
+    """config.yaml `llm.providers.<이름>.models`(공식 문서로 확인한 이름만 적는 추천 목록)."""
+    raw = provider.options.get("models")
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out: list[str] = []
+    for item in raw:
+        if isinstance(item, bool) or not isinstance(item, (str, int, float)):
+            continue
+        name = str(item).strip()
+        if name and len(name) <= 200 and name not in out:
+            out.append(name)
+    return out
+
+
 def client_for(services: Services, name: str) -> LLMClient:
     """그 이름의 공급자. 지금 쓰는 AI면 그것을, 아니면 새로 만든다(쓴 뒤 닫는다)."""
     if services.llm is not None and services.settings.llm.active == name:
@@ -132,6 +150,8 @@ def provider_view(services: Services, provider: ProviderSettings) -> LLMProvider
         installed=installed,
         verified=verified,
         unavailable_reason=readiness(settings, provider, installed=installed, verified=verified),
+        recommended_models=recommended_models(provider),
+        default_label=DEFAULT_MODEL_LABEL if provider.type == "cli" else "",
     )
 
 

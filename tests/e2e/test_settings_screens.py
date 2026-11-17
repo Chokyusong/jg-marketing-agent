@@ -260,7 +260,8 @@ def test_setup_box_three_lines_jump_and_disappear(app_no_key, chrome):
         page.wait_for_function(FOCUSED.format("set-model"))
         page.wait_for_function(MODELS_LOADED)
         options = page.locator("#set-model option").all_text_contents()
-        assert "코드용" in options[-1], options
+        # 2026-11-17: 맨 아래는 늘 「직접 입력…」, 코드용은 그 바로 위
+        assert options[-1] == "직접 입력…" and "코드용" in options[-2], options
 
         # [닫기] → 이번에는 보이지 않는다(다시 열어도 같은 창에서는 닫힌 채)
         page.click("#nav-work")
