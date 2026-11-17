@@ -90,6 +90,8 @@ def test_system_also_asks_content_made_up_experience_and_repeats():
         assert made_up in system
     # 설정(연애사주를 잘 본다)을 다른 말로 옮긴 들은 평판은 문제가 아니다
     assert "'잘 보기로 유명하다던데'" in system and "'주변에서 많이 추천하던데'" in system
+    # Codex 2회차: 「진짜 정확하다고 하던데」를 「새 평판」으로 잘못 짚어 대표 본보기 꼴도 적었다
+    assert "'정확하다는 얘기가 있더라구요'" in system and "'잘 맞춘다고 하던데'" in system
     assert "7. 같은 낱말·어미가 한 댓글 안에서 되풀이되는가" in system
 
 
