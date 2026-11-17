@@ -22,7 +22,7 @@ INVENTED = "매일 밤 손편지를 써서 보냈대요"
 
 ANALYSIS = {
     "topic": "장거리 연애 연락 문제",
-    "concern": "연락 빈도 차이로 자주 다투는 장거리 커플",
+    "concern": "연락 횟수 때문에 맨날 싸우는데 우리 괜찮은 걸까",
     "tone": "진지한 사연 읽기",
     "viewer_needs": "연락 다툼을 줄이는 방법",
     "evidence": [
@@ -30,23 +30,28 @@ ANALYSIS = {
         {"quote": INVENTED, "source": "transcript"},  # 자료에 없다 → 버린다
         {"quote": "서로 기대치 차이 같아요", "source": "transcript"},  # 출처가 틀렸다 → 댓글
     ],
+    # C1: 핵심 말. '운명원'(브랜드)·'연애'(흔한 말)·'손편지'(자료에 없음)는 코드가 거른다
+    "key_phrases": ["장거리", "하루에 한 번 연락", "기대치 차이", "운명원", "연애", "손편지"],
 }
+KEYS = ["장거리", "하루에 한 번 연락", "기대치 차이"]
+# C1 새 기준(시청자 말투, 핵심 말을 담고 자료를 13자 이상 이어서 옮기지 않음)으로 다시 씀
 GOOD_BODY = (
-    "'하루에 한 번 연락으로 싸운 적 있어요'라는 댓글이 마음에 남네요. "
-    "운명원에서 연애 사주 상담을 받아 보셔도 좋겠어요."
+    "하루에 한 번 연락 갖고 싸웠다는 댓글 완전 제 얘기네요ㅠㅠ "
+    "운명원 연애 사주 잘 본다던데 이번 인연은 오래 갈지 알면 좋겠어요."
 )
+GOOD_CLOSING = "운명원 연애 사주 잘 본다던데 이번 인연은 오래 갈지 알면 좋겠어요."
 GOOD_BODY_2 = (
-    "'서로 기대치 차이 같아요'라는 말처럼 마음의 속도가 다를 때가 있죠. "
-    "운명원의 연애 사주 상담으로 흐름을 짚어 보세요."
+    "기대치 차이라는 말에 뜨끔했어요. 연애만 하면 마음 속도가 엇갈리는 편이라... "
+    "요즘 운명원 얘기 자주 보이던데 제 인연은 언제쯤인지 물어보고 싶네요."
 )
-NO_BRAND = "'하루에 한 번 연락으로 싸운 적 있어요'라는 말에 공감해요. 연애 사주 상담을 받아 보세요."
-NO_BRAND_TAG = (
-    "'하루에 한 번 연락으로 싸운 적 있어요'라는 말에 공감해요 #연애 상담을 받아 보세요."
+NO_BRAND = (
+    "하루에 한 번 연락 갖고 싸웠다는 댓글에 공감해요. 연애 사주 상담을 한번 받아 보고 싶네요."
 )
+NO_BRAND_TAG = "하루에 한 번 연락 갖고 싸웠다는 댓글에 공감해요 #연애 상담을 한번 받아 보고 싶네요."
 MANY_FAILS = "운명원 최고! www.example.com #연애"
 OTHER_BODY = (
-    "요즘 '하루에 한 번 연락으로 싸운 적 있어요' 같은 고민이 많죠. 썸에서 연애로 넘어가는 흐름이 "
-    "궁금하면 운명원의 사주 풀이를 권해요."
+    "썸 타다 끝나는 게 제 전문이라 웃프네요ㅋㅋ 하루에 한 번 연락도 어려운 1인... "
+    "운명원에서 연애 사주 많이들 본다던데 이번 썸은 연애로 갈지 궁금해지네요."
 )
 
 
@@ -274,7 +279,7 @@ def test_draft_passes_on_first_try_and_code_adds_disclosure(setup):
     assert data["attempts"] == 1 and data["status"] == "draft"
     assert data["evidence_quote"] == Q_COMMENT and data["evidence_source"] == "comment"
     assert data["evidence_label"] == "댓글" and data["tone_label"] == "공감형"
-    assert data["validation"]["passed"] is True and data["validation"]["total"] == 12
+    assert data["validation"]["passed"] is True and data["validation"]["total"] == 13
     call = llm.calls[1]["kwargs"]
     assert call["temperature"] == 0.8  # 초안은 높은 온도
     assert "[광고]는 쓰지 않는다" in call["system"]
@@ -335,7 +340,7 @@ def test_llm_error_before_any_draft_is_reported(setup):
 
 def test_another_draft_uses_a_different_quote(setup):
     client, _, use = setup
-    llm = use([ANALYSIS, draft(GOOD_BODY), draft(GOOD_BODY_2, tone="조언형",
+    llm = use([ANALYSIS, draft(GOOD_BODY), draft(GOOD_BODY_2, tone="혼잣말형",
                                                   quote="서로 기대치 차이 같아요")])
     first = client.post("/api/drafts", json={"video_id": VID}).json()
     second = client.post("/api/drafts", json={"video_id": VID, "another": True}).json()
@@ -343,7 +348,11 @@ def test_another_draft_uses_a_different_quote(setup):
     assert second["evidence_quote"] == "서로 기대치 차이 같아요"
     assert "'서로 기대치 차이 같아요'" in user_prompts(llm)[2]
     assert GOOD_BODY in user_prompts(llm)[2]  # 같은 영상의 앞 초안과 다르게 쓰라고 알린다
-    assert second["passed"] is True and second["tone_label"] == "조언형"
+    assert second["passed"] is True and second["tone_label"] == "혼잣말형"
+    # C1: 같은 영상의 앞 초안 말투(공감형)는 두 번째 초안의 선택지에서 빠진다
+    enum = llm.calls[2]["kwargs"]["schema"]["properties"]["tone_label"]["enum"]
+    assert "공감형" not in enum and "혼잣말형" in enum
+    assert "앞 댓글 말투(공감형)는 쓰지 않는다" in user_prompts(llm)[2]
 
     listed = client.get("/api/drafts", params={"video_id": VID}).json()
     assert [d["id"] for d in listed["items"]] == [second["id"], first["id"]]  # 최신이 위
@@ -376,8 +385,8 @@ def test_human_edit_is_checked_again(setup):
     assert broken["passed"] is False and "V2" in codes(broken["validation"])
     assert broken["edited_by_human"] is True and broken["attempts"] == 1
     fixed_text = (
-        "[광고] 하루에 한 번 연락으로 싸운 적 있다는 댓글에 공감했어요. "
-        "운명원 연애 사주 상담도 있어요."
+        "[광고] 하루에 한 번 연락 때문에 다툰 적 있다는 댓글에 공감했어요. "
+        "운명원 연애 사주도 한번 보고 싶네요."
     )
     fixed = client.patch(f"/api/drafts/{made['id']}", json={"body": fixed_text}).json()
     assert fixed["passed"] is True and fixed["body"] == fixed_text
@@ -479,7 +488,7 @@ def test_responses_do_not_contain_the_api_key(setup, fake_key):
 # ---------------------------------------------------------------- 5단계 점검: V12와 권유 문장
 
 
-HANJA_BODY = GOOD_BODY.replace("마음에 남네요", "마음이揪입니다")
+HANJA_BODY = GOOD_BODY.replace("제 얘기네요", "제 얘기揪네요")
 
 
 def test_hanja_in_draft_fails_v12_and_is_rewritten(setup):
@@ -513,5 +522,5 @@ def test_draft_prompt_lists_closings_of_drafts_approved_for_other_videos(setup):
     client.post("/api/drafts", json={"video_id": OTHER})
     prompt = user_prompts(llm)[3]
     assert "이미 쓴 권유 문장(다른 영상에 승인됨)" in prompt
-    assert "- 운명원에서 연애 사주 상담을 받아 보셔도 좋겠어요." in prompt
-    assert "핵심 고민(" in prompt
+    assert f"- {GOOD_CLOSING}" in prompt
+    assert "고민 한 줄('" in prompt

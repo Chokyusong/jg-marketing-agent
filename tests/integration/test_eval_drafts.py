@@ -105,12 +105,14 @@ def test_eval_runs_the_real_pipeline_with_fake_llm(tmp_db_path, fake_llm):
                              {"quote": quote_b, "source": "transcript"},
                              {"quote": "매일 꽃을 사 왔대요", "source": "transcript"}]}
     good_a = f"'{quote_a}'라는 말이 오래 남네요. 운명원에서 연애 사주 상담을 받아 보세요."
-    good_b = f"'{quote_b}'라는 말에 공감했어요. 운명원의 연애 사주 상담으로 흐름을 짚어 보세요."
+    # C1: 자료를 13자 이상 이어서 옮기지 않는다(V13)
+    good_b = ("같은 식당, 같은 카페에서 데이트가 끝난다는 말에 공감했어요. "
+              "운명원 연애 사주로 흐름을 짚어 보고 싶네요.")  # 굳은 틀(셈 확인용)
     llm = fake_llm([analysis,
                     {"body": "연애 사주 상담을 받아 보세요.", "used_quote": "",
                      "tone_label": "조언형"},
                     {"body": good_a, "used_quote": quote_a, "tone_label": "공감형"},
-                    {"body": good_b, "used_quote": quote_b, "tone_label": "공감형"}])
+                    {"body": good_b, "used_quote": quote_b, "tone_label": "혼잣말형"}])
     llm.model = "fake"
 
     settings = E.eval_settings("fake", tmp_db_path)

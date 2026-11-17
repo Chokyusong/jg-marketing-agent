@@ -55,7 +55,7 @@ QUOTE = "하루에 한 번 연락으로 싸운 적 있어요"
 PICK = "FITVIDEO002"
 ENDINGS = ["좋겠어요", "괜찮겠어요", "어떨까 싶어요", "도움이 될 거예요"]
 # 규칙 검사 두 건(V1 한 줄 아님, V2 링크)에 걸리는 글
-BAD_DRAFT = (f"[광고] '{QUOTE}'라는 말에 공감해요." + chr(10)
+BAD_DRAFT = ("[광고] '하루에 한 번 연락'으로 싸웠다는 말에 공감해요." + chr(10)
              + "운명원 상담도 한번 보세요 https://example.com/a")
 
 TITLES = [
@@ -86,7 +86,7 @@ def topic_for(n: int) -> str:
 
 def draft_for(n: int) -> str:
     ending = ENDINGS[n % len(ENDINGS)]
-    return (f"[광고] '{QUOTE}'라는 댓글이 마음에 남네요. "
+    return ("[광고] '하루에 한 번 연락'으로 싸웠다는 댓글이 마음에 남네요. "
             f"운명원에서 연애 사주 상담을 받아 보셔도 {ending}")
 
 
