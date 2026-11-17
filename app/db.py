@@ -213,6 +213,15 @@ MIGRATIONS: list[str] = [
     DROP TABLE video_context;
     ALTER TABLE video_context_r4 RENAME TO video_context;
     """,
+    # C1: 분석이 뽑은 그 영상의 핵심 말(자료에 그대로 있는 짧은 말, JSON 배열)과 어디서 왔는지
+    # (model: 모델이 고르고 자료와 대조해 남은 것 · derived: 모델 것이 없어 제목·해시태그에서 코드로
+    # 뽑은 것 · '': C1 전에 저장된 분석). 예전 분석은 화면·검사에서 제목·해시태그에서 뽑은 핵심 말을
+    # 쓰고, 초안을 만들 때는 다시 분석한다.
+    """
+    ALTER TABLE analyses ADD COLUMN key_phrases_json TEXT NOT NULL DEFAULT '[]';
+    ALTER TABLE analyses ADD COLUMN key_phrases_source TEXT NOT NULL DEFAULT ''
+        CHECK (key_phrases_source IN ('', 'model', 'derived'));
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

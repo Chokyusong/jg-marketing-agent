@@ -1,5 +1,7 @@
 """SQLite 테이블 만들기·버전."""
 
+import pytest
+
 from app import db
 
 
@@ -221,3 +223,32 @@ def test_r3_disclosed_columns_and_backfill(tmp_db_path):
         assert [r["disclosed"] for r in rows] == [1, 0]
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(runs)")}
         assert "disclosed" in cols
+
+
+# ---------------------------------------------------------------- C1: 핵심 말 칸
+
+
+def test_c1_key_phrase_columns_keep_old_analyses_as_legacy(tmp_db_path):
+    import sqlite3
+
+    # C1 덩어리 바로 앞까지 만든 DB에 예전 분석 하나
+    last = next(i for i, m in enumerate(db.MIGRATIONS) if "key_phrases_json" in m)
+    assert last == len(db.MIGRATIONS) - 1  # 맨 끝에 붙였다
+    conn = sqlite3.connect(tmp_db_path)
+    for i in range(last):
+        conn.executescript("BEGIN;" + db.MIGRATIONS[i] + f"PRAGMA user_version = {i + 1};COMMIT;")
+    now = "2026-11-17T03:00:00+00:00"
+    conn.execute("INSERT INTO videos(video_id, title, fetched_at, source) "
+                 "VALUES ('BBBBBBBBBB2', 't', ?, 'search')", (now,))
+    conn.execute(
+        "INSERT INTO analyses(video_id, topic, concern, tone, viewer_needs, evidence_json, "
+        "dropped_json, fallback, model, created_at) "
+        "VALUES ('BBBBBBBBBB2', 't', 'c', 't', 'n', '[]', '[]', 0, 'm', ?)", (now,))
+    conn.commit()
+    conn.close()
+    assert db.init_db(tmp_db_path) == db.SCHEMA_VERSION
+    with db.session(tmp_db_path) as conn:
+        row = conn.execute("SELECT key_phrases_json, key_phrases_source FROM analyses").fetchone()
+        assert (row["key_phrases_json"], row["key_phrases_source"]) == ("[]", "")
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("UPDATE analyses SET key_phrases_source = 'guess'")
