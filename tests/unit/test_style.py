@@ -258,3 +258,44 @@ def test_s9_never_fires_on_the_models_or_prompt_examples():
 
     texts = list(P.BRAND_MODELS) + [ex.body for ex in P.GOOD_EXAMPLES + P.BAD_EXAMPLES]
     assert [t for t in texts if S._ENDED_PARTICLE.search(t)] == []
+
+
+# S10(2026-11-18, 기획 담당): 까닭이 되풀이됨 — 「저도 썸이 답답해서」가 영상 셋에서, 「호감
+# 기준」이 서로 다른 영상과 같은 영상 두 초안에서 나왔다. 승인은 막지 않고 한 번 다시 쓰게 한다.
+S10_LEAD = ("[광고] 매일 연락은 하는데 사귀자는 말은 없다니 답답하죠. 요즘 운명원이 연애사주를 "
+            "잘 본다고 하던데, ")
+
+
+def s10(ending, used):
+    return S.style_issues(S10_LEAD + ending, brand="운명원", disclosure="[광고]",
+                          used_reasons=used)
+
+
+@pytest.mark.parametrize("ending, used, old", [
+    ("저도 썸이 답답해서 한번 가 보려고요.", ["썸이 답답해서"], "썸이 답답해서"),
+    ("저도 썸이 답답해서 한번 가 보려고요.", ["관계가 불안해서", "썸이  답답해서"],
+     "썸이  답답해서"),
+    # 기획 담당이 본 초안: 「저도 호감 기준 알고 싶어 한번 가 보려고요.」
+    ("저도 호감 기준 알고 싶어 한번 가 보려고요.", ["호감 기준이 궁금해서"],
+     "호감 기준이 궁금해서"),
+])
+def test_s10_reason_repeated_from_an_earlier_draft(ending, used, old):
+    got = s10(ending, used)
+    assert [i[:3] for i in got] == ["S10"] and f"('{old}')" in got[0]
+
+
+@pytest.mark.parametrize("ending, used", [
+    ("저도 썸이 답답해서 한번 가 보려고요.", ["관계가 답답해서"]),  # 끝 낱말만 같다
+    ("저도 썸이 답답해서 한번 가 보려고요.", []),
+    ("저도 조만간 한번 가 보려고요.", ["썸이 답답해서"]),  # 까닭 없음
+    ("저도 호감 신호가 궁금해서 한번 가 보려고요.", ["호감 기준이 궁금해서"]),  # 한 낱말만 겹침
+])
+def test_s10_leaves_different_or_missing_reasons_alone(ending, used):
+    assert s10(ending, used) == []
+
+
+def test_repeated_reason_helper():
+    assert S.repeated_reason("", ["썸이 답답해서"]) == ""
+    assert S.repeated_reason("그 사람 속마음이 궁금해서", ["썸 상대 속마음이 궁금해서"]) == ""
+    assert S.repeated_reason("그 사람 속마음이 궁금해서", ["그 사람 속마음 때문에"]) == (
+        "그 사람 속마음 때문에")

@@ -208,11 +208,13 @@ def test_first_draft_asks_for_a_reason_and_the_next_may_skip_it(setup):
     assert first["passed"] is True
     ask = user_prompts(llm)[1]
     assert "이번 끝말에는 '저도' 뒤, 가 보겠다는 말 앞에 이 영상의 고민에서 온 짧은 까닭" in ask
-    assert f"고민 한 줄('{ANALYSIS['concern']}')을 쉬운 내 말로 줄여서" in ask
+    assert f"고민 한 줄('{ANALYSIS['concern']}')을 쉬운 내 말로 줄여" in ask
     second = client.post("/api/drafts", json={"video_id": VID}).json()
     assert second["passed"] is True
     free = user_prompts(llm)[2]
     assert "이번 끝말은 까닭 없이 본보기 꼴" in free and "이번 끝말에는" not in free
+    # 2026-11-18: 앞서 보인 초안의 까닭은 「이미 쓴 까닭」으로 넘긴다
+    assert "이미 쓴 까닭: '연락 문제로'" in free
 
 
 # ---------------------------------------------------------------- 사람이 고친 글 · 직접 검사

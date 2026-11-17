@@ -170,6 +170,7 @@ class DraftService:
         self.last_run: dict[str, Any] = {}  # 마지막 초안 만들기의 과정(시도별 글·다듬기)
         self._context_text = ""  # 지금 초안을 만드는 영상의 자료 글(다듬기 검사 S5)
         self._last_shown = ""  # 바로 앞에 보인 초안(다듬기 검사 S8)
+        self._used_reasons: list[str] = []  # 앞서 보인 초안들의 ⑤ 까닭(다듬기 검사 S10)
 
     @property
     def rules(self):
@@ -346,6 +347,10 @@ class DraftService:
         # ⑤의 까닭(2026-11-18): 같은 영상 초안 가운데 적어도 하나는 이 영상 고민에서 온 까닭을
         # 넣게 한다. 앞 초안에 이미 있으면 까닭 없는 본보기 꼴도 된다고 한다(전부 강제하지 않음)
         want_reason = not any(prompts.intent_reason(b, rules.brand) for b in avoid_bodies)
+        # 2026-11-18: 앞서 보인 초안(다른 영상 포함, 꺼내는 말을 세는 범위와 같게)의 까닭은 피한다
+        self._used_reasons = list(dict.fromkeys(
+            r for r in (prompts.intent_reason(t, rules.brand) for t in [*avoid_bodies, *shown]) if r
+        ))
         # S8: 바로 앞에 보인 초안과 같은 본보기를 그대로 옮기지 않게
         self._last_shown = shown[0] if shown else ""
 
@@ -379,6 +384,7 @@ class DraftService:
                 avoid_phrases=avoid_phrases,
                 last_model=prompts.copied_model(self._last_shown) if self._last_shown else -1,
                 reason=want_reason,
+                used_reasons=self._used_reasons,
             )
             try:
                 data = llm.generate_json(
@@ -462,7 +468,7 @@ class DraftService:
         return style.style_issues(
             text, brand=self.rules.brand, disclosure=mark, key_phrases=key_phrases,
             earlier=earlier, context=self._context_text,
-            last_shown=self._last_shown,
+            last_shown=self._last_shown, used_reasons=self._used_reasons,
         )
 
     def _polish(

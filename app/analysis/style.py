@@ -15,6 +15,9 @@
   유명하다)가 없음(2026-11-17 대표: 운명원은 「연애 사주 잘 봐주는 곳으로 유명한 곳」)
 - S8 본보기 연달아: 대표의 본보기(`prompts.BRAND_MODELS`)의 꺼내는 말을 그대로 옮긴 초안이 바로
   앞 초안과 같은 본보기를 옮김(2026-11-17 대표: 「그대로 베끼지 말고 이 결로」)
+- S10 까닭 되풀이: 운명원 대목 ⑤의 까닭(`prompts.intent_reason`)이 앞서 보인 초안(다른 영상
+  포함)의 까닭과 같음 — 글이 같거나, 끝 낱말을 뺀 낱말이 둘 이상 겹침(「호감 기준 알고 싶어」·
+  「호감 기준이 궁금해서」), 2026-11-18 기획 담당: 「저도 썸이 답답해서」가 영상 셋에서 나옴
 - S9 끝난 말에 조사: 영상 속 말을 따옴표 없이 그대로 옮기고 끝난 말(~거예요·~거야·~잖아·
   ~어요)에 조사를 바로 붙임(「말하는 거예요가 답인가 봐」「헤어지자는 거야부터」 → 「말하는 게」
   「헤어지자는 말부터」, 2026-11-18 기획 담당이 초안 28개에서 찾음)
@@ -170,11 +173,13 @@ def style_issues(
     context: str = "",
     max_total: int = SOFT_MAX_TOTAL,
     last_shown: str = "",
+    used_reasons: Sequence[str] = (),
 ) -> list[str]:
     """다시 쓰게 할 까닭들(없으면 빈 목록).
 
     `earlier`: 같은 영상에 앞서 쓴 초안 글. `context`: 영상 자료 글(S5 숫자 대조, 없으면 S5를
     보지 않는다). `last_shown`: 바로 앞에 사람에게 보인 초안(S8, 없으면 보지 않는다).
+    `used_reasons`: 앞서 보인 초안들의 ⑤ 까닭(S10, 없으면 보지 않는다).
     """
     issues: list[str] = []
     body = _body(text, disclosure)
@@ -239,6 +244,12 @@ def style_issues(
             f"S8 본보기 연달아: {brand}을(를) 꺼내는 말이 바로 앞 초안처럼 본보기 {model + 1}번을 "
             "그대로 옮겼습니다 — 때·세기 말·들은 얘기 꼴을 바꿔 다른 말로 꺼내세요"
         )
+    old_reason = repeated_reason(reason, used_reasons)
+    if old_reason:
+        issues.append(
+            f"S10 까닭 되풀이: '{reason}'은 앞 초안의 까닭('{old_reason}')과 같습니다 — 이 영상의 "
+            "고민에서 다른 까닭을 내 말로 쓰거나, 까닭 없이 맺으세요"
+        )
     ended = _ENDED_PARTICLE.search(body)
     if ended:
         start = max(body.rfind(" ", 0, ended.start()) + 1, 0)
@@ -257,6 +268,33 @@ def style_issues(
     issues += _same_video(body, brand=brand, disclosure=disclosure, key_phrases=key_phrases,
                           earlier=earlier)
     return issues
+
+
+_PARTICLE_TAIL = re.compile(r"(?:이랑|하고|이|가|을|를|은|는|도|의|랑|에|로)$")
+
+
+def _reason_stems(reason: str) -> set[str]:
+    """까닭의 낱말(끝 낱말 「답답해서·궁금해서·때문에」는 빼고, 뒤 조사를 뗀 두 글자 이상)."""
+    words = reason.split()[:-1]
+    stems = set()
+    for w in words:
+        stem = _PARTICLE_TAIL.sub("", w) if len(w) > 2 else w
+        if len(stem) >= 2:
+            stems.add(stem)
+    return stems
+
+
+def repeated_reason(reason: str, used: Sequence[str]) -> str:
+    """S10: `reason`과 같은 앞 까닭(없으면 빈 글). 글이 같거나 낱말이 둘 이상 겹치면 같다."""
+    if not reason:
+        return ""
+    mine, stems = fold(reason), _reason_stems(reason)
+    for old in used:
+        if not old:
+            continue
+        if fold(old) == mine or len(stems & _reason_stems(old)) >= 2:
+            return old
+    return ""
 
 
 def _copied_number(body: str, context: str, brand: str) -> str:

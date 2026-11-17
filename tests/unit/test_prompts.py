@@ -472,7 +472,8 @@ def test_draft_system_says_ga_bwayagetda_takes_no_fortune_or_timing():
 def test_draft_system_keeps_key_phrases_out_of_the_wish_and_endings_light():
     # 2026-11-17 다섯 조각: ④가 없어졌고 끝말은 가 보겠다는 말이다
     assert "핵심 말은 ①과 까닭에만 쓴다('내짝 찾기 언제 되는지 궁금해지네요' ✗)" in SYSTEM
-    assert "'저도 언제 짝 만날지 조만간 한번 상담받아보고 싶어요'" in SYSTEM
+    # 2026-11-18(기획 담당): 그대로 베낄 수 있는 까닭 예시는 두지 않는다(꼴만)
+    assert "'저도 언제 짝 만날지 조만간 한번 상담받아보고 싶어요'" not in SYSTEM
     assert "'여쭤보고 싶네요'처럼 딱딱한 끝말은 피한다" in SYSTEM
     assert "②는 빼도 된다. 마무리 문장은 따로 붙이지 않는다" in SYSTEM
     assert "② 내 처지 한마디(없어도 된다. 쓰면 ①과 합쳐 두 문장 안)" in SYSTEM
@@ -551,12 +552,14 @@ def test_prompts_say_to_rephrase_video_speech_instead_of_gluing_a_particle():
 
 
 def test_draft_system_shows_reasons_from_the_concern_and_what_not_to_make_up():
-    # 2026-11-18(기획 담당): ⑤ 안에 이 영상 고민에서 온 짧은 까닭 — 앞 문장과 이어지게
-    for example in ("'저도 썸이 답답해서 조만간 한번 가보려구요'",
-                    "'저도 그 사람 속마음이 궁금해서 언제 한번 상담받아보고 싶네요'",
-                    "'저도 재회 문제로 기회 되면 한번 가 보려고요'",
-                    "'저도 맞는지 확인하러 가 보려고요'"):
-        assert example in SYSTEM, example
+    # 2026-11-18(기획 담당): ⑤ 안에 이 영상 고민에서 온 짧은 까닭 — 앞 문장과 이어지게.
+    # 예시 문구를 그대로 옮긴 까닭(「저도 썸이 답답해서」)이 영상 셋에서 나와 꼴만 알려 준다
+    for example in ("썸이 답답해서", "속마음이 궁금해서", "재회 문제로", "맞는지 확인하러"):
+        assert example not in SYSTEM, example
+    assert ("꼴만 따른다: 이 영상의 고민 한 줄을 12자 안의 내 말로 줄이고 '~서', '~때문에', "
+            "'~문제로', '~러'로 끝낸다('저도 [까닭] 조만간 한번 가 보려고요')") in SYSTEM
+    assert "예시나 앞 초안의 까닭을 그대로 쓰지 않는다" in SYSTEM
+    assert "(이 까닭 문구는 그대로 쓰지 않는다)" in SYSTEM
     assert "까닭은 고민 한 줄·핵심 말에서 가져오고 지어내지 않는다" in SYSTEM
     assert "'저도 3년 만난 남친 때문에' ✗" in SYSTEM and "'저도 가 봤는데' ✗" in SYSTEM
     # 좋은 예 하나(3번)는 까닭을 넣고, 나머지는 까닭 없는 본보기 꼴 그대로
@@ -564,14 +567,17 @@ def test_draft_system_shows_reasons_from_the_concern_and_what_not_to_make_up():
     assert [P.intent_reason(ex.body, "운명원") for ex in with_reason] == ["이 썸 끝이 궁금해서"]
     assert len(P.GOOD_EXAMPLES) - len(with_reason) == 3
     polish = P.polish_system(brand="운명원", disclosure="[광고]")
-    assert "'저도' 뒤 가 보겠다는 말 앞의 짧은 까닭('저도 썸이 답답해서')은 그대로 둔다" in polish
+    assert "짧은 까닭('저도 [까닭] 조만간 한번 가 보려고요'의 " in polish
+    assert "썸이 답답해서" not in polish
 
 
 def test_draft_user_asks_for_a_reason_until_one_draft_has_it():
     base = dict(analysis=ANALYSIS, quote="q", source="comment", min_body=35, max_body=115)
     want = P.draft_user(**base, reason=True)
     assert "이번 끝말에는 '저도' 뒤, 가 보겠다는 말 앞에 이 영상의 고민에서 온 짧은 까닭" in want
-    assert f"고민 한 줄('{ANALYSIS['concern']}')을 쉬운 내 말로 줄여서" in want
+    concern = ANALYSIS["concern"]
+    assert f"고민 한 줄('{concern}')을 쉬운 내 말로 줄여 '~서·~때문에·~문제로·~러'로" in want
+    assert "썸이 답답해서" not in want
     free = P.draft_user(**base, reason=False)
     assert "이번 끝말은 까닭 없이 본보기 꼴('저도 조만간 한번 가보려구요')로 써도 된다" in free
     assert "짧은 까닭(12자" not in free
@@ -599,3 +605,26 @@ def test_intent_reason_finds_the_reason_between_jeodo_and_the_intent(ending, rea
 
 def test_boss_models_have_no_reason_except_the_plain_gungeumhaeseo():
     assert [P.intent_reason(m, "운명원") for m in P.BRAND_MODELS] == [""] * 10
+
+
+def test_draft_user_lists_reasons_already_used():
+    # 2026-11-18(기획 담당): 꺼내는 말·끝말처럼 까닭도 앞서 보인 초안에 쓴 것을 피한다
+    base = dict(analysis=ANALYSIS, quote="q", source="comment", min_body=35, max_body=115)
+    want = P.draft_user(**base, reason=True, used_reasons=["썸이 답답해서", "호감 기준 알고 싶어",
+                                                        "썸이 답답해서"])
+    assert ("이미 쓴 까닭: '썸이 답답해서', '호감 기준 알고 싶어' — 까닭을 넣으면 이 말들과 겹치지 "
+            "않는 다른 말로 쓴다(같은 낱말을 쓰지 않는다).") in want
+    # 까닭을 말하지 않는 요청(예전 호출)에는 넣지 않는다
+    assert "이미 쓴 까닭" not in P.draft_user(**base, used_reasons=["썸이 답답해서"])
+    many = [f"까닭{i}" for i in range(12)]
+    line = next(x for x in P.draft_user(**base, reason=False, used_reasons=many).splitlines()
+                if x.startswith("이미 쓴 까닭"))
+    assert "'까닭7'" in line and "'까닭8'" not in line  # 최근 8개까지
+
+
+def test_intent_reason_takes_go_sipeo_form():
+    # 기획 담당이 본 초안(2026-11-18): 「저도 호감 기준 알고 싶어 한번 가 보려고요.」
+    text = "요즘 운명원이 연애사주를 잘 본다고 하던데, 저도 호감 기준 알고 싶어 한번 가 보려고요."
+    assert P.intent_reason(text, "운명원") == "호감 기준 알고 싶어"
+    assert P.intent_reason("요즘 운명원 연애 사주 잘 본다던데 저도 한번 가보고 싶어요.",
+                           "운명원") == ""
