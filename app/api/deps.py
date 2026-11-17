@@ -181,6 +181,7 @@ def build_services(
         chrome_finder=services.find_chrome,
         run_on_worker=services.jobs.run_task,
         busy=services.jobs.busy,
+        task_running=services.jobs.task_running,
         windows=windows or LoginWindows(),
         launcher=hooks.launcher or popen_launcher,
         checker=hooks.login_checker or default_checker,

@@ -105,7 +105,8 @@ def browser_status(services: Services) -> BrowserStatusOut:
         if s is None:
             return {}
         return {"signed_in": s.signed_in, "channel_name": s.channel, "checked_at": s.checked_at,
-                "login_window_open": s.window_open}
+                "login_window_open": s.window_open, "login_checking": s.checking,
+                "login_checking_auto": s.checking_auto}
 
     return BrowserStatusOut(
         chrome_found=services.find_chrome() is not None,

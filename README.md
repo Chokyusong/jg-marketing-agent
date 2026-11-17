@@ -185,7 +185,7 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | `PUT`·`DELETE /api/settings/llm-key/{name}` | R5: AI별 API 키 저장(`{"key"}`)·지우기. 응답은 있는지와 출처만 |
 | `GET /api/screens` | R2: 크롬 창을 띄울 모니터 목록(이름 · 고르면 쓸 안전한 위치) |
 | `POST /api/profiles/{name}/login` | R2 [로그인하기]: 그 프로필로 보통 크롬 창을 구글 로그인 화면으로 연다(로그인은 사람이). 창을 닫으면 한 번 저절로 확인 |
-| `POST /api/profiles/{name}/check` | R2 [로그인 확인]: 창 없이 유튜브에서 로그인 상태·채널 이름만 읽어 저장. 게시 중이면 409 `profile_check_busy` |
+| `POST /api/profiles/{name}/check` | R2 [로그인 확인]: 창 없이 유튜브에서 로그인 상태·채널 이름만 읽어 저장. 게시 중이면 409 `profile_check_busy`. 같은 프로필 확인이 이미 돌고 있으면(창을 닫아 저절로 시작한 확인 등) 오류 대신 그 결과를 기다려 돌려주고, 다른 프로필 확인 중이면 끝난 뒤 이어서 확인한다. 프로필 항목의 `login_checking`·`login_checking_auto`가 지금 확인 중인지 알려 준다 |
 | `POST /api/profiles/{name}/open` | R2 [유튜브 열기]: 그 프로필로 유튜브 첫 화면 |
 | `GET /sandbox/watch?v=&profile=&fail=` | 통제된 테스트 페이지(실제 유튜브가 아님). `GET`·`POST /sandbox/api/comments`가 `sandbox_comments` 표에 댓글을 저장한다 |
 

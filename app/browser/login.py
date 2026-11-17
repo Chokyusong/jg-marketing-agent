@@ -8,6 +8,10 @@
   (`youtube_driver.SELECTORS.signed_in`·`sign_in`)와 채널(계정) 이름을 **읽기만** 한다. 아무것도
   입력하거나 누르지 않는다. Playwright는 작업 서비스의 전용 작업 스레드에서만 돈다(`jobs.run_task`).
   게시 작업 중이면 「게시가 끝난 뒤 확인」.
+- 지금 도는 확인은 프로필마다 기억한다(`checking`, 창을 닫아 저절로 시작한 것이면 `auto`).
+  같은 프로필 확인이 도는 중에 [로그인 확인]이 오면 오류 대신 그 결과를 기다려 돌려주고,
+  다른 프로필 확인이 도는 중이면 끝나기를 기다렸다가 이어서 확인한다. 「게시 중」 문구는
+  게시 작업이 정말 돌 때만 쓴다.
 - 결과(로그인됨/안 됨/모름, 이름, 확인한 때)는 `profile_logins` 표에 남겨
   프로필 화면·아래 줄·③칸에 보인다.
 - 로그인 창은 `LoginWindows`가 지켜본다. 사람이 그 크롬을 닫으면 한 번 자동으로 확인한다.
@@ -54,6 +58,13 @@ PAGE_TIMEOUT_MS = 25_000
 SIGN_WAIT_MS = 15_000
 LOCK_RELEASE_SECONDS = 6.0  # 사람이 창을 닫은 뒤 크롬이 폴더 잠금을 푸는 데 걸리는 시간
 CHECK_TIMEOUT_SECONDS = 90.0
+# 다른 확인이 끝나기를 기다리는 최대 시간(잠금 풀림 기다림 + 확인 한 번 + 여유)
+CHECK_WAIT_SECONDS = LOCK_RELEASE_SECONDS + CHECK_TIMEOUT_SECONDS + 5.0
+
+MSG_POSTING = "게시 중이라 지금은 로그인을 확인할 수 없습니다."
+ACT_POSTING = "게시가 끝난 뒤 [로그인 확인]을 다시 눌러 주세요."
+MSG_OTHER_CHECK = "다른 로그인 확인이 아직 끝나지 않았습니다."
+ACT_OTHER_CHECK = "잠시 뒤 [로그인 확인]을 다시 눌러 주세요."
 
 STATE_SIGNED_IN = "signed_in"
 STATE_SIGNED_OUT = "signed_out"
@@ -93,6 +104,8 @@ class LoginState:
     checked_at: str | None
     note: str
     window_open: bool
+    checking: bool = False  # 지금 로그인을 확인하는 중인지(필드 추가)
+    checking_auto: bool = False  # 그 확인이 창을 닫아 저절로 시작한 것인지
 
     @property
     def signed_in(self) -> bool | None:
@@ -104,6 +117,15 @@ class LoginState:
 
 
 LoginChecker = Callable[[Path], LoginResult]
+
+
+class _Check:
+    """지금 도는 로그인 확인 하나(같은 프로필 요청은 이것을 기다린다)."""
+
+    def __init__(self, auto: bool) -> None:
+        self.auto = auto
+        self.done = threading.Event()
+        self.error: AppError | None = None
 
 
 def check_login(
@@ -177,8 +199,14 @@ class LoginWindows:
 
     def __init__(self) -> None:
         self._procs: dict[str, Any] = {}
+        self._closing: set[str] = set()  # 창이 닫혀 저절로 확인하는 중인 프로필
         self._lock = threading.Lock()
         self.on_closed: Callable[[str], None] | None = None
+
+    def is_closing(self, name: str) -> bool:
+        """창이 닫힌 뒤 저절로 하는 확인이 아직 끝나지 않았는지(창이 닫힌 순간부터 참)."""
+        with self._lock:
+            return name in self._closing
 
     def is_open(self, name: str) -> bool:
         with self._lock:
@@ -202,15 +230,21 @@ class LoginWindows:
             proc.wait()
         except Exception:
             return
+        callback = self.on_closed
         with self._lock:
             if self._procs.get(name) is proc:
                 del self._procs[name]
-        callback = self.on_closed
-        if callback is not None:
-            try:
-                callback(name)
-            except Exception:  # 자동 확인이 실패해도 사람은 [로그인 확인]을 누를 수 있다
-                log.info("로그인 창을 닫은 뒤 자동 확인을 하지 못했습니다(%s)", name)
+            if callback is not None:
+                self._closing.add(name)  # 창 목록에서 빠지는 순간부터 「확인 중」으로 보인다
+        if callback is None:
+            return
+        try:
+            callback(name)
+        except Exception:  # 자동 확인이 실패해도 사람은 [로그인 확인]을 누를 수 있다
+            log.info("로그인 창을 닫은 뒤 자동 확인을 하지 못했습니다(%s)", name)
+        finally:
+            with self._lock:
+                self._closing.discard(name)
 
 
 class ProfileAccounts:
@@ -231,6 +265,7 @@ class ProfileAccounts:
         playwright_ready: Callable[[], bool] = lambda: True,
         screens: Callable[[], Sequence[Monitor]] | None = None,
         clock: Clock = utc_now,
+        task_running: Callable[[], bool] = lambda: False,
     ) -> None:
         self.db_path = db_path
         self.profiles = profiles
@@ -244,6 +279,10 @@ class ProfileAccounts:
         self.playwright_ready = playwright_ready
         self.screens = screens
         self.clock = clock
+        # 작업 스레드에서 짧은 일(다른 로그인 확인)이 도는지. 바쁜데 이것이 아니면 게시 중으로 본다
+        self.task_running = task_running
+        self._checks: dict[str, _Check] = {}
+        self._checks_lock = threading.Lock()
 
     # ------------------------------------------------------------ 읽기
 
@@ -256,9 +295,13 @@ class ProfileAccounts:
 
     def states(self) -> list[LoginState]:
         rows = self._rows()
+        with self._checks_lock:
+            checks = dict(self._checks)
         out = []
         for p in self.profiles.list_profiles():
             row = rows.get(p.name)
+            running = checks.get(p.name)
+            closing = self.windows.is_closing(p.name)
             out.append(
                 LoginState(
                     name=p.name,
@@ -269,6 +312,8 @@ class ProfileAccounts:
                     checked_at=row["checked_at"] if row else None,
                     note=(row["note"] or "") if row else "",
                     window_open=self.windows.is_open(p.name),
+                    checking=running is not None or closing,
+                    checking_auto=bool(running.auto) if running is not None else closing,
                 )
             )
         return out
@@ -311,11 +356,70 @@ class ProfileAccounts:
 
     # ------------------------------------------------------------ 확인
 
-    def check(self, name: str, *, wait_release: float = 0.0) -> LoginState:
-        """창 없이 로그인 여부와 채널 이름을 읽어 저장한다. 작업 스레드에서 돈다."""
+    def _busy_error(self) -> AppError:
+        """작업 스레드가 바쁠 때의 오류. 까닭에 따라 문구를 나눈다(종류는 그대로)."""
+        if not self.task_running():
+            return AppError(ErrorKind.PROFILE_CHECK_BUSY, message=MSG_POSTING, action=ACT_POSTING)
+        return AppError(
+            ErrorKind.PROFILE_CHECK_BUSY,
+            message=MSG_OTHER_CHECK,
+            action=ACT_OTHER_CHECK,
+            detail="다른 로그인 확인",
+        )
+
+    def _claim(self, name: str, *, auto: bool) -> _Check | LoginState:
+        """이 프로필 확인 자리를 잡는다. 같은 프로필 확인이 돌면 그 결과(`LoginState`)를 돌려준다.
+
+        다른 프로필 확인이 돌면 끝나기를 기다렸다가 자리를 잡는다."""
+        deadline = time.monotonic() + CHECK_WAIT_SECONDS
+        while True:
+            with self._checks_lock:
+                same = self._checks.get(name)
+                other = next((c for n, c in self._checks.items() if n != name), None)
+                if same is None and other is None:
+                    if self.busy():
+                        raise self._busy_error()
+                    mine = self._checks[name] = _Check(auto)
+                    return mine
+            waiting = same or other
+            assert waiting is not None
+            if not waiting.done.wait(max(0.0, deadline - time.monotonic())):
+                raise AppError(
+                    ErrorKind.PROFILE_CHECK_BUSY,
+                    message=MSG_OTHER_CHECK,
+                    action=ACT_OTHER_CHECK,
+                    detail="다른 로그인 확인이 오래 걸림",
+                )
+            if same is not None:  # 같은 프로필: 그 결과를 그대로
+                if same.error is not None:
+                    raise same.error
+                return self.state_of(name)
+
+    def check(self, name: str, *, wait_release: float = 0.0, auto: bool = False) -> LoginState:
+        """창 없이 로그인 여부와 채널 이름을 읽어 저장한다. 작업 스레드에서 돈다.
+
+        `auto`: 로그인 창을 닫아 저절로 시작한 확인(화면에 「창이 닫혀 로그인을 확인하는 중」)."""
+        self.profiles.get(name)
+        claimed = self._claim(name, auto=auto)
+        if isinstance(claimed, LoginState):
+            return claimed
+        try:
+            state = self._check(name, wait_release)
+        except AppError as exc:
+            claimed.error = exc
+            raise
+        except Exception:
+            claimed.error = AppError(ErrorKind.PROFILE_CHECK_FAILED)
+            raise
+        finally:
+            with self._checks_lock:
+                if self._checks.get(name) is claimed:
+                    del self._checks[name]
+            claimed.done.set()
+        return state
+
+    def _check(self, name: str, wait_release: float) -> LoginState:
         profile = self.profiles.get(name)
-        if self.busy():
-            raise AppError(ErrorKind.PROFILE_CHECK_BUSY)
         if self.windows.is_open(name):
             raise AppError(ErrorKind.PROFILE_IN_USE, detail="로그인 창이 아직 열려 있음")
         if not self.playwright_ready():
@@ -327,16 +431,21 @@ class ProfileAccounts:
         while profile_in_use(path) and time.monotonic() < deadline:
             time.sleep(0.3)
         require_profile_free(path)
-        result: LoginResult = self.run_on_worker(
-            lambda: self.checker(path), timeout=CHECK_TIMEOUT_SECONDS
-        )
+        try:
+            result: LoginResult = self.run_on_worker(
+                lambda: self.checker(path), timeout=CHECK_TIMEOUT_SECONDS
+            )
+        except AppError as exc:
+            if exc.kind == ErrorKind.PROFILE_CHECK_BUSY and not exc.detail:
+                raise self._busy_error() from None  # 그 사이 게시가 시작됨 등: 까닭에 맞는 문구로
+            raise
         self._save(name, result)
         return self.state_of(name)
 
     def check_after_close(self, name: str) -> None:
         """로그인 창이 닫힌 뒤 한 번 자동으로 확인한다(실패하면 조용히 넘어간다)."""
         try:
-            self.check(name, wait_release=LOCK_RELEASE_SECONDS)
+            self.check(name, wait_release=LOCK_RELEASE_SECONDS, auto=True)
         except AppError as exc:
             log.info("자동 로그인 확인을 건너뜀(%s): %s", name, exc.kind)
 

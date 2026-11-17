@@ -66,7 +66,7 @@ class ErrorKind(StrEnum):
     SETTINGS_NO_STORE = "settings_no_store"  # 저장할 폴더가 정해지지 않음(테스트에서만)
     SECRET_STORE_UNAVAILABLE = "secret_store_unavailable"  # Windows가 아니라 키를 암호화할 수 없음
     KEY_BAD_SHAPE = "key_bad_shape"
-    PROFILE_CHECK_BUSY = "profile_check_busy"  # 게시 중에는 로그인 확인을 하지 않는다
+    PROFILE_CHECK_BUSY = "profile_check_busy"  # 게시 중(다른 확인 중·닫는 중)에는 확인 안 함
     PROFILE_CHECK_FAILED = "profile_check_failed"
     # R3: 실제 게시 시작 전 확인 — 최근 로그인 확인에서 로그인 안 됨으로 나온 프로필
     PROFILE_NOT_SIGNED_IN = "profile_not_signed_in"

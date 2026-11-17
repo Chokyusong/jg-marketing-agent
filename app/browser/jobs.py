@@ -523,6 +523,11 @@ class JobService:
             job_running = self._active is not None and not self._active.finished
             return job_running or self._task is not None
 
+    def task_running(self) -> bool:
+        """작업 스레드에서 짧은 일(로그인 확인)이 도는지(게시 작업과 나눠 문구를 고른다)."""
+        with self._lock:
+            return self._task is not None
+
     def close_if_idle(self) -> bool:
         """쉬고 있으면 더 받지 않게 닫고 True. 무엇이 돌고 있으면 아무것도 안 하고 False."""
         with self._lock:
@@ -541,10 +546,22 @@ class JobService:
         """
         with self._lock:
             if self._closed:
-                raise AppError(ErrorKind.PROFILE_CHECK_BUSY, detail="프로그램을 닫는 중")
+                raise AppError(
+                    ErrorKind.PROFILE_CHECK_BUSY,
+                    message="프로그램을 닫는 중이라 지금은 로그인을 확인할 수 없습니다.",
+                    action="프로그램을 다시 켠 뒤 [로그인 확인]을 눌러 주세요.",
+                    detail="프로그램을 닫는 중",
+                )
             job_running = self._active is not None and not self._active.finished
-            if job_running or self._task is not None:
-                raise AppError(ErrorKind.PROFILE_CHECK_BUSY)
+            if job_running:
+                raise AppError(ErrorKind.PROFILE_CHECK_BUSY)  # 「게시 중」 문구 그대로
+            if self._task is not None:
+                raise AppError(
+                    ErrorKind.PROFILE_CHECK_BUSY,
+                    message="다른 로그인 확인이 아직 끝나지 않았습니다.",
+                    action="잠시 뒤 [로그인 확인]을 다시 눌러 주세요.",
+                    detail="다른 로그인 확인",
+                )
             task = self._task = _Task(fn)
             self._ensure_worker()
             self._queue.put(task)

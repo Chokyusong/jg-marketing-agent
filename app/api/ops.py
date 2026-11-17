@@ -42,6 +42,8 @@ def _login_fields(state: LoginState | None) -> dict:
         "login_state": state.state,
         "login_note": state.note,
         "login_window_open": state.window_open,
+        "login_checking": state.checking,
+        "login_checking_auto": state.checking_auto,
     }
 
 
@@ -71,6 +73,8 @@ def _login_out(state: LoginState, message: str) -> ProfileLoginOut:
         checked_at=state.checked_at,
         note=state.note,
         login_window_open=state.window_open,
+        login_checking=state.checking,
+        login_checking_auto=state.checking_auto,
         message=message,
     )
 

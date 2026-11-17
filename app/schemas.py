@@ -169,6 +169,8 @@ class BrowserProfileOut(BaseModel):
     channel_name: str = ""
     checked_at: str | None = None
     login_window_open: bool = False  # 프로그램이 연 로그인·유튜브 창이 아직 열려 있는지
+    login_checking: bool = False  # 지금 로그인을 확인하는 중인지(로그인 확인 고침)
+    login_checking_auto: bool = False  # 창을 닫아 저절로 시작한 확인인지
 
 
 class BrowserStatusOut(BaseModel):
@@ -473,6 +475,8 @@ class ProfileOut(BaseModel):
     login_state: Literal["signed_in", "signed_out", "unknown"] | None = None
     login_note: str = ""
     login_window_open: bool = False
+    login_checking: bool = False  # 지금 로그인을 확인하는 중인지
+    login_checking_auto: bool = False  # 창을 닫아 저절로 시작한 확인인지
 
     @classmethod
     def from_profile(cls, p: Profile, last_used: dict[str, str]) -> ProfileOut:
@@ -884,3 +888,5 @@ class ProfileLoginOut(BaseModel):
     note: str
     login_window_open: bool
     message: str  # 화면에 보일 한 줄
+    login_checking: bool = False  # 지금 로그인을 확인하는 중인지
+    login_checking_auto: bool = False
