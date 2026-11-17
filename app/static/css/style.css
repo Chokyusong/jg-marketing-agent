@@ -235,6 +235,8 @@ select { padding-right: 6px; cursor: pointer; }
 .analysis dd.is-warn { color: var(--warn); }
 .context { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
 .analysis-inline { grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr); }
+/* C1: 「핵심 말」 줄을 더해도 ②칸 높이가 늘지 않게 두 쌍씩 한 줄(글이 길면 말줄임, 마우스를 올리면 전체) */
+#analysis-list { grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr); }
 .paste summary { display: inline-flex; align-items: center; min-height: 32px; color: var(--sub); font-size: 13px; cursor: pointer; }
 .paste summary:hover { color: var(--text); }
 .paste.is-next summary { color: var(--gold); }
