@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # 개발·테스트용. 실행 패키지도 함께 설치된다.
 # Playwright는 requirements.txt에 있다(8단계).
 -r requirements.txt
