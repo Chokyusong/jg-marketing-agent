@@ -41,6 +41,13 @@ export function transcriptLine(ctx) {
   }
   if (ctx.transcript_source === 'unofficial') return `비공식 조회 자막 ${n(ctx.transcript_chars)}자`;
   // 2026-11-18 자료가 얇은 영상: 자막이 없으면 무엇만 읽었는지와 초안이 밋밋할 수 있다는 것을 알린다
+  if (ctx.material === 'thin') {
+    // 자료 부족: 자막도 없고 설명·댓글도 거의 없어 제목뿐(서버 `context.material_state`)
+    const lead = ctx.transcript_reason === 'off' ? '자막 자동 읽기가 꺼져 있고'
+      : ctx.transcript_reason ? `자막을 읽지 못했고(${ctx.transcript_note || '이유 모름'})`
+        : '자막이 없고';
+    return `자료 부족: ${lead} 설명·댓글도 거의 없어 제목만 읽었습니다. ${THIN_NOTE}`;
+  }
   if (ctx.transcript_reason === 'off') return `자막 자동 읽기가 꺼져 있어 제목·설명·댓글만 읽었습니다. ${THIN_NOTE}`;
   if (ctx.transcript_reason) {
     return `자막을 읽지 못해(${ctx.transcript_note || '이유 모름'}) 제목·설명·댓글만 읽었습니다. ${THIN_NOTE}`;

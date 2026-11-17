@@ -27,6 +27,9 @@
   **모델이 쓴 초안에만** 본다(`need_bridge`) — 사람이 고친 글과 대표 본보기 10개는 그대로 둔다.
 - S12 잇는 문장 되풀이: 잇는 문장이 앞서 보인 초안(다른 영상 포함)이나 프롬프트의 좋은 예의 잇는
   문장과 같거나 거의 같음(맞춤법을 지우고 70% 넘게 같음)
+- S14 잇는 문장의 새 평판(2026-11-18): 운명원 문장 바로 앞 문장(잇는 문장 자리)에 설정에 없는
+  운명원 평판·사례(`validator.invented_repute` — 예약·방송·연예인·가격·위치·경력·적중률·구체 사례·
+  남이 받아 본 결과). 운명원 대목 자체는 규칙 검사 V14가 막는다
 - S5 영상 사연을 내 것으로: 영상 속 **숫자**(「3년 사귄」「2년째」「석 달」)를 영상 얘기라는
   표지(「~대요」「~라니」「~다는 말에」) 없이 내 일처럼 옮긴 문장. 비슷한 처지라고 말하는 것
   (「완전 제 얘기네요」「저도 비슷해서」「우리 사이」)은 시청자 말투로 둔다(기획 담당 2026-11-17:
@@ -50,6 +53,7 @@ from app.analysis.validator import (
     V14_REPUTE,
     contains_key_phrase,
     hashtags,
+    invented_repute,
     normalize,
     strip_hashtags,
 )
@@ -102,7 +106,11 @@ _ENDED_PARTICLE = re.compile(
 )
 # S7(2026-11-17, 대표): 운명원 페르소나 = 「연애 사주 잘 봐주는 곳으로 유명한 곳」(과제 원문).
 # 꺼내는 대목(운명원 문장 + 바로 앞 문장)에 잘한다는 평판이 없으면 다시 쓰게 한다.
-_REPUTATION = re.compile(r"잘\s?(?:보|봐|본|볼|맞)|유명|평이\s?좋|평판이\s?좋|용하|정확")
+# 2026-11-18: 과제 설정을 다른 말로 옮긴 평판(소문·얘기가 많음·추천·후기가 많음)도 평판으로 본다
+_REPUTATION = re.compile(
+    r"잘\s?(?:보|봐|본|볼|맞)|유명|평이\s?좋|평판이\s?좋|용하|정확|소문|추천|"
+    r"(?:얘기|이야기|말|후기)(?:가|이)\s?많"
+)
 # S6(2026-11-17, PDF 대조): 「~는데/인데」로 이은 문장에 브랜드의 「~던데」를 또 이음 —
 # 「저도 고민인데 운명원 … 잘 본다던데 …」, 「동아리 선배라서 더 조심스러운데 요즘 운명원 얘기 자주
 # 보이던데」. 지난 초안 156개(1~8회차·C1 전)에 대 보니 1개만 걸렸고 그 글은 「늘어진다」로 짚었던
@@ -172,6 +180,13 @@ def has_reputation(text: str, brand: str) -> bool:
         _REPUTATION.search(sentences[i]) or (i > 0 and _REPUTATION.search(sentences[i - 1]))
         for i in spots
     )
+
+
+def _before_brand(text: str, brand: str) -> str:
+    """운명원이 처음 나오는 문장의 바로 앞 문장(첫 문장이면 빈 글) — 잇는 문장 자리."""
+    sentences = _sentences(text)
+    at = next((i for i, s in enumerate(sentences) if brand and brand in s), -1)
+    return sentences[at - 1] if at >= 2 else ""
 
 
 def used_phrases(text: str, key_phrases: Sequence[str]) -> list[str]:
@@ -277,6 +292,16 @@ def style_issues(
             "읽힙니다 — 사이에 이 고민이 결국 인연·타이밍·때·궁합·맞는 사람의 문제일지도 "
             "모른다는 짧은 혼잣말 한 문장을 넣거나, 끝말의 '저도' 뒤에 이 영상 고민에서 온 짧은 "
             "까닭을 넣으세요(영상 반응은 짧게)"
+        )
+    # S14(2026-11-18): 운명원 문장 바로 앞 문장(첫 문장=영상 반응 다음, 잇는 문장 자리)에 설정에
+    # 없는 운명원 평판·사례 — 운명원 대목은 V14가 본다. 잇는 말이 없어도 그 자리면 본다
+    spot = _before_brand(body, brand)
+    invented = invented_repute(spot) if spot else None
+    if invented:
+        issues.append(
+            f"S14 잇는 문장의 새 평판: '{spot}'에 설정에 없는 말"
+            f"({invented[0]}: '{invented[1]}')이 있습니다 — 잇는 문장은 영상 얘기에서 사주 "
+            "쪽으로 넘어가는 말만 쓰세요"
         )
     old_bridge = repeated_bridge(bridge, used_bridges)
     if old_bridge:

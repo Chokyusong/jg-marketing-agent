@@ -321,3 +321,28 @@ def test_stats_count_bridges_reasons_and_ai_review():
     assert stats["AI 검수 거짓(처음)"] == "2" and stats["AI 검수 고쳐 써서 통과"] == "1"
     assert stats["AI 검수 고쳐도 남음"] == "1" and stats["AI 검수 못 함"] == "1"
     assert stats["초안 1개 평균 시간"] == "2.0초"
+
+
+def test_review_before_and_after_are_listed_side_by_side_with_times():
+    """2026-11-18 검수 기록: 다시 쓰기를 한 초안만 고치기 전·문제·고친 뒤·결과·시간을 나란히."""
+    base = {"chars": 60, "passed": True, "first_passed": True, "attempts": 1, "seconds": 3.0}
+    videos = [{"video_id": "v", "title": "영상", "drafts": [
+        {**base, "n": 1, "body": "[광고] 고친 뒤", "review": "rewritten", "review_first": ["어색"],
+         "review_before": "[광고] 고치기 전", "review_after": "[광고] 고친 뒤", "review_kept": True,
+         "review_ms": 1200, "rewrite_ms": 2400},
+        {**base, "n": 2, "body": "[광고] 앞 초안", "review": "error", "review_first": ["z"],
+         "review_before": "[광고] 앞 초안", "review_after": "[광고] 버린 글", "review_kept": False,
+         "review_ms": 800, "rewrite_ms": 2000},
+        {**base, "n": 3, "body": "[광고] 그대로", "review": "passed", "review_first": [],
+         "review_before": "", "review_after": "", "review_kept": None, "review_ms": 600,
+         "rewrite_ms": 0},
+    ]}]
+    lines = C.review_trace_lines(videos)
+    rows = [ln for ln in lines if ln.startswith("| 영상 |") and ln.split("|")[2].strip().isdigit()]
+    assert len(rows) == 2
+    assert "[광고] 고치기 전 | 어색 | [광고] 고친 뒤 | 씀 · rewritten | 1.2초 · 2.4초" in rows[0]
+    assert "버림(앞 초안 씀) · error" in rows[1]
+    stats = C._stats(videos)
+    assert stats["다시 쓴 글 버림(앞 초안 씀)"] == "1"
+    assert stats["검수 1번 평균 시간(초안당 합)"] == "0.9초"
+    assert stats["다시 쓰기 평균 시간"] == "2.2초(2개)"

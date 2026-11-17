@@ -194,3 +194,73 @@ def test_review_unknown_draft_is_404(setup):
     client, _, use = setup
     use([])
     assert client.post("/api/drafts/99999/review").status_code == 404
+
+
+# ------------------------------------------------ 2026-11-18 덧붙임: 앞 초안 지키기 · 검수 기록
+
+
+def test_second_review_failure_keeps_the_earlier_draft(setup):
+    # 두 번째 검수가 실패·시간 초과면 검수를 통과했는지 모르는 글로 바꾸지 않는다
+    client, services, use = setup
+    timeout = AppError(ErrorKind.LLM_TIMEOUT, detail="검수 시간 초과")
+    use([ANALYSIS, draft(GOOD_BODY), bad(), draft(REWRITE), {"ok": None, "raise": timeout}])
+    data = create(client)
+    assert data["body"].endswith(GOOD_BODY) and data["passed"] and data["attempts"] == 1
+    assert data["review"]["status"] == "error"
+    saved = services.drafts.get(data["id"])
+    assert saved.review["kept"] is False and saved.review["first"] == [PROBLEM]
+    assert saved.review_before.endswith(GOOD_BODY) and saved.review_after.endswith(REWRITE)
+
+
+def test_rewrite_records_before_problems_after_and_times(setup):
+    client, services, use = setup
+    use([ANALYSIS, draft(GOOD_BODY), bad(), draft(REWRITE), OK])
+    data = create(client)
+    saved = services.drafts.get(data["id"])
+    assert saved.body.endswith(REWRITE) and saved.review["kept"] is True
+    assert saved.review_before.endswith(GOOD_BODY) and saved.review_after.endswith(REWRITE)
+    assert saved.review["first"] == [PROBLEM]
+    assert saved.review_ms >= 0 and saved.rewrite_ms >= 0
+    info = services.drafts.last_run["review"]
+    assert {"review_ms", "rewrite_ms"} <= set(info)
+
+
+def test_discarded_rewrite_is_still_recorded(setup):
+    client, services, use = setup
+    use([ANALYSIS, draft(GOOD_BODY), bad(), draft(MANY_FAILS)])
+    data = create(client)
+    saved = services.drafts.get(data["id"])
+    assert saved.body.endswith(GOOD_BODY) and saved.passed
+    assert saved.review["kept"] is False and saved.review_after.endswith(MANY_FAILS)
+
+
+def test_no_rewrite_leaves_the_trace_empty(setup):
+    client, services, use = setup
+    use([ANALYSIS, draft(GOOD_BODY), OK])
+    data = create(client)
+    saved = services.drafts.get(data["id"])
+    assert saved.review_before == "" and saved.review_after == "" and saved.rewrite_ms == 0
+    assert "kept" not in saved.review
+
+
+def test_save_review_never_swaps_in_a_failing_text(setup):
+    # 어떤 경우에도 규칙 검사를 통과한 초안이 통과 못 한 글로 바뀌지 않는다(마지막 방어)
+    client, services, use = setup
+    use([ANALYSIS, draft(GOOD_BODY), OK])
+    data = create(client)
+    d = services.drafts.get(data["id"])
+    failing = services.checks.check(VID, "[광고] " + MANY_FAILS, disclose=True)
+    assert not failing.passed
+    out = services.drafts._save_review(d, {"status": "rewritten", "kept": True},
+                                       text="[광고] " + MANY_FAILS, validation=failing)
+    assert out.body == d.body and out.passed and out.review["kept"] is False
+
+
+def test_review_reads_the_evidence_and_the_new_checks(setup):
+    client, _, use = setup
+    llm = use([ANALYSIS, draft(GOOD_BODY), OK])
+    data = create(client)
+    call = llm.review_calls[0]["kwargs"]
+    assert f"[근거 구절(영상 자료에서)] {data['evidence_quote']}" in call["user"]
+    for part in ("5. 영상 내용과 어긋나는가", "6. 지어낸 내 경험·새 평판", "7. 같은 낱말·어미"):
+        assert part in call["system"]

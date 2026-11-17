@@ -227,6 +227,14 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE drafts ADD COLUMN review_json TEXT NOT NULL DEFAULT '';
     """,
+    # 2026-11-18 AI 검수 기록(기획 담당 · 대표 승인): 다시 쓰기를 했으면 고치기 전 글·다시 쓴 글
+    # (버렸어도 남김)과 검수·다시 쓰기에 든 시간(ms). 검수 문제는 review_json의 first·problems
+    """
+    ALTER TABLE drafts ADD COLUMN review_before TEXT NOT NULL DEFAULT '';
+    ALTER TABLE drafts ADD COLUMN review_after TEXT NOT NULL DEFAULT '';
+    ALTER TABLE drafts ADD COLUMN review_ms INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE drafts ADD COLUMN rewrite_ms INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

@@ -66,3 +66,62 @@ def test_draft_prompt_without_thin_note_when_transcript_exists(client, fake_llm)
     services.llm = llm
     client.post("/api/drafts", json={"video_id": VID})
     assert "**자막이 없는 영상**" not in llm.calls[1]["kwargs"]["user"]
+
+
+# ---------------------------------------------------------- 자료 상태 세 가지(2026-11-18 덧붙임)
+
+
+@pytest.fixture
+def thin_client(mock_http, fixture_json, fake_key, make_client):
+    # 설명이 해시태그뿐인 영상(목록을 부를 때마다 YouTube 설명으로 다시 저장되므로 응답을 바꾼다)
+    videos = fixture_json("youtube/videos.json")
+    for item in videos["items"]:
+        if item["id"] == VID:
+            item["snippet"]["description"] = "#인팁특징 #연애 https://example.com"
+    mock = mock_http()
+    mock.add("GET", f"{YT}/search", json=fixture_json("youtube/search.json"))
+    mock.add("GET", f"{YT}/videos", json=videos)
+    mock.add("GET", f"{YT}/commentThreads", json=fixture_json("youtube/comment_threads.json"))
+    return make_client(mock, key=fake_key), mock
+
+
+def _drop_comments(client):
+    from app import db
+
+    services = client.app.state.services.get()
+    with db.session(services.context.db_path) as conn:
+        conn.execute("UPDATE video_context SET comments_json = '[]' WHERE video_id = ?", (VID,))
+
+
+def test_title_only_video_is_marked_thin_in_the_list_and_the_context(thin_client):
+    client, _ = thin_client
+    assert badges(client)[VID] == ""  # 안 읽은 영상은 셋 중 어느 것으로도 표시하지 않는다
+    # 설명은 해시태그·주소뿐이고 쓸 만한 댓글은 2개(문턱 3개 미만) → 자료 부족
+    assert client.post(f"/api/videos/{VID}/context").json()["material"] == "thin"
+    after = badges(client)
+    assert after[VID] == "thin"
+    assert {v for k, v in after.items() if k != VID} == {""}
+    assert client.post(f"/api/videos/{VID}/context").json()["material"] == "thin"
+
+
+def test_transcript_beats_thin(thin_client):
+    client, _ = thin_client
+    client.post(f"/api/videos/{VID}/context")
+    _drop_comments(client)
+    client.put(f"/api/videos/{VID}/transcript", json={"text": "0:01 하루에 한 번 연락 얘기"})
+    assert badges(client)[VID] == "yes"
+
+
+def test_list_makes_no_extra_requests_after_videos_are_read(thin_client):
+    # 목록을 띄울 때 드는 요청(=할당량)은 영상을 읽기 전과 같다: 자료 상태는 DB만 본다
+    client, mock = thin_client
+
+    def requests_for_list(q: str) -> int:
+        before = len(mock.requests)
+        assert client.get("/api/videos", params={"q": q}).status_code == 200
+        return len(mock.requests) - before
+
+    unread = requests_for_list("연애 검색 하나")
+    client.post(f"/api/videos/{VID}/context")
+    _drop_comments(client)
+    assert requests_for_list("연애 검색 둘") == unread > 0

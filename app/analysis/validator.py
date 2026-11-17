@@ -13,7 +13,10 @@
 C1(2026-11-17, 과제 예시처럼 자연스럽게): V7은 「근거 구절을 4자 이상 이어서 담음」에서 「그 영상의
 핵심 말을 하나 이상 담음」으로 바뀌었다(흔한 낱말만으로는 통과하지 못한다). 새 V13은 영상 자료나
 고민 한 줄을 길게 그대로 베낀 글을 잡는다. V11은 과제 PDF의 예시 댓글(`ASSIGNMENT_SAMPLE`)과도
-비교한다. V12는 댓글 표기(ㅠㅠ·ㅋㅋ·...·^^)를 받는다. 새 V14는 브랜드가 뜬금없이 나오지 않게
+비교한다. V12는 댓글 표기(ㅠㅠ·ㅋㅋ·...·^^)를 받는다. 2026-11-18: V14 ④가 같은 설정을 다른 말로 옮긴
+들은 평판(유명·소문·얘기가 많음·추천·후기)을 받고, 설정에 없는 새 평판·사례(`invented_repute`)를
+막는다.
+새 V14는 브랜드가 뜬금없이 나오지 않게
 들은 얘기(「~다던데」)로 꺼내고 내 바람(「~보고 싶다」「가 봐야겠다」)으로 맺었는지 본다(대표가 본
 초안: 고민 뒤에 곧바로 「운명원에서 연애 사주를 한번 보고 싶어요」).
 
@@ -117,7 +120,9 @@ REVIEW_PATTERNS: tuple[str, ...] = (
     # 상담받으실·상담받으러 오세요·상담받기·상담받아보려구요
     _CONSULTED,
     r"예약\s?(?:했|해\s?놨|해\s?뒀|함|완료)",
-    r"후기",
+    # 「후기가 많던데」는 들은 평판(2026-11-18 대표 의견)이라 뺀다 — 내 후기·「후기 남겨요」는
+    # 그대로 막는다
+    r"후기(?!\s?(?:가|도|들이)\s?(?:많|자자))",
     r"소름",
     r"맞더라",
     r"맞췄",
@@ -1020,9 +1025,19 @@ def _v11_previous(text: str, previous_texts: Sequence[str], rules: ValidatorRule
 # 붙여 쓴 「연애사주」도 받는다. 「한번 보고 싶다」(과제 예시의 끝말)는 「사주 보다」로 본다.
 V14_TIME = re.compile(r"(?<![가-힣])(?:요즘|요새|최근)")
 V14_LOVE = re.compile(r"연애\s?(?:쪽\s?)?사주")
+# 2026-11-18(기획 담당 · 대표 의견): 과제 설정 「연애 사주 잘 봐주는 곳으로 유명한 곳」을 다른
+# 말로 옮긴 들은 평판도 ④로 받는다 — 유명(「연애사주로 유명하던데」)·소문(「잘 본다고
+# 소문났던데」「입소문이 났던데」)·얘기가 많음(「잘 본다는 얘기가 많던데」「운명원이라는 말이
+# 많던데」)·추천(「주변에서 많이 추천하던데」)·후기(「잘 본다는 후기가 많던데」).
+# 모두 들은 꼴(~던데·~더라·~다던데·~대요)
+_HEARD_END = r"(?:던데|더라|다던데|대요|는데)"
 V14_REPUTE = re.compile(
     r"(?:잘\s?(?:보|봐|본|맞|맞추|맞춘|맞히|맞힌|맞혀)|정확|유명)[^.!?…]{0,16}?"
     r"(?:" + HEARSAY_TAIL.pattern + r")"
+    r"|유명[^.!?…]{0,4}?" + _HEARD_END
+    + r"|소문[^.!?…]{0,6}?(?:났|나\s?있|자자)[^.!?…]{0,4}?" + _HEARD_END
+    + r"|(?:얘기|이야기|말|후기)(?:가|이|도)\s?(?:많|자자)[^.!?…]{0,4}?" + _HEARD_END
+    + r"|추천[^.!?…]{0,8}?" + _HEARD_END
 )
 V14_INTENT = re.compile(
     r"(?:가\s?(?:보|봐|볼)|가\s?려|가서|방문|상담|찾아\s?가|들러|들르|알아\s?(?:보|봐|볼)|"
@@ -1030,6 +1045,51 @@ V14_INTENT = re.compile(
     r"[^.!?…]{0,14}?"
     r"(?:려[고구]|려요|련다|고\s?싶|싶|볼까|까\s?(?:해|싶|봐)|생각|야겠|야지|봐야|면\s?좋겠|래요)"
 )
+# 2026-11-18(기획 담당 · 대표 의견): 운명원 대목(이름이 든 문장과 그다음 문장)에 과제 설정에 없는 새
+# 평판·사례를 지어내지 않는다. 들은 평판은 위 ④의 꼴뿐이다. brand.facts에 그대로 있는 말은 된다.
+V14_INVENTED: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("예약·대기", re.compile(
+        r"예약|대기\s?(?:가|도|해|하|시간|줄)|웨이팅|줄\s?(?:서|을\s?서|이\s?길)|밀렸|밀려\s?있")),
+    ("방송·출연", re.compile(
+        r"방송|티\s?비|(?<![A-Za-z])[Tt][Vv](?![A-Za-z])|유튜브|출연|매스컴|기사\s?(?:났|가\s?났|에\s?나)")),
+    ("연예인", re.compile(r"연예인|아이돌|배우(?!자)|셀럽|유명인|인플루언서")),
+    ("가격", re.compile(
+        r"가격|비용|저렴|비싸|(?<![가-힣])싸(?:다|고|던|요|더|서)|\d+\s?만?\s?원|할인|무료|공짜")),
+    ("위치", re.compile(r"위치|(?:역|동네)\s?(?:근처|앞)|강남|홍대|신촌|압구정|성수")),
+    ("경력", re.compile(r"경력|전통|\d+\s?대째|\d+\s?년\s?(?:경력|전통|넘게|이상)")),
+    ("적중률", re.compile(r"적중|확률|\d+\s?[%％]|퍼센트|\d+\s?(?:번|개|명)\s?중")),
+    ("구체 사례", re.compile(
+        r"재회(?:했|시켜|하게\s?해|됐|성공)|결혼\s?(?:날짜|시기|날)|"
+        r"(?:날짜|시기|이름|나이|생일|띠)(?:을|를|도|까지)?\s?(?:다\s?)?"
+        r"(?:맞혔|맞췄|맞혀|맞춰|맞히|맞추|맞았)|"
+        r"(?<![가-힣])다\s?(?:맞혔|맞췄|맞혀|맞춰|맞히|맞추|맞는|맞아|맞았)")),
+)
+# 나나 아는 사람이 직접 받아 본 결과(「친구가 봤는데 다 맞혔다던데」). 친구·주변은
+# 「추천하던데」까지만
+_OTHERS_USED = re.compile(
+    r"봤는데|봤더니|봐\s?봤|받아\s?봤|받았|받고\s?왔|다녀\s?왔|다녀\s?온|다녀\s?갔|갔다\s?왔|"
+    r"가\s?봤|보고\s?왔|봤대|봤다"
+)
+
+
+def invented_repute(sentence: str, facts_n: Sequence[str] = ()) -> tuple[str, str] | None:
+    """문장 하나에서 설정에 없는 새 평판·사례 (종류, 걸린 말). 없으면 None. brand.facts에 그대로
+    있는 말(`facts_n`: normalize한 사실 문장)은 넘어간다."""
+    for label, pattern in V14_INVENTED:
+        for m in pattern.finditer(sentence):
+            word = m.group(0)
+            if facts_n and any(normalize(word) in f for f in facts_n):
+                continue
+            return label, word
+    for who in THIRD_PERSON.finditer(sentence):
+        rest = sentence[who.end():]
+        me = FIRST_PERSON.search(rest)
+        m = _OTHERS_USED.search(rest[: me.start()] if me else rest)
+        if m:
+            return "받아 본 결과", who.group(0) + " … " + m.group(0)
+    return None
+
+
 # 빠진 조각을 알리는 말(조각 순서대로)
 V14_MISSING = (
     ("time", "'요즘/요새'가 없습니다"),
@@ -1062,10 +1122,36 @@ def brand_pieces(text: str, brand: str, disclosure: str = "") -> list[str]:
     return best or []
 
 
-def _v14_brand_intro(text: str, rules: ValidatorRules) -> CheckResult:
+def brand_invented(
+    text: str, brand: str, disclosure: str = "", facts_n: Sequence[str] = ()
+) -> tuple[str, str] | None:
+    """운명원 대목(이름이 든 문장과 그다음 문장)의 새 평판·사례(`invented_repute`)."""
+    body = text.replace(disclosure, " ") if disclosure else text
+    parts = [p.strip() for p in _V14_SPLIT.split(body) if p and p.strip()]
+    for i, p in enumerate(parts):
+        if brand and brand in p:
+            for s in parts[i : i + 2]:
+                found = invented_repute(s, facts_n)
+                if found:
+                    return found
+    return None
+
+
+def _v14_brand_intro(
+    text: str, rules: ValidatorRules, facts_n: Sequence[str] = ()
+) -> CheckResult:
     brand = rules.brand
     if not brand or brand not in text:
         return _check("V14", True, f"'{brand}' 없음(V5에서 봄)")
+    invented = brand_invented(text, brand, rules.disclosure, facts_n)
+    if invented:
+        label, word = invented
+        return _check(
+            "V14", False,
+            f"'{brand}' 대목에 설정에 없는 평판·사례({label}: '{word}')가 있습니다 — 들은 "
+            "평판은 '연애사주 잘 본다고 하던데', '잘 보기로 유명하다던데', '주변에서 많이 "
+            "추천하던데'처럼만 쓰세요",
+        )
     missing = brand_pieces(text, brand, rules.disclosure)
     if not missing:
         return _check("V14", True, f"'{brand}' 대목에 다섯 조각이 다 있음")
@@ -1137,7 +1223,7 @@ def validate(
         _v11_previous(clean, previous_texts, rules),
         _v12_charset(clean, rules),
         _v13_copy(clean, context_text or "", rules, concern),
-        _v14_brand_intro(clean, rules),
+        _v14_brand_intro(clean, rules, facts_n),
     )
     return Validation(
         passed=all(c.passed for c in checks),

@@ -116,6 +116,11 @@ class Draft:
     # AI 검수 한 번(2026-11-18): {"status": passed|rewritten|flagged|error|off|pending, "problems":
     # [...], "first": [...]} — 아직 안 했거나 규칙 검사에 걸린 초안·사람이 고친 글은 빈 dict
     review: dict[str, Any] | None = None
+    # 2026-11-18 검수 기록: 다시 쓰기를 했으면 고치기 전 글·다시 쓴 글(버렸어도)·든 시간(ms)
+    review_before: str = ""
+    review_after: str = ""
+    review_ms: int = 0
+    rewrite_ms: int = 0
 
     @property
     def review_status(self) -> str:
@@ -627,7 +632,7 @@ class DraftService:
                 or draft.review_status not in ("", "pending")):
             return draft
         started = time.monotonic()
-        info: dict[str, Any] = {}
+        info: dict[str, Any] = {"review_ms": 0, "rewrite_ms": 0}
         self.last_run["review"] = info
         try:
             result, text, validation = self._review(draft, info)
@@ -636,7 +641,14 @@ class DraftService:
             result, text, validation = {"status": rv.ERROR, "problems": []}, None, None
         result["seconds"] = info["seconds"] = round(time.monotonic() - started, 1)
         info["status"] = result["status"]
-        return self._save_review(draft, result, text=text, validation=validation)
+        rewrite = info.get("rewrite") or {}
+        if rewrite:
+            result["kept"] = text is not None
+        return self._save_review(
+            draft, result, text=text, validation=validation,
+            before=draft.body if rewrite else "", after=str(rewrite.get("body") or ""),
+            review_ms=int(info["review_ms"]), rewrite_ms=int(info["rewrite_ms"]),
+        )
 
     def _review(
         self, draft: Draft, info: dict[str, Any]
@@ -656,12 +668,16 @@ class DraftService:
 
         def ask(text: str) -> tuple[bool, list[str]] | None:
             body = toggle_disclosure(text, rules.disclosure, False)
+            started = time.monotonic()
             try:
                 return rv.ask(llm, system=system, user=rv.review_user(
-                    body=body, title=title, concern=concern, key_phrases=phrases))
+                    body=body, title=title, concern=concern, key_phrases=phrases,
+                    evidence=draft.evidence_quote))
             except (AppError, ValueError) as exc:
                 info.setdefault("errors", []).append(str(getattr(exc, "message", exc)))
                 return None
+            finally:
+                info["review_ms"] += int((time.monotonic() - started) * 1000)
 
         first = ask(draft.body)
         if first is None:
@@ -679,6 +695,7 @@ class DraftService:
         before = self._style(draft.body, mark, analysis.key_phrases, kit.avoid_bodies)
         previous_body = toggle_disclosure(draft.body, rules.disclosure, False)
         user = self._draft_prompt(kit, analysis, evidence, rv.retry_lines(problems), previous_body)
+        started = time.monotonic()
         try:
             data = kit.llm.generate_json(
                 system=kit.system, user=user, schema=kit.schema,
@@ -686,7 +703,9 @@ class DraftService:
             )
         except AppError as exc:
             info["rewrite_error"] = exc.message
-            return flagged, None, None
+            return flagged, None, None  # 다시 쓰기 실패·시간 초과: 앞 초안 그대로
+        finally:
+            info["rewrite_ms"] += int((time.monotonic() - started) * 1000)
         body = clean_body(data.get("body") if isinstance(data, dict) else None, rules.disclosure)
         text = with_disclosure(body, mark)
         validation = self.checks.check(
@@ -701,7 +720,8 @@ class DraftService:
             return flagged, None, None  # 다시 쓴 글이 더 나쁘면 원래 글을 둔다
         second = ask(text)
         if second is None:
-            return {"status": rv.ERROR, "problems": [], "first": problems}, text, validation
+            # 두 번째 검수 실패·시간 초과: 검수를 통과했는지 모르는 글로 바꾸지 않는다 — 앞 초안
+            return {"status": rv.ERROR, "problems": [], "first": problems}, None, None
         ok2, problems2 = second
         info["second"] = {"ok": ok2, "problems": problems2}
         if ok2:
@@ -710,23 +730,34 @@ class DraftService:
 
     def _save_review(
         self, draft: Draft, result: dict[str, Any], *, text: str | None = None,
-        validation: Validation | None = None,
+        validation: Validation | None = None, before: str = "", after: str = "",
+        review_ms: int = 0, rewrite_ms: int = 0,
     ) -> Draft:
-        """검수 결과를 남긴다. `text`가 있으면 다시 쓴 글로 바꾼다(모델에게 쓰게 한 횟수 +1)."""
+        """검수 결과를 남긴다. `text`가 있으면 다시 쓴 글로 바꾼다(모델에게 쓰게 한 횟수 +1).
+
+        규칙 검사를 통과한 초안이 통과 못 한 글로 바뀌지 않게 여기서 한 번 더 막는다(다시 쓴 글이
+        통과하지 못했으면 바꾸지 않고 `kept`를 거짓으로)."""
         now = self._now()
+        if text is not None and (validation is None or not validation.passed):
+            text, validation = None, None
+            if "kept" in result:
+                result = {**result, "kept": False}
         raw = json.dumps(result, ensure_ascii=False)
+        trace = (before, after, int(review_ms), int(rewrite_ms))
         with db.session(self.db_path) as conn:
             if text is not None and validation is not None:
                 conn.execute(
                     "UPDATE drafts SET body=?, validation_json=?, passed=?, attempts=attempts+1, "
-                    "review_json=?, updated_at=? WHERE id=?",
-                    (text, _validation_to_json(validation), int(validation.passed), raw, now,
-                     draft.id),
+                    "review_json=?, review_before=?, review_after=?, review_ms=?, rewrite_ms=?, "
+                    "updated_at=? WHERE id=?",
+                    (text, _validation_to_json(validation), int(validation.passed), raw, *trace,
+                     now, draft.id),
                 )
             else:
                 conn.execute(
-                    "UPDATE drafts SET review_json=?, updated_at=? WHERE id=?",
-                    (raw, now, draft.id),
+                    "UPDATE drafts SET review_json=?, review_before=?, review_after=?, "
+                    "review_ms=?, rewrite_ms=?, updated_at=? WHERE id=?",
+                    (raw, *trace, now, draft.id),
                 )
         return self.get(draft.id)
 
@@ -982,7 +1013,16 @@ class DraftService:
             first_passed=bool(row["first_passed"]),
             disclosed=bool(row["disclosed"]),
             review=_review_from_json(row["review_json"]) if "review_json" in row.keys() else {},
+            **_review_trace(row),
         )
+
+
+def _review_trace(row) -> dict[str, Any]:
+    keys = row.keys()
+    if "review_before" not in keys:
+        return {}
+    return {"review_before": row["review_before"], "review_after": row["review_after"],
+            "review_ms": int(row["review_ms"]), "rewrite_ms": int(row["rewrite_ms"])}
 
 
 def used_quotes(drafts: Sequence[Draft]) -> list[str]:

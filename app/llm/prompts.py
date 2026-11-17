@@ -181,6 +181,27 @@ LEAD_TAILS: tuple[str, ...] = (
     "고 하던데", "고 하더라구요", "고 하더라구여", "고들 하던데", "는 얘기를 들었는데",
     "는 이야기가 있던데", "는 얘기가 있더라구요", "던데",
 )
+# 2026-11-18(기획 담당 · 대표 의견): 과제 설정을 다른 말로 옮긴 들은 평판(통째 꼴, 때 말 뒤에
+# 붙는다).
+# 위 「틀 + 들은 얘기 꼴」과 함께 덜 쓴 것부터 돌려 쓴다(예전에 「잘 보기로 유명하다던데」만 나와
+# 대표가 지적했다). {brand}·{brand_i}(이/가)·{brand_r}(을/를)·{brand_ira}(이라는/라는)·{love}·{how}.
+# 새 사실(예약·방송·연예인·가격·위치·경력·적중률·재회 같은 사례·받아 본 결과)은 넣지 않는다(V14).
+LEAD_REPUTES: tuple[str, ...] = (
+    "{brand_i} {love}를 {how} 잘 보기로 유명하다던데",
+    "{brand_i} {love}로 {how} 유명하던데",
+    "{brand_i} {love}를 {how} 잘 본다고 소문났던데",
+    "{brand} {love}가 {how} 잘 본다고 입소문이 났던데",
+    "{brand_i} {love}를 {how} 잘 본다는 얘기가 많던데",
+    "{love}는 {brand_ira} 말이 많던데",
+    "주변에서 {love}는 {brand_r} 많이 추천하던데",
+    "친구가 {brand} {love} {how} 잘 본다고 추천하던데",
+    "{brand_i} {love}를 {how} 잘 본다는 후기가 많던데",
+)
+# 통째 꼴마다 쓰였는지 알아보는 말(띄어쓰기를 뺀 꼴로 찾는다)
+REPUTE_MARKS: tuple[str, ...] = (
+    "잘보기로유명", "유명하던데", "소문났던데", "입소문", "얘기가많던데", "말이많던데",
+    "많이추천하던데", "본다고추천하던데", "후기가많던데",
+)
 END_WHENS: tuple[str, ...] = (
     "언제 한번", "조만간 한번", "기회 되면", "한번", "언제 시간 내서", "궁금해서 한번",
     "다음에 한번",
@@ -201,9 +222,21 @@ def with_i(word: str) -> str:
     return word + "이"
 
 
+def _batchim(word: str) -> bool:
+    last = word[-1:] if word else ""
+    return "가" <= last <= "힣" and bool((ord(last) - 0xAC00) % 28)
+
+
+def name_forms(brand: str) -> dict[str, str]:
+    """틀에 넣을 이름 꼴: 운명원 → 운명원이·운명원을·운명원이라는."""
+    b = _batchim(brand)
+    return {"brand": brand, "brand_i": with_i(brand), "brand_r": brand + ("을" if b else "를"),
+            "brand_ira": brand + ("이라는" if b else "라는")}
+
+
 def fill_hearsay(template: str, brand: str) -> str:
     """꺼내는 말 틀에 브랜드 이름을 넣는다."""
-    return template.format(brand=brand, brand_i=with_i(brand))
+    return template.format(**name_forms(brand))
 
 
 def fold(text: str) -> str:
@@ -266,25 +299,57 @@ def _least_used(
     return [options[i] for i in order]
 
 
+def repute_family(text: str) -> int:
+    """글에 쓴 평판 꼴(2026-11-18): `LEAD_REPUTES` 번호, 아니면 `LEAD_CLAIMS` 번호 +
+    len(LEAD_REPUTES), 둘 다 없으면 -1. 통째 꼴을 먼저 찾는다(「잘 본다고 소문났던데」 안의
+    「잘 본다」는 세지 않는다)."""
+    flat = fold(text)
+    for i, mark in enumerate(REPUTE_MARKS):
+        if mark in flat:
+            return i
+    found = _present(CLAIM_MARKS, text)
+    return len(LEAD_REPUTES) + min(found) if found else -1
+
+
+def _family_order(
+    used: Sequence[str], avoid: Sequence[str], rng: random.Random
+) -> list[int]:
+    """평판 꼴(통째 꼴 9 + 틀 5)을 덜 쓴 순서로. `_least_used`와 같은 기준(같은 영상 앞 초안 →
+    최근 글 → 전체 횟수 → 무작위)."""
+    total = len(LEAD_REPUTES) + len(LEAD_CLAIMS)
+    seen = [repute_family(t) for t in used]
+    recent = seen[:RECENT_TEXTS]
+    avoided = {repute_family(t) for t in avoid}
+    tie = [rng.random() for _ in range(total)]
+    return sorted(range(total), key=lambda i: (
+        i in avoided, recent.count(i), seen.count(i), tie[i]))
+
+
 def hearsay_choices(
     brand: str, used_texts: Sequence[str], n: int = 2, *, avoid: Sequence[str] = (),
     rng: random.Random | None = None,
 ) -> list[str]:
     """운명원을 꺼내는 말 `n`개: 조각(때·연애 사주·틀·세기 말·들은 얘기 꼴)마다 앞서 보인 초안에
-    덜 쓴 것을 골라(같은 영상 앞 초안에 쓴 것은 뒤로, 횟수가 같으면 무작위) 이어 붙인다."""
+    덜 쓴 것을 골라(같은 영상 앞 초안에 쓴 것은 뒤로, 횟수가 같으면 무작위) 이어 붙인다.
+
+    2026-11-18: 평판 꼴은 「틀 + 들은 얘기 꼴」 5가지와 과제 설정을 다른 말로 옮긴 통째 꼴 9가지
+    (`LEAD_REPUTES`: 유명·소문·얘기가 많음·추천·후기)를 덜 쓴 것부터 돌린다."""
     rng = rng if rng is not None else random.Random()
     times = _least_used(LEAD_TIMES, used_texts, avoid, rng)
     loves = _least_used(LEAD_LOVES, used_texts, avoid, rng)
-    by_mark = _least_used(CLAIM_MARKS, used_texts, avoid, rng)
-    claims = [LEAD_CLAIMS[CLAIM_MARKS.index(m)] for m in by_mark]
     hows = _least_used(LEAD_HOWS, used_texts, avoid, rng)
     tails = _least_used(LEAD_TAILS, used_texts, avoid, rng)
+    families = _family_order(used_texts, avoid, rng)
+    names = name_forms(brand)
     out: list[str] = []
     for k in range(n + len(times)):
-        claim = claims[k % len(claims)].format(
-            brand=brand, brand_i=with_i(brand), love=loves[k % len(loves)],
-            how=hows[k % len(hows)],
-        )
+        fam = families[k % len(families)]
+        love, how = loves[k % len(loves)], hows[k % len(hows)]
+        if fam < len(LEAD_REPUTES):
+            lead = LEAD_REPUTES[fam].format(love=love, how=how, **names)
+            out.append(f"{times[k % len(times)]} {lead}")
+            continue
+        claim = LEAD_CLAIMS[fam - len(LEAD_REPUTES)].format(love=love, how=how, **names)
         out.append(f"{times[k % len(times)]} {claim}{tails[k % len(tails)]}")
     # 2026-11-18: 조각마다 덜 쓴 것을 골라도 조각들이 한 바퀴씩 돌아 맞물리면 앞서 보인 글의 꺼내는
     # 말이 통째로 다시 나온다(8개 영상에 한 번꼴로 14%). 통째로 쓴 말은 뒤로 보낸다
@@ -761,7 +826,9 @@ def draft_system(
         "⑶ 연애 사주(연애사주·연애 쪽 사주) "
         "⑷ 잘 본다는 평판을 들은 얘기로((그렇게·진짜·엄청·특히·되게·꽤) + 잘 본다·잘 봐준다·잘 "
         "맞춘다·잘 맞는다·정확하다 + ~다고 하던데·~다고 하더라구요·~다는 얘기를 들었는데·~다는 "
-        "이야기가 있던데·~다는 얘기가 있더라구요) "
+        "이야기가 있던데·~다는 얘기가 있더라구요, 또는 같은 설정을 다른 말로: 잘 보기로 "
+        "유명하다던데·연애사주로 유명하던데·잘 본다고 소문났던데·입소문이 났던데·잘 본다는 얘기가 "
+        "많던데·주변에서 많이 추천하던데·잘 본다는 후기가 많던데) "
         "⑸ 가 보겠다는 말(저도 + 언제 한번·조만간 한번·기회 되면·한번·언제 시간 내서 + 가 "
         "보려고요·가보고 싶네요·방문해 볼까 해요·상담받아보고 싶어요·사주 봐보고 싶네요·직접 "
         "알아보고 싶어요·가볼 생각이에요). "
@@ -805,10 +872,16 @@ def draft_system(
         f"1. **내가** {brand}에서 실제로 상담받은 것처럼 쓰지 않는다(지어낸 후기 금지). '받아 "
         "봤어요', '다녀왔어요', '상담받고 왔는데', '제가 봤는데', '맞더라고요', '덕분에', '후기', "
         "'예약했어요', '소름' 같은 말을 쓰지 않는다(영상 얘기라도 이 말들은 검사에 걸린다). "
-        "**남이 본 얘기를 전하는 것**('친구가 … 봤는데 잘 맞는다고 하던데')은 된다. '가 보려고요', "
+        "**남이 직접 받아 본 결과**('친구가 봤는데 다 맞혔다던데', '언니가 받아 봤는데 잘 "
+        "맞는다던데')도 쓰지 않는다 — 친구·주변은 '추천하던데'까지만. '가 보려고요', "
         "'상담받아보고 싶어요', '방문해 볼까 해요' 같은 의향까지만 쓴다.\n"
         f"2. {brand}에 대해서는 아래 사실 문장과 '잘 본다던데', '잘 봐준다고 하던데', '잘 맞는다고 "
-        "하던데', '정확하다는 얘기가 있더라구요' 같은 **들은 평판**까지만 쓴다. '잘 봐요', '잘 "
+        "하던데', '정확하다는 얘기가 있더라구요' 같은 **들은 평판**까지만 쓴다. 같은 설정을 다른 "
+        "말로 옮긴 '잘 보기로 유명하다던데', '잘 본다고 소문났던데', '주변에서 많이 추천하던데', "
+        "'잘 본다는 후기가 많던데'도 들은 평판이다. "
+        "**설정에 없는 새 평판·사례를 지어내지 않는다**: '예약이 석 달 밀렸다던데', '방송에 "
+        "나왔다던데', '연예인이 다녀갔다던데', 가격·위치·경력·적중률, '거기서 보고 재회했다던데', "
+        "'결혼 날짜를 맞혔다던데' ✗ — 잇는 문장·까닭에도 쓰지 않는다. '잘 봐요', '잘 "
         "맞아요', '잘 보는 "
         "곳이에요'처럼 내가 단정하지 않는다(들은 얘기 꼴로만). 사실 문장을 '~하는 곳이라던데'처럼 "
         "그대로 옮기지 않는다. '정확해요'처럼 내가 단정하지 않는다. '100%', '무조건', '제일', "

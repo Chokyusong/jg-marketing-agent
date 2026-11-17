@@ -72,7 +72,9 @@ def test_full_flow_select_auto_draft_one_click_post_and_screens_keep_state(live)
         assert "is-done" in page.get_attribute('#run-steps li[data-phase="review"]', "class")
         # 2026-11-18 자료가 얇은 영상: 자막이 없으면 ②에 알리고, ① 목록은 읽은 영상에만 배지
         assert "초안이 밋밋할 수 있어요" in page.text_content("#ctx-transcript")
-        assert page.text_content(f'.vid[data-id="{PICK}"] .tbadge') == "자막 없음"
+        # 덧붙임(자료 상태 셋): 이 시험 영상은 설명·댓글도 짧아 「자료 부족」
+        assert page.text_content(f'.vid[data-id="{PICK}"] .tbadge') == "자료 부족"
+        assert "자료 부족: " in page.text_content("#ctx-transcript")
         assert page.locator(".vid .tbadge").count() == 1  # 안 읽은 영상에는 없다(미리 읽지 않음)
 
         # ③ [댓글 달기] 한 번 → 승인 API → 연습 모드 게시 시작 → 게시 직전 금색 [게시]

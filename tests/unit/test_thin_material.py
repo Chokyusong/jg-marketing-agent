@@ -96,3 +96,39 @@ def test_prompts_say_hashtag_words_are_not_material():
                          max_body=115)
     assert "자막이 없는 영상" not in plain
     assert "해시태그(#…) 낱말" in P.draft_system(brand="운명원", disclosure="[광고]", facts=())
+
+
+# ---------------------------------------------------------- 자료 상태 세 가지(2026-11-18 덧붙임)
+
+from app.analysis.context import (  # noqa: E402
+    MATERIAL_COMMENT_MIN,
+    MATERIAL_DESCRIPTION_MIN,
+    material_state,
+)
+
+LONG_DESC = "좋아하는 사람 앞에서 하는 행동을 다섯 가지로 정리했습니다. 공감되면 댓글 남겨 주세요"
+GOOD_COMMENTS = ["저도 좋아하는 사람 앞에서는 연락을 못 해요", "이거 완전 제 얘기네요 ㅠㅠ 공감",
+                 "연애만 하면 혼자 상상을 너무 많이 해요"]
+
+
+def test_material_yes_when_there_is_a_transcript():
+    assert material_state(has_transcript=True, description="", comments=[]) == "yes"
+
+
+def test_material_no_when_description_or_comments_are_there():
+    assert len(LONG_DESC) >= MATERIAL_DESCRIPTION_MIN
+    assert material_state(has_transcript=False, description=LONG_DESC, comments=[]) == "no"
+    assert material_state(has_transcript=False, description="", comments=GOOD_COMMENTS) == "no"
+
+
+def test_material_thin_when_only_the_title_is_left():
+    assert material_state(has_transcript=False, description="", comments=[]) == "thin"
+    # 해시태그·주소만 있는 설명, 「ㅋㅋ」 같은 짧은 댓글은 재료로 치지 않는다
+    tags = "#인팁특징 #연애 #MBTI연애 https://example.com/link www.example.com"
+    short = ["ㅋㅋㅋ", "👍", "공감해요"] * 5
+    assert material_state(has_transcript=False, description=tags, comments=short) == "thin"
+    # 쓸 만한 댓글이 문턱(3개)보다 적으면 자료 부족, 문턱이면 자막 없음
+    few = GOOD_COMMENTS[: MATERIAL_COMMENT_MIN - 1]
+    assert material_state(has_transcript=False, description="짧은 설명", comments=few) == "thin"
+    assert material_state(has_transcript=False, description="짧은 설명",
+                          comments=GOOD_COMMENTS[:MATERIAL_COMMENT_MIN]) == "no"

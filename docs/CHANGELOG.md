@@ -7,6 +7,22 @@
 
 ## 새 변경 (README를 줄인 뒤)
 
+### 2026-11-18 덧붙임: 검수 일곱 가지 · 앞 초안 지키기 · 검수 기록 · 자료 상태 셋 · 들은 평판 여러 꼴
+
+- 기획 담당이 보탠 조건(대표가 가져온 검토 의견, 방향은 그대로).
+- AI 검수가 보는 것에 셋을 더했다: ⑤ 영상 내용과 어긋나는가(검수 요청에 근거 구절을 함께 넣음) ⑥ 지어낸 내 경험·새 평판(영상 속 숫자·사정을 내 것으로, 운명원을 써 본 듯한 말, 설정 밖 평판·사례) ⑦ 한 댓글 안 같은 낱말·어미 되풀이.
+- 앞 초안 지키기: 다시 쓴 글이 규칙 검사(근거 구절 대조 포함)·다듬기 검사에서 떨어지거나 다시 쓰기가 실패·시간 초과면 버리고 규칙 검사를 통과했던 앞 초안을 쓴다 — 이번에 **두 번째 검수가 실패·시간 초과일 때도** 앞 초안을 쓰게 바꿨다(그 전에는 다시 쓴 글을 둠). `_save_review`가 통과 못 한 글로 바꾸는 것을 한 번 더 막는다.
+- 검수 기록: `drafts`에 `review_before`·`review_after`·`review_ms`·`rewrite_ms`(`MIGRATIONS` 끝), `review_json.kept`. `compare_drafts.py`에 「AI 검수 전·후」 표와 지표(다시 쓴 글 버림·검수 1번 평균 시간·다시 쓰기 평균 시간).
+- 자료 상태 셋: 「자막 있음」/「자막 없음 · 제목·설명·댓글로 씀」/「자료 부족」(자막 없음 + 해시태그·주소 뺀 설명 30자 미만 + 10자 이상 댓글 3개 미만). 맥락 API `material`, 목록 `transcript`에 `thin`. 읽지 않은 영상은 표시 없음. 목록은 새 YouTube 호출 없음(SQLite 한 번).
+- 들은 평판 여러 꼴: 과제 설정을 다른 말로 옮긴 유명·소문·얘기가 많음·추천·후기 9꼴(`LEAD_REPUTES`)을 기존 5꼴과 함께 덜 쓴 것부터 돌린다. V14 ④가 이 꼴들을 받고, V8의 「후기」에서 「후기가 많던데」를 뺐다. 설정에 없는 새 평판·사례(예약·방송·연예인·가격·위치·경력·적중률·구체 사례·남이 받아 본 결과)는 V14가 운명원 대목에서 막고, 그 앞 문장은 다듬기 검사 **S14**가 다시 쓰게 한다. 프롬프트도 바꿨다(「남이 본 얘기를 전하는 것은 된다」 → 「남이 직접 받아 본 결과도 쓰지 않는다 — 친구·주변은 '추천하던데'까지만」). 대표 본보기 10개 고정 테스트는 그대로 통과.
+- 테스트(새): `test_draft_review.py` 6개(두 번째 검수 실패 → 앞 초안, 전·후 문장·시간 기록, 버린 글도 기록, 다시 쓰기 없으면 빈 기록, 통과 못 한 글로 안 바뀜, 근거 구절과 ⑤⑥⑦), `test_review.py` 2개, `test_db.py` 1개(새 칸), `test_compare_drafts.py` 1개(전·후 표), `test_thin_material.py` 3개·`test_thin_material_api.py` 3개(자료 상태 셋, 요청 수 그대로), `test_brand_persona.py`(새 평판 9꼴 통과 · 지어낸 평판 12개 V14 실패 · 사실 문장은 통과 · 28개 돌려 쓰기 · 이름 꼴 · 들은 후기 · S14 · 까닭은 새 평판 아님).
+- 고친 기존 테스트(동작이 바뀌어서):
+  - `test_db.py::test_c1_key_phrase_columns_keep_old_analyses_as_legacy`, `test_db.py::test_review_column_is_added_last_and_old_drafts_have_no_review` — 마이그레이션 하나를 맨 끝에 더해 「맨 끝」 위치를 한 칸씩 당김.
+  - `test_brand_persona.py::test_relayed_reputation_passes_every_rule` — 통과 목록에서 남이 받아 본 결과 셋(「친구가 … 봤는데 잘 맞는다고 하던데」「아는 언니가 … 받아 봤는데」「동생이 … 다녀왔는데」)을 빼 새 실패 목록(`INVENTED`)으로 옮기고, 새 평판 9꼴을 더함.
+  - `test_brand_persona.py::test_prompt_states_the_persona` — 「남이 본 얘기를 전하는 것」 → 「남이 직접 받아 본 결과」·「'추천하던데'까지만」·「설정에 없는 새 평판·사례를 지어내지 않는다」.
+  - `test_prompts.py::test_draft_system_states_the_rules` — 같은 프롬프트 문구 바뀜.
+  - `test_validator.py::test_v14_hearsay_then_wish_passes` — 꺼내는 말 하나(「최근 친구가 운명원에서 연애 사주 봤는데 잘 맞는다고 하던데」)를 「최근 친구가 운명원 연애 사주 잘 본다고 추천하던데」로.
+
 ### 2026-11-18 자료가 얇은 영상 알리기
 
 - 기획 담당(대표 승인): 자막이 없는 영상은 제목·설명·댓글만 읽어 초안이 밋밋해지기 쉽다. 사람이 미리 알 수 있게 알리고, 있는 자료를 더 낫게 쓴다.
@@ -251,7 +267,7 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | `POST /api/analysis/{video_id}` | 영상 맥락을 AI로 분석해 저장하고 돌려준다: `topic`·`concern`·`tone`·`viewer_needs`, `evidence`(근거 문장 `quote`·출처 `source`·`source_label`, 자료에 있는 것만 최대 4개), `dropped_count`(자료에 없거나 광고·협찬·응모 글이라 버린 근거 수), `fallback`(예전 필드, 이제 늘 `false`), `model`, `has_love_concern`(늘 `true`)·`love_reason`(모델이 적은 판단 까닭). 연애 고민을 찾지 못하면 422 `no_love_concern`(초안을 만들지 않는다) |
 | `GET /api/analysis/{video_id}` | 저장된 분석(없으면 `null`). AI를 부르지 않는다 |
 | `POST /api/drafts` | `{"video_id", "another": false, "avoid_quotes": [], "review": null}` AI 초안을 만든다(분석이 없으면 먼저 분석). 검사에 걸리면 걸린 항목을 넣어 최대 3번, 다 걸리면 가장 덜 걸린 것을 저장. `another: true`면 이 영상에서 쓴 근거를 피한다. 응답: `id`·`body`(`[광고] ` 포함)·`evidence_quote`·`evidence_source`·`evidence_label`·`tone_label`·`attempts`·`first_passed`·`passed`·`status`(draft·approved·superseded)·`edited_by_human`·`validation`(`POST /api/validate`와 같은 모양)·`review`(2026-11-18 AI 검수 한 번: `status`·`label`·`problems`). `review`를 비우면 규칙 검사를 통과한 초안을 바로 검수하고, `false`면 `pending`으로 둔다 |
-| `GET /api/videos` 항목의 `transcript` | 2026-11-18: 이미 읽은 영상만 `yes`(자막 있음)·`no`(자막 없음), 안 읽었으면 빈 글(필드 추가, 자막을 미리 읽지 않음). `GET /api/videos/{id}`·`POST /api/videos/resolve`·`GET /api/videos/rising`도 같다 |
+| `GET /api/videos` 항목의 `transcript` | 2026-11-18: 이미 읽은 영상만 `yes`(자막 있음)·`no`(자막 없음)·`thin`(자료 부족), 안 읽었으면 빈 글(필드 추가, 자막을 미리 읽지 않음). 맥락 응답(`POST /api/videos/{id}/context` 등)에는 `material`(yes·no·thin). `GET /api/videos/{id}`·`POST /api/videos/resolve`·`GET /api/videos/rising`도 같다 |
 | `POST /api/drafts/{id}/review` | 2026-11-18: AI 검수 한 번. 규칙 검사를 통과한 모델 초안을 AI가 읽고 어색하면 한 번 다시 쓴다. 검수할 것이 없으면(이미 함·사람이 고침·설정을 끔) 그대로, 검수가 실패해도 오류 없이 `status: error`. 응답은 초안 |
 | `GET /api/drafts?video_id=` | 초안 목록(새것부터) |
 | `PATCH /api/drafts/{id}` | `{"body": "..."}` 사람이 고친 글 저장 후 다시 검사. 승인한 글을 고치면 승인이 풀린다 |

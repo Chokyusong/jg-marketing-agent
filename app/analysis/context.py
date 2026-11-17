@@ -20,12 +20,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
 from app import db
+from app.analysis.validator import strip_hashtags
 from app.errors import AppError, ErrorKind
 from app.transcript.auto import (
     REASON_NOTES,
@@ -225,6 +227,40 @@ def _comments_from_json(raw: str) -> list[Comment]:
     return [Comment(**item) for item in json.loads(raw or "[]")]
 
 
+# 2026-11-18 자료 상태(기획 담당 · 대표 승인): ① 목록 배지와 ② 자막 줄이 같은 판정을 쓴다.
+#   yes  자막 있음
+#   no   자막 없음 · 제목·설명·댓글로 씀
+#   thin 자료 부족 — 자막도 없고 설명·댓글도 거의 없어 제목뿐(아래 문턱 둘 다 못 넘을 때)
+# 아직 읽지 않은(맥락을 만들지 않은) 영상은 셋 중 어느 것도 아니다(빈 글).
+# 해시태그·주소를 빼고 남은 설명 글자 수가 이보다 적으면 「거의 없음」
+MATERIAL_DESCRIPTION_MIN = 30
+MATERIAL_COMMENT_CHARS = 10  # 이만큼은 되는 댓글만 센다(「ㅋㅋ」「👍」 같은 것은 재료가 아니다)
+MATERIAL_COMMENT_MIN = 3  # 그런 댓글이 이보다 적으면 「거의 없음」
+_URL = re.compile(r"https?://\S+|www\.\S+")
+
+
+def material_state(*, has_transcript: bool, description: str, comments: list[str]) -> str:
+    """자료 상태 yes·no·thin(위 설명). 저장된 글만 본다."""
+    if has_transcript:
+        return "yes"
+    desc = " ".join(_URL.sub(" ", strip_hashtags(description or "")).split())
+    useful = sum(
+        1 for c in comments if len(" ".join(str(c or "").split())) >= MATERIAL_COMMENT_CHARS
+    )
+    if len(desc) < MATERIAL_DESCRIPTION_MIN and useful < MATERIAL_COMMENT_MIN:
+        return "thin"
+    return "no"
+
+
+def context_material(context: VideoContext) -> str:
+    """맥락 하나의 자료 상태(② 자막 줄)."""
+    return material_state(
+        has_transcript=bool(context.transcript_text) and context.transcript_source != "none",
+        description=context.video.video.description,
+        comments=[c.text for c in context.comments],
+    )
+
+
 class ContextService:
     def __init__(
         self,
@@ -322,23 +358,34 @@ class ContextService:
         self.manual.clear(video_id)
         return self.build(video_id)
 
-    def transcript_map(self, video_ids: list[str]) -> dict[str, bool]:
-        """이미 읽은(맥락을 만든) 영상 → 자막이 있는지(2026-11-18, ① 목록의 「자막 있음/없음」).
+    def material_map(self, video_ids: list[str]) -> dict[str, str]:
+        """이미 읽은(맥락을 만든) 영상 → 자료 상태 yes·no·thin(2026-11-18, ① 목록 배지).
 
-        저장된 것만 본다 — YouTube도 자막 공급처도 부르지 않는다. 안 읽은 영상은 넣지 않는다."""
+        저장된 것만 본다(SQLite 한 번) — YouTube도 자막 공급처도 부르지 않아 목록을 띄우는 시간·
+        할당량은 그대로다. 안 읽은 영상은 넣지 않는다(「자막 없음」으로 잘못 보이지 않게)."""
         ids = [v for v in dict.fromkeys(video_ids) if v]
         if not ids:
             return {}
         marks = ",".join("?" * len(ids))
         with db.session(self.db_path) as conn:
             rows = conn.execute(
-                "SELECT video_id, transcript_source, transcript_text <> '' AS has_text "
-                f"FROM video_context WHERE built_at IS NOT NULL AND video_id IN ({marks})",
+                "SELECT c.video_id, c.transcript_source, c.transcript_text <> '' AS has_text, "
+                "c.comments_json, COALESCE(v.description, '') AS description "
+                "FROM video_context c LEFT JOIN videos v ON v.video_id = c.video_id "
+                f"WHERE c.built_at IS NOT NULL AND c.video_id IN ({marks})",
                 ids,
             ).fetchall()
-        return {
-            r["video_id"]: bool(r["has_text"]) and r["transcript_source"] != "none" for r in rows
-        }
+        out: dict[str, str] = {}
+        for r in rows:
+            try:
+                comments = [c.text for c in _comments_from_json(r["comments_json"])]
+            except (ValueError, TypeError):
+                comments = []
+            out[r["video_id"]] = material_state(
+                has_transcript=bool(r["has_text"]) and r["transcript_source"] != "none",
+                description=r["description"], comments=comments,
+            )
+        return out
 
     def prompt_text(self, context: VideoContext, max_chars: int | None = None) -> str:
         return fit_prompt(context, max_chars or self.context_chars).text

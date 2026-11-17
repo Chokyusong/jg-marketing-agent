@@ -213,6 +213,7 @@ select { padding-right: 6px; cursor: pointer; }
 .tbadge { margin-left: 6px; padding: 0 5px; border-radius: 4px; font-size: 12px; }
 .tbadge.is-yes { color: var(--sub); background: var(--field); }
 .tbadge.is-no { color: var(--warn); background: rgba(214, 180, 110, 0.12); }
+.tbadge.is-thin { color: var(--bad); background: rgba(214, 110, 110, 0.12); }
 .commented { display: inline-flex; align-items: center; align-self: flex-start; padding: 0 6px; border-radius: 4px; background: rgba(143, 191, 143, 0.14); color: var(--ok); font-size: 12px; }
 .rising-line { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
 .rising-tag { padding: 0 6px; border-radius: 4px; background: var(--gold-soft); color: var(--gold); }

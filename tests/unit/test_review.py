@@ -77,3 +77,23 @@ def test_real_ask_sends_the_review_schema_and_parses():
 def test_real_ask_raises_on_broken_answer():
     with pytest.raises(ValueError):
         R.ask(_LLM({"body": "초안"}), system="s", user="u")  # 초안 모양 답 → 검수 못 함
+
+
+def test_system_also_asks_content_made_up_experience_and_repeats():
+    # 2026-11-18 덧붙임: ⑤ 영상 내용과 어긋남 ⑥ 지어낸 경험·새 평판 ⑦ 같은 낱말·어미 되풀이
+    system = R.review_system(brand="운명원")
+    assert "일곱 가지" in system and "네 가지" not in system
+    assert "5. 영상 내용과 어긋나는가" in system
+    assert "6. 지어낸 내 경험·새 평판이 있는가" in system
+    for made_up in ("'예약이 밀렸다던데'", "'방송에 나왔다던데'", "'친구가 봤는데 다 맞혔다던데'",
+                    "'저도 봤는데'"):
+        assert made_up in system
+    # 설정(연애사주를 잘 본다)을 다른 말로 옮긴 들은 평판은 문제가 아니다
+    assert "'잘 보기로 유명하다던데'" in system and "'주변에서 많이 추천하던데'" in system
+    assert "7. 같은 낱말·어미가 한 댓글 안에서 되풀이되는가" in system
+
+
+def test_user_carries_the_evidence_quote_when_given():
+    user = R.review_user(body="본문", title="t", concern="c", evidence="영상 속 구절")
+    assert "[근거 구절(영상 자료에서)] 영상 속 구절" in user
+    assert "[근거 구절" not in R.review_user(body="본문")

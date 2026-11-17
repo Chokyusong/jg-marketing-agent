@@ -148,6 +148,10 @@ def run(
                 "review": d.review_status, "review_problems": list((d.review or {}).get("problems")
                                                                    or []),
                 "review_first": list((d.review or {}).get("first") or []),
+                # 검수 전·후 문장과 시간(다시 쓰기를 했을 때만 글이 있다, kept: 다시 쓴 글을 썼는지)
+                "review_before": d.review_before, "review_after": d.review_after,
+                "review_kept": (d.review or {}).get("kept"),
+                "review_ms": d.review_ms, "rewrite_ms": d.rewrite_ms,
                 "run": json.loads(json.dumps(services.drafts.last_run, ensure_ascii=False)),
                 "retry_reasons": [
                     [ln[2:] for ln in p.split(RETRY_HEAD, 1)[1].splitlines() if ln.startswith("- ")]
@@ -201,7 +205,39 @@ def _review_counts(ds: Sequence[dict[str, Any]]) -> dict[str, int]:
     first_false = sum(1 for x in ds if x.get("review") in (rv.REWRITTEN, rv.FLAGGED)
                       or x.get("review_first"))
     return {"false": first_false, "rewritten": status[rv.REWRITTEN],
-            "left": status[rv.FLAGGED], "error": status[rv.ERROR]}
+            "left": status[rv.FLAGGED], "error": status[rv.ERROR],
+            "discarded": sum(1 for x in ds
+                             if x.get("review_after") and x.get("review_kept") is False)}
+
+
+def _review_times(ds: Sequence[dict[str, Any]]) -> tuple[float, float, int]:
+    """(검수 평균 초, 다시 쓰기 평균 초(다시 쓴 초안만), 다시 쓴 초안 수) — 2026-11-18 검수 기록."""
+    reviewed = [x for x in ds if x.get("review_ms")]
+    rewrote = [x for x in ds if x.get("rewrite_ms")]
+    avg = (sum(x["review_ms"] for x in reviewed) / len(reviewed) / 1000) if reviewed else 0.0
+    avg_rw = (sum(x["rewrite_ms"] for x in rewrote) / len(rewrote) / 1000) if rewrote else 0.0
+    return avg, avg_rw, len(rewrote)
+
+
+def review_trace_lines(videos: Sequence[dict[str, Any]]) -> list[str]:
+    """검수 전·후 문장 표: 다시 쓰기를 한 초안만(고치기 전·검수가 든 문제·고친 뒤·썼는지·시간)."""
+    rows: list[str] = []
+    for v in videos:
+        title = _esc(v.get("title") or v.get("video_id", ""))[:30]
+        for x in v.get("drafts", []):
+            if not x.get("review_before"):
+                continue
+            used = "씀" if x.get("review_kept") else "버림(앞 초안 씀)"
+            rows.append(
+                f"| {title} | {x.get('n', '')} | {_esc(x['review_before'])} | "
+                f"{_esc(' / '.join(x.get('review_first') or []))} | "
+                f"{_esc(x.get('review_after') or '')} | {used} · {x.get('review', '')} | "
+                f"{x.get('review_ms', 0) / 1000:.1f}초 · {x.get('rewrite_ms', 0) / 1000:.1f}초 |")
+    if not rows:
+        return []
+    return ["", "AI 검수 전·후(다시 쓰기를 한 초안만)", "",
+            "| 영상 | # | 고치기 전 | 검수가 든 문제 | 고친 뒤 | 결과 | 검수 · 다시 쓰기 시간 |",
+            "|---|---|---|---|---|---|---|", *rows]
 
 
 def _stats(videos: Sequence[dict[str, Any]], brand: str = "운명원") -> dict[str, str]:
@@ -230,7 +266,14 @@ def _stats(videos: Sequence[dict[str, Any]], brand: str = "운명원") -> dict[s
             "AI 검수 고쳐 써서 통과": str(r["rewritten"]),
             "AI 검수 고쳐도 남음": str(r["left"]),
             "AI 검수 못 함": str(r["error"]),
+            "다시 쓴 글 버림(앞 초안 씀)": str(r["discarded"]),
         })
+        avg, avg_rw, rewrote = _review_times(ds)
+        if avg or rewrote:
+            out.update({
+                "검수 1번 평균 시간(초안당 합)": f"{avg:.1f}초",
+                "다시 쓰기 평균 시간": f"{avg_rw:.1f}초({rewrote}개)" if rewrote else "—",
+            })
     return out
 
 
@@ -304,6 +347,7 @@ def markdown_table(
     if reasons:
         lines += ["", f"{labels[1]} 다시 쓰게 만든 까닭: " +
                   ", ".join(f"{k} {n}번" for k, n in reasons.most_common())]
+    lines += review_trace_lines(after)
     return "\n".join(lines) + "\n"
 
 

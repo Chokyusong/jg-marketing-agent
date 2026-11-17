@@ -202,9 +202,10 @@ def test_rising_list_fits_and_blocks_posting(fit_app):
             "document.getElementById('job-why').textContent.startsWith("
             "'뜨기 직전 영상은 초안까지만 만듭니다')")
         assert page.is_disabled("#job-primary")
-        # 2026-11-18: 예전 「자막을 읽지 못해 제목과 설명으로 대신합니다」
+        # 2026-11-18: 예전 「자막을 읽지 못해 제목과 설명으로 대신합니다」. 이 시험 영상은
+        # 설명·댓글도 짧아 자료 상태가 「자료 부족」(덧붙임: 자료 상태 셋)
         analyze = page.text_content("#col-analyze")
-        assert "자막을 읽지 못해(" in analyze and "제목·설명·댓글만 읽었습니다" in analyze
+        assert "자료 부족: 자막을 읽지 못했고(" in analyze and "제목만 읽었습니다" in analyze
         for w, h in sorted(FULL):
             _check_one(measure(page, w, h), f"뜨기 직전 {w}x{h}", True)
         assert errors == []

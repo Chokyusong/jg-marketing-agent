@@ -7,7 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.analysis.analyzer import Analysis
-from app.analysis.context import VideoContext
+from app.analysis.context import VideoContext, context_material
 from app.analysis.drafter import Draft
 from app.analysis.validator import Validation, ValidatorRules
 from app.llm.prompts import SOURCE_LABELS
@@ -45,7 +45,7 @@ class VideoOut(BaseModel):
     commented: CommentedOut = Field(default_factory=CommentedOut)  # 7단계(필드 추가)
     # 2026-11-18 자료가 얇은 영상: 이미 읽은 영상만 yes(자막 있음)·no(자막 없음), 안 읽었으면 빈 글
     # (목록을 불러도 자막을 미리 읽지 않는다)
-    transcript: Literal["yes", "no", ""] = ""
+    transcript: Literal["yes", "no", "thin", ""] = ""
     # R4: 뜨기 직전 목록에서 온 영상만(시간당 조회수, 「뜨기 직전」 표시). 초안까지만 된다
     views_per_hour: float | None = None
     rising: bool = False
@@ -257,6 +257,8 @@ class ContextOut(BaseModel):
     transcript_reason: str = ""
     transcript_note: str = ""
     auto_transcript: bool = True  # 「자막 자동으로 읽기」가 켜져 있는지
+    # 2026-11-18 자료 상태: yes 자막 있음 · no 자막 없음(제목·설명·댓글로 씀) · thin 자료 부족
+    material: Literal["yes", "no", "thin"] = "no"
 
     @classmethod
     def from_context(
@@ -285,6 +287,7 @@ class ContextOut(BaseModel):
             transcript_reason=context.transcript_reason,
             transcript_note=context.transcript_note,
             auto_transcript=auto_transcript,
+            material=context_material(context),
             comment_count=len(context.comments),
             comments_disabled=context.comments_disabled,
             truncated=context.truncated,

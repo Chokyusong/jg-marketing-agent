@@ -112,19 +112,23 @@ export function commentedText(commented) {
   return commented.youtube ? '댓글 달았음' : '댓글 달았음 · 연습';
 }
 
-// 2026-11-18 자료가 얇은 영상: 이미 읽은 영상에만 「자막 있음」/「자막 없음」. 서버가 목록에 붙여 주고
-// (video.transcript: yes·no·빈 글), 이번에 고른 영상은 ② 자료가 오면 바로 바꾼다. 자막을 미리 읽지 않는다
+// 2026-11-18 자료가 얇은 영상: 이미 읽은 영상에만 「자막 있음」/「자막 없음」/「자료 부족」. 서버가 목록에
+// 붙여 주고(video.transcript: yes·no·thin·빈 글), 이번에 고른 영상은 ② 자료가 오면 바로 바꾼다.
+// 자막을 미리 읽지 않는다. 날짜 줄 높이를 지키려고 「자막 없음」의 뒷말(제목·설명·댓글로 씀)은 title로
 const readTranscript = new Map();
 
 function noteContext(state) {
   const ctx = state.context;
-  if (ctx && ctx.video_id) readTranscript.set(ctx.video_id, ctx.transcript_source === 'none' ? 'no' : 'yes');
+  if (ctx && ctx.video_id) {
+    readTranscript.set(ctx.video_id, ctx.material || (ctx.transcript_source === 'none' ? 'no' : 'yes'));
+  }
 }
 
 export function transcriptBadge(video) {
   const flag = readTranscript.get(video.video_id) || video.transcript || '';
   if (flag === 'yes') return el('span', { class: 'tbadge is-yes', text: '자막 있음' });
-  if (flag === 'no') return el('span', { class: 'tbadge is-no', title: '제목·설명·댓글만 읽어 초안이 밋밋할 수 있어요', text: '자막 없음' });
+  if (flag === 'no') return el('span', { class: 'tbadge is-no', title: '자막 없음 · 제목·설명·댓글로 씀(초안이 밋밋할 수 있어요)', text: '자막 없음' });
+  if (flag === 'thin') return el('span', { class: 'tbadge is-thin', title: '자료 부족 · 자막도 없고 설명·댓글도 거의 없어 제목만 읽어요', text: '자료 부족' });
   return null;
 }
 
