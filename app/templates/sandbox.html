@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex" />
-  <title>테스트 페이지 — {{ title }}</title>
+  <title>연습 페이지 — {{ title }}</title>
   <link rel="stylesheet" href="/static/css/sandbox.css" />
   <script type="module" src="/static/js/sandbox.js"></script>
 </head>
 <!-- 통제된 테스트 페이지(DESIGN 6.1). 이 앱이 주는 자체 화면이며 실제 유튜브가 아니다. -->
 <body data-video="{{ video_id }}" data-profile="{{ profile }}" data-fail="{{ fail }}">
-  <p class="banner" role="note">통제된 테스트 페이지 — 실제 유튜브가 아닙니다 <span>JG MARKETING AGENT · SANDBOX</span></p>
+  <p class="banner" role="note">연습 페이지 — 실제 유튜브가 아닙니다 <span>JG 마케팅 에이전트 · 연습 모드</span></p>
   <main class="wrap">
     <h1 id="video-title">{{ title }}</h1>
     <p class="meta">영상 ID {{ video_id }}{% if profile %} · 프로필 {{ profile }}{% endif %}{% if fail %} · 실패 스위치 {{ fail }}{% endif %}</p>

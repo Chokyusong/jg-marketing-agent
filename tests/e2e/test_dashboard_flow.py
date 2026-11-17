@@ -212,13 +212,16 @@ def test_first_user_can_finish_the_whole_flow_with_one_highlight_per_step(dashbo
 
     # ⑤ 게시 완료: 다음은 다른 영상 고르기. 기록과 오늘 숫자가 바로 바뀐다
     expect_next(page, "video-list")
-    page.wait_for_function("document.getElementById('stat-posted').textContent.trim() === '1'")
-    assert page.text_content("#stat-success").strip().startswith("100")
+    # 2026-11-17(PDF 대조): 오늘 숫자는 실제 게시 기준. 연습 게시는 따로 「연습 n」(흐리게)
+    page.wait_for_function("document.getElementById('today-count').textContent.includes('연습 1')")
+    assert page.text_content("#stat-posted").strip() == "0"
+    assert page.text_content("#stat-success").strip() == "–"
     page.wait_for_function("document.querySelectorAll('#records-body td.st').length >= 1")
     rows = page.eval_on_selector_all("#records-body tr", "(rows) => rows.map((r) => r.textContent)")
     assert 1 <= len(rows) <= 4  # ③ 아래 표는 최근 게시 4줄까지
     assert "성공" in rows[0]
-    assert page.text_content("#today-count").startswith("1/10")
+    assert page.text_content("#today-count").startswith("0/10")
+    assert page.text_content("#records-body .kind") == "연습"
 
     # ⑥ 설정 화면: 열면 화면 이름에 초점. 키 값은 보이지 않는다
     page.click("#nav-settings")
@@ -236,9 +239,12 @@ def test_first_user_can_finish_the_whole_flow_with_one_highlight_per_step(dashbo
 
     # ⑦ 기록 전체: 전체 기록(실패 이유 칸 포함)
     page.click("#records-all")
-    page.wait_for_function("document.querySelectorAll('#records-all-body tr').length >= 4")
+    page.wait_for_function("document.querySelectorAll('#records-all-body tr td.st').length >= 1")
     assert page.evaluate("document.activeElement.id") == "screen-title"
-    assert "전체" in page.text_content("#records-all-meta")
+    assert "실제 게시 0건 · 연습 1건" in page.text_content("#records-all-meta")  # 처음은 「게시」
+    page.check('input[name="records-filter"][value="all"]', force=True)
+    page.wait_for_function("document.querySelectorAll('#records-all-body tr').length >= 4")
+    assert "모든 활동" in page.text_content("#records-all-meta")
     page.click("#nav-work")
     expect_next(page, "video-list")
 

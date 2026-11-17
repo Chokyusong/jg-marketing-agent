@@ -194,7 +194,7 @@ def test_post_rows_show_result_profile_target(setup):
     row = client.get("/api/records").json()["items"][0]
     assert (row["action_label"], row["status_label"]) == ("댓글 게시", "게시 실패")
     assert (row["profile"], row["target"], row["target_label"]) == ("유튜브2", "sandbox",
-                                                                    "테스트 페이지")
+                                                                    "연습")
     assert row["has_screenshot"] is True
     assert "error_screenshots" not in client.get("/api/records").text  # 경로는 싣지 않는다
     services.rules.reserve(VID, "sandbox", "유튜브3", d["id"])  # 실패 뒤 다시 시도
@@ -210,7 +210,7 @@ def test_stats_empty_have_no_success_rate(setup):
     client, _, _ = setup
     data = client.get("/api/stats/today").json()
     assert data == {
-        "target": "sandbox", "target_label": "테스트 페이지", "day": "2026-11-16",
+        "target": "sandbox", "target_label": "연습", "day": "2026-11-16",
         "videos": 0, "daily_limit": 10, "remaining": 10, "drafts": 0, "posted": 0,
         "failed": 0, "success_rate": None,
     }

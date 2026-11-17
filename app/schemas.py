@@ -460,7 +460,7 @@ class DraftListOut(BaseModel):
 
 # ---------------------------------------------------------------- 7단계: 운영 규칙과 기록
 
-TARGET_LABELS = {"sandbox": "테스트 페이지", "youtube": "유튜브", "": ""}
+TARGET_LABELS = {"sandbox": "연습", "youtube": "유튜브", "": ""}  # 11-17: 옛 「테스트 페이지」
 ACTION_LABELS = {
     "analyze": "AI 분석",
     "draft": "초안 생성",

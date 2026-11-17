@@ -150,7 +150,7 @@ async def post_comment(
             content={
                 "error": {
                     "kind": "sandbox_rejected",
-                    "message": "테스트 페이지가 댓글 저장을 거절했습니다(실패 스위치 reject).",
+                    "message": "연습 페이지가 댓글 저장을 거절했습니다(실패 스위치 reject).",
                 }
             },
         )

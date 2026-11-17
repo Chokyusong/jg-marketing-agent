@@ -253,3 +253,65 @@ def test_progress_steps_follow_assignment_wording(live):
     assert got["failedTyping"] == ["is-done", "is-failed", ""]
     assert got["failedVerify"] == ["is-done", "is-done", "is-failed"]
     assert got["word"] == "내 댓글 확인 중"
+
+
+def test_records_screen_posts_first_real_and_practice_apart(live):
+    """2026-11-17(PDF 대조): 기록은 「어느 영상에 · 어느 프로필로 · 무슨 댓글을 ·
+    성공/실패를 시간순으로」. 처음 거르기는 게시, 줄마다 「실제」/「연습」,
+    숫자는 실제 게시 기준이고 연습은 따로 「연습 n」."""
+    from app import db
+
+    base = live["base"]
+    services = live["app"].state.services.get()
+    vid = video_id(2)
+    long_body = ("[광고] 영상 속 '하루에 한 번 연락'으로 싸웠다는 말에 고개가 끄덕여졌어요. "
+                 "요즘 운명원 얘기 자주 보이던데 저도 연애 사주 한번 보고 싶네요.")
+    with db.session(services.settings.db_path) as conn:
+        conn.execute("INSERT OR IGNORE INTO videos(video_id, title, fetched_at, source) "
+                     "VALUES (?, '연락 문제로 싸운 커플 이야기', ?, 'search')",
+                     (vid, "2026-11-16T03:00:00+00:00"))
+        ids = []
+        for _ in range(2):
+            cur = conn.execute(
+                "INSERT INTO drafts(video_id, body, validation_json, passed, status, created_at, "
+                "updated_at, approved_at) VALUES (?, ?, '{}', 1, 'approved', ?, ?, ?)",
+                (vid, long_body, "2026-11-16T03:00:00+00:00", "2026-11-16T03:00:00+00:00",
+                 "2026-11-16T03:00:00+00:00"))
+            ids.append(int(cur.lastrowid))
+    real = services.rules.reserve(vid, "youtube", "유튜브1", ids[0])
+    services.rules.mark_posted(real)
+    practice = services.rules.reserve(vid, "sandbox", "유튜브2", ids[1])
+    services.rules.mark_posted(practice)
+    services.ledger.record("analyze", "info", video_id=vid)  # 게시가 아닌 줄(모든 활동에서만)
+    with headless_page(base) as (page, errors):
+        page.goto(base + "/")
+        page.wait_for_function(
+            "document.getElementById('today-count').textContent.includes('연습 1')")
+        assert page.text_content("#today-count").startswith("1/10")
+        page.click("#nav-records")
+        page.wait_for_function(
+            "document.querySelectorAll('#records-all-body tr td.st').length === 2")
+        rows = page.eval_on_selector_all(
+            "#records-all-body tr",
+            "(rows) => rows.map((r) => [r.className, r.querySelector('.kind').textContent,"
+            " r.cells[2].textContent, r.cells[3].textContent])")
+        assert [r[1] for r in rows] == ["연습", "실제"]  # 최신이 위
+        assert "is-practice-row" in rows[0][0] and "is-practice-row" not in rows[1][0]
+        assert rows[1][2] == "실제유튜브1" and rows[0][2] == "연습유튜브2"
+        assert all(r[3] == long_body for r in rows)  # 댓글 전문(잘리지 않음)
+        assert page.text_content("#stat-videos").startswith("1")
+        assert page.text_content("#stat-posted") == "1"
+        assert "실제 게시 1건 · 연습 1건 · 실패 0건" in page.text_content("#records-all-meta")
+        assert "연습 1" in page.text_content("#today-note")
+        for w, h in ((1920, 1009), (1600, 960)):
+            m = measure(page, w, h)
+            assert not m["pageScroll"] and not m["hScroll"], (w, h)
+            assert m["minFont"] >= 12, (w, h, m["minFontAt"])
+        page.check('input[name="records-filter"][value="all"]', force=True)
+        page.wait_for_function("document.querySelectorAll('#records-all-body tr').length === 3")
+        # ③ 최근 기록의 댓글을 누르면 기록 화면(전문)으로
+        page.click("#nav-work")
+        page.wait_for_selector("#records-body td.is-link")
+        page.click("#records-body td.is-link")
+        page.wait_for_selector("#screen-records", state="visible")
+    assert not errors, errors

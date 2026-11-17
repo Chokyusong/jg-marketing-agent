@@ -334,6 +334,13 @@ td.empty-row { padding: 14px 8px; color: var(--dim); white-space: normal; }
 .st.is-bad b { color: var(--bad); }
 .st.is-info b { color: var(--sub); }
 .st-reason, .rec-mark { color: var(--dim); }
+.kind { display: inline-block; margin-right: 6px; padding: 0 5px; border: 1px solid var(--line-strong); border-radius: 4px; font-size: 12px; line-height: 18px; vertical-align: 1px; }
+.kind.is-real { border-color: rgba(209, 185, 144, 0.55); color: var(--gold); }
+.kind.is-practice { color: var(--dim); }
+tr.is-practice-row td, tr.is-practice-row td.st b { color: var(--dim); }
+.practice-count { color: var(--dim); }
+td.is-link { cursor: pointer; }
+td.is-link:hover, td.is-link:focus-visible { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 td.wrap.st { white-space: normal; }
 .mini-records .c-time { width: 84px; }
 .mini-records .c-video { width: 30%; }

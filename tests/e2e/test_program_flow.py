@@ -94,14 +94,24 @@ def test_full_flow_select_auto_draft_one_click_post_and_screens_keep_state(live)
         page.click("#nav-records")
         assert page.is_visible("#screen-records") and not page.is_visible("#screen-work")
         assert page.text_content("#screen-title") == "기록"
+        # 2026-11-17(PDF 대조): 처음 거르기는 「게시」, 숫자는 실제 게시 기준, 연습은 「연습 n」
+        assert page.is_checked('input[name="records-filter"][value="post"]')
         page.wait_for_function(
-            "document.querySelectorAll('#records-all-body tr td.st').length >= 3")
-        assert page.text_content("#stat-posted") == "1"
-        page.check('input[name="records-filter"][value="post"]', force=True)
+            "document.querySelectorAll('#records-all-body tr td.st').length >= 1")
         rows = page.locator("#records-all-body tr")
         assert rows.count() == 1 and "게시 완료" in rows.first.text_content()
+        assert rows.first.locator(".kind").text_content() == "연습"
+        assert "is-practice-row" in (rows.first.get_attribute("class") or "")
+        assert "실제 게시 0건 · 연습 1건" in page.text_content("#records-all-meta")
+        assert page.text_content("#stat-posted") == "0"  # 연습 게시는 실제 숫자에 넣지 않는다
+        assert "실제 게시 기준" in page.text_content("#today-note")
+        assert "연습 1" in page.text_content("#today-note")
+        assert "연습 1" in page.text_content("#today-count")
         page.check('input[name="records-filter"][value="failure"]', force=True)
-        assert "실패한 기록이 없습니다" in page.text_content("#records-all-body")
+        assert "게시에 실패한 기록이 없습니다" in page.text_content("#records-all-body")
+        page.check('input[name="records-filter"][value="all"]', force=True)
+        page.wait_for_function(
+            "document.querySelectorAll('#records-all-body tr td.st').length >= 3")
 
         # 프로필 화면(R2): 카드 세 장, 카드마다 [로그인하기] · [로그인 확인] · [유튜브 열기]
         page.click("#nav-profiles")

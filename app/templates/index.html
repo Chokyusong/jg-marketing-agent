@@ -251,17 +251,17 @@
     <!-- 기록 화면 -->
     <section class="screen screen-records" id="screen-records" aria-labelledby="screen-title" hidden>
       <dl class="today" id="today-stats" aria-label="오늘 숫자" aria-live="polite">
-        <div title="오늘 게시한 영상(예약 + 게시) / 하루 상한. 실패는 세지 않습니다"><dt>오늘 게시</dt><dd id="stat-videos">–</dd></div>
+        <div title="오늘 실제 유튜브에 게시한 영상(예약 + 게시) / 하루 상한. 실패와 연습은 세지 않습니다"><dt>오늘 게시</dt><dd id="stat-videos">–</dd></div>
         <div title="오늘 만든 댓글 초안"><dt>만든 댓글</dt><dd id="stat-drafts">–</dd></div>
-        <div title="오늘 게시 완료"><dt>게시 완료</dt><dd id="stat-posted">–</dd></div>
-        <div title="오늘 게시 성공률(게시 완료 ÷ 게시 시도). 시도가 없으면 –"><dt>성공률</dt><dd id="stat-success">–</dd></div>
+        <div title="오늘 실제 유튜브 게시 완료(연습은 따로)"><dt>게시 완료</dt><dd id="stat-posted">–</dd></div>
+        <div title="오늘 실제 게시 성공률(게시 완료 ÷ 게시 시도). 시도가 없으면 –"><dt>성공률</dt><dd id="stat-success">–</dd></div>
       </dl>
       <div class="records-tools">
         <p class="caption" id="today-note">오늘 숫자 불러오는 중</p>
         <div class="seg" role="radiogroup" aria-label="거르기">
-          <label><input type="radio" name="records-filter" value="all" checked /><span>전체</span></label>
-          <label><input type="radio" name="records-filter" value="post" /><span>게시</span></label>
-          <label><input type="radio" name="records-filter" value="failure" /><span>실패</span></label>
+          <label title="게시한 댓글(성공·실패)"><input type="radio" name="records-filter" value="post" checked /><span>게시</span></label>
+          <label title="게시에 실패한 것"><input type="radio" name="records-filter" value="failure" /><span>실패</span></label>
+          <label title="분석·초안·승인까지 모두"><input type="radio" name="records-filter" value="all" /><span>모든 활동</span></label>
         </div>
         <p class="caption" id="records-all-meta" aria-live="polite">불러오는 중…</p>
       </div>

@@ -135,7 +135,11 @@ export function startBlocker(state) {
     const failed = result.checks.filter((c) => !c.passed).length;
     return `규칙 검사에 걸린 항목 ${failed}개를 고쳐야 달 수 있습니다.`;
   }
-  if (ops && ops.stats && ops.stats.remaining <= 0) return '오늘 올릴 수 있는 댓글을 다 썼습니다. 자정(한국 시각)이 지나면 다시 됩니다.';
+  if (ops && ops.stats && ops.stats.remaining <= 0) {
+    return target === 'sandbox'
+      ? '연습 모드로 오늘 올릴 수 있는 댓글을 다 썼습니다. 자정(한국 시각)이 지나면 다시 됩니다.'
+      : '오늘 올릴 수 있는 댓글을 다 썼습니다. 자정(한국 시각)이 지나면 다시 됩니다.';
+  }
   const b = state.browser;
   if (b && !b.chrome_found) return '이 PC에서 크롬을 찾지 못했습니다. 크롬을 설치해 주세요.';
   if (b && !b.playwright_ready) return '자동 입력 도구가 설치되지 않아 댓글을 달 수 없습니다.';

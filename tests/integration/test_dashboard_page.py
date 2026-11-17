@@ -512,7 +512,9 @@ def test_ops_js_wires_the_three_apis(make_client):
     for snippet in ("`/api/profiles?target=", "`/api/records?limit=", "`/api/stats/today?"):
         assert snippet in api, snippet
     js = client.get("/static/js/ops.js").text
-    for text in ("api.todayStats(ops.target, ops.dailyLimit)", "api.records(RECENT_FETCH)",
+    # 2026-11-17: 숫자는 실제 게시 기준(youtube), 연습(sandbox)은 따로 받아 「연습 n」
+    for text in ("api.todayStats('youtube', ops.dailyLimit)",
+                 "api.todayStats('sandbox', ops.dailyLimit)", "api.records(RECENT_FETCH)",
                  "const RECENT_ROWS = 4;", "r.action === 'post'", "timeZone: 'Asia/Seoul'", "'–'",
                  "setInterval(refreshOps", "export async function refreshOps()",
                  "practice.checked ? 'sandbox' : 'youtube'",
@@ -666,9 +668,13 @@ def test_no_love_concern_shows_message_and_opens_transcript_paste(make_client):
 def test_screens_replace_overlay_panels(page):
     records = _section(page, 'id="screen-records"', "<!-- 프로필 화면 -->")
     assert 'role="radiogroup" aria-label="거르기"' in records
-    for value, label in (("all", "전체"), ("post", "게시"), ("failure", "실패")):
+    # 2026-11-17(PDF 대조): 처음 거르기는 게시(성공·실패). 분석·초안·승인 줄은 「모든 활동」에서
+    for value, label in (("post", "게시"), ("failure", "실패"), ("all", "모든 활동")):
         assert f'name="records-filter" value="{value}"' in records
         assert f"<span>{label}</span>" in records
+    assert 'name="records-filter" value="post" checked' in records
+    assert records.index('value="post"') < records.index('value="failure"') < records.index(
+        'value="all"')
     assert 'id="records-all-body"' in records
     heads = re.findall(r"<th>([^<]+)</th>", records)
     assert heads == ["시간", "영상", "프로필", "댓글", "결과"]

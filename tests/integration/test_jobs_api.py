@@ -142,7 +142,7 @@ def test_sandbox_job_over_the_api(setup):
     assert res.status_code == 200, res.text
     job = res.json()
     assert job["mode"] == "sandbox"
-    assert job["target"] == "sandbox" and job["target_label"] == "테스트 페이지"
+    assert job["target"] == "sandbox" and job["target_label"] == "연습"
     assert job["profile"] == "유튜브1" and job["folder"] == "profile-1"
     assert job["comment_text"] == d["body"]
     assert job["confirm_before_post"] is False and job["disclosed"] is True
@@ -379,7 +379,7 @@ def test_sandbox_page_is_our_own_marked_page(plain):
     res = plain.get(f"/sandbox/watch?v={VID}&profile=유튜브1")
     assert res.status_code == 200
     page = res.text
-    assert "통제된 테스트 페이지 — 실제 유튜브가 아닙니다" in page
+    assert "연습 페이지 — 실제 유튜브가 아닙니다" in page  # 옛 「통제된 테스트 페이지」
     assert 'placeholder="댓글 추가..."' in page
     assert ">취소</button>" in page and ">댓글</button>" in page
     assert 'id="comment-list"' in page and "영상 자리" in page
