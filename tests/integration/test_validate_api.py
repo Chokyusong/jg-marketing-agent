@@ -11,10 +11,11 @@ import pytest
 from yt_helpers import YT
 
 VID = "BBBBBBBBBB2"  # videos.json·comment_threads.json에 있는 영상
-# 인기 댓글 "저도 하루에 한 번 연락으로 싸운 적 있어요"를 근거로 쓴 글
+# 인기 댓글 "저도 하루에 한 번 연락으로 싸운 적 있어요"를 근거로 쓴 글. 2026-11-17 운명원 대목
+# 다섯 조각(때·이름·연애 사주·잘 본다는 들은 얘기·가 보겠다는 말)에 맞췄다
 GOOD = (
     "[광고] 하루에 한 번 연락으로 싸운다는 이야기가 와닿았어요. "
-    "운명원 연애 사주 잘 본다던데 저도 한번 상담받아 보고 싶어요."
+    "요즘 운명원 연애 사주 잘 본다던데 저도 한번 상담받아 보고 싶어요."
 )
 
 
@@ -130,13 +131,13 @@ def test_comments_disabled_video_is_checked_against_title_and_description(
     # C1: 설명란 글을 길게 옮기면 V13에 걸리므로 짧게 짚는다
     text = (
         "[광고] 연락 빈도 때문에 다투는 커플 얘기 남 일 같지 않네요. "
-        "요즘 운명원 얘기 자주 보이던데 연애 사주 한번 보고 싶어요."
+        "요즘 운명원 연애 사주 잘 본다고 하던데 저도 한번 가 보려고요."
     )
     data = post(client, text).json()
     assert data["passed"] is True, data
     assert data["evidence_quote"] == "연락 빈도 때문에 다투는"
     long_copy = post(client, "[광고] 연락 빈도 때문에 다투는 장거리 커플 이야기에 공감했어요. "
-                             "운명원 잘 본다던데 한번 보고 싶어요.").json()
+                             "요즘 운명원 연애 사주 잘 본다던데 저도 가 보려고요.").json()
     assert [c["code"] for c in long_copy["checks"] if not c["passed"]] == ["V13"]
 
 

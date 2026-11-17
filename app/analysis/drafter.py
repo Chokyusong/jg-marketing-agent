@@ -169,6 +169,7 @@ class DraftService:
         self.polish = bool(polish)
         self.last_run: dict[str, Any] = {}  # 마지막 초안 만들기의 과정(시도별 글·다듬기)
         self._context_text = ""  # 지금 초안을 만드는 영상의 자료 글(다듬기 검사 S5)
+        self._last_shown = ""  # 바로 앞에 보인 초안(다듬기 검사 S8)
 
     @property
     def rules(self):
@@ -342,6 +343,8 @@ class DraftService:
         except AppError:
             context_text = ""
         self._context_text = context_text
+        # S8: 바로 앞에 보인 초안과 같은 본보기를 그대로 옮기지 않게
+        self._last_shown = shown[0] if shown else ""
 
         # (실패 수, 다듬기 문제 수, 글, 말투, 검사, 차례, 다듬기 문제)
         best: tuple[int, int, str, str, Validation, int, list[str]] | None = None
@@ -371,6 +374,7 @@ class DraftService:
                 avoid_bodies=avoid_bodies,
                 used_closings=used_closings,
                 avoid_phrases=avoid_phrases,
+                last_model=prompts.copied_model(self._last_shown) if self._last_shown else -1,
             )
             try:
                 data = llm.generate_json(
@@ -454,6 +458,7 @@ class DraftService:
         return style.style_issues(
             text, brand=self.rules.brand, disclosure=mark, key_phrases=key_phrases,
             earlier=earlier, context=self._context_text,
+            last_shown=self._last_shown,
         )
 
     def _polish(

@@ -31,15 +31,26 @@ def check_example(ex: P.Example):
     )
 
 
-def test_four_good_and_four_bad_examples():
-    # C1: 말투가 서로 다른 좋은 예 4개, 나쁜 예 4개(써 본 척 · 효능 단정 · 길게 베끼기 ·
-    # 뜬금없는 운명원 — 대표가 본 초안과 같은 꼴, V14).
-    # 2026-11-17(대표, 운명원 페르소나): 나쁜 예 5번째 — 평판 없이 꺼낸 「요즘 운명원 얘기 자주
-    # 보이던데」(S7)
-    assert len(P.GOOD_EXAMPLES) == 4 and len(P.BAD_EXAMPLES) == 5
+def test_four_good_and_seven_bad_examples():
+    # C1: 말투가 서로 다른 좋은 예 4개, 나쁜 예(써 본 척 · 효능 단정 · 길게 베끼기 · 뜬금없는
+    # 운명원 — 대표가 본 초안과 같은 꼴, V14).
+    # 2026-11-17(대표, 운명원 대목 다섯 조각): 평판 없는 예(S7) 대신 하나씩 빠진 예 셋 — 때 없음 ·
+    # 연애 사주 없음 · 「궁금하네요」로 끝나 가 보겠다는 말 없음. 나쁜 예가 5개 → 7개
+    assert len(P.GOOD_EXAMPLES) == 4 and len(P.BAD_EXAMPLES) == 7
     assert "운명원에서 연애 사주를 한번 보고 싶어요" in P.BAD_EXAMPLES[3].body
-    assert "요즘 운명원 얘기 자주 보이던데" in P.BAD_EXAMPLES[4].body
-    assert len(P.BAD_EXAMPLE_FAILS) == len(P.BAD_EXAMPLES)
+    assert not any(w in P.BAD_EXAMPLES[4].body for w in ("요즘", "요새", "최근"))
+    assert "연애" not in P.BAD_EXAMPLES[5].body.split("운명원")[1]
+    assert P.BAD_EXAMPLES[6].body.endswith("궁금하네요.")
+    assert len(P.BAD_EXAMPLE_FAILS) == len(P.BAD_EXAMPLES) == len(P.BAD_EXAMPLE_MISSING)
+
+
+def test_bad_examples_name_the_missing_piece():
+    # V14는 빠진 조각 이름을 알린다(때 · 연애 사주 · 가 보겠다는 말)
+    for ex, words in zip(P.BAD_EXAMPLES, P.BAD_EXAMPLE_MISSING, strict=True):
+        if not words:
+            continue
+        v14 = next(c for c in check_example(ex).checks if c.code == "V14")
+        assert not v14.passed and words in v14.message, (words, v14.message)
 
 
 @pytest.mark.parametrize("ex", P.GOOD_EXAMPLES)
@@ -77,15 +88,15 @@ def test_bad_examples_fail_the_real_checks(ex, codes):
 
 
 def test_examples_follow_the_viewer_persona():
-    # 좋은 예는 써 본 척 없이 의향·궁금함으로 끝나고, 운명원은 들은 얘기로 꺼낸다
-    intents = ("보고 싶", "물어보고 싶", "궁금해지", "궁금하네", "여쭤보고 싶", "가 봐야겠")
+    # 좋은 예는 써 본 척 없이 가 보겠다는 의향으로 끝나고, 운명원은 들은 얘기로 꺼낸다.
+    # 2026-11-17 다섯 조각: 「궁금해지네요」 같은 끝은 이제 V14에 걸려 의향 말만 남겼다
+    intents = ("가 보려", "상담받아보고 싶", "가볼 생각", "방문해 볼까")
     for ex in P.GOOD_EXAMPLES:
         assert any(word in ex.body for word in intents), ex.body
         assert ex.body.count("운명원") == 1
-    # C1-V14: 네 예 모두 들은 얘기로 꺼내고, 그 평판 표현이 서로 다르다.
-    # 2026-11-17(대표, 운명원 페르소나): 모두 연애 사주를 잘 본다는 평판이고 하나는 친구가 본 얘기
-    hearsay = ("잘 보기로 유명하다던데", "잘 맞는다고 하던데", "잘 본다고들 하던데",
-               "그렇게 잘 본다고 하던데")
+    # C1-V14: 네 예 모두 들은 얘기로 꺼내고, 그 평판 표현이 서로 다르다
+    hearsay = ("잘 맞춘다고 하던데", "잘 맞는다는 얘기를 들었는데", "잘 봐준다고 하더라구요",
+               "잘 본다는 이야기가 있던데")
     used = [next(h for h in hearsay if h in ex.body) for ex in P.GOOD_EXAMPLES]
     assert len(set(used)) == 4, used
     # 좋은 예는 자료를 13자 이상 이어서 옮기지 않는다(V13)
@@ -109,8 +120,13 @@ def test_draft_system_states_the_rules():
         "너는 이 영상을 방금 본 시청자다",
         "① 영상 반응",
         "② 내 처지 한마디",
-        "③ 운명원을 **연애 사주를 잘 본다는 평판**(들은 얘기)으로 꺼내고 내 고민에 맞춘 바람",
-        "④ 짧은 생각으로 마무리",
+        # 2026-11-17 다섯 조각: ③이 운명원 대목 두 토막이 되고 ④(마무리)는 없앴다
+        "③ 운명원 대목 — 두 토막 45~55자쯤",
+        "**다섯 조각을 다 넣는다**(하나라도 빠지면 검사에 걸린다)",
+        "⑴ 때(요즘·요새·최근·최근에)",
+        "'궁금하네요', '궁금해지네'로만 맺으면 가 보겠다는 말이 없어 걸린다",
+        "대표가 쓴 ③ 본보기 10개 — **그대로 베끼지 말고 이 결로**",
+        "마무리 문장은 따로 붙이지 않는다",
         "'ㅠㅠ', 'ㅋㅋ', '...' 같은 댓글 표기를 써도 된다",
         "'~하는 방법이 궁금해서'",
         "길게 그대로 옮기지 않는다. 핵심 말만 그대로 쓰고",
@@ -119,9 +135,10 @@ def test_draft_system_states_the_rules():
         "**남이 본 얘기를 전하는 것**('친구가 … 봤는데 잘 맞는다고 하던데')은 된다",
         "'예약했어요', '소름'",
         "의향까지만 쓴다",
-        "'잘 본다던데', '잘 봐준다고 하던데', '잘 맞는다고 하던데', '유명하다던데' 같은 **들은 "
-        "평판**까지만",
-        "'무조건', '제일', '최고', '확실', '정확하다'",
+        "'잘 본다던데', '잘 봐준다고 하던데', '잘 맞는다고 하던데', '정확하다는 얘기가 "
+        "있더라구요' 같은 **들은 평판**까지만",
+        "'정확해요'처럼 내가 단정하지 않는다",
+        "'100%', '무조건', '제일', '최고', '확실', '용하다'",
         "'운명원'라는 이름은 정확히 한 번 쓴다",
         "'제 남친', '제 여친', '우리 오빠' 같은 지어낸 애인 이야기는 쓰지 않는다",
         "링크·주소·해시태그(#)·줄바꿈·이모지를 쓰지 않는다. 한자·일본어를 섞지 않는다",
@@ -138,6 +155,10 @@ def test_draft_system_states_the_rules():
     for ex in P.GOOD_EXAMPLES:
         assert f"[{ex.tone}]" in SYSTEM
     assert P.EXAMPLE_CONCERN in SYSTEM
+    # 대표 본보기 10개가 번호를 달고 그대로 들어간다
+    assert len(P.BRAND_MODELS) == 10
+    for i, model in enumerate(P.BRAND_MODELS, start=1):
+        assert f"   {i}. {model}" in SYSTEM
 
 
 def test_draft_system_shows_the_assignment_sample_only_as_a_tone_reference():
@@ -153,14 +174,15 @@ def test_body_limits_leave_room_for_disclosure():
     assert P.body_limits(min_chars=40, max_chars=120, disclosure="") == (40, 120)
 
 
-def test_body_target_aims_for_70_to_105_in_total():
-    # C1 다듬기: 80~115자 → 70~105자(대표 지시). 표기 켬: 본문 65~100자 → 전체 70~105자
-    assert P.TARGET_TOTAL == (70, 105)
-    assert P.body_target(min_body=35, max_body=115, max_chars=120) == (65, 100)
+def test_body_target_aims_for_80_to_110_in_total():
+    # C1 다듬기: 80~115자 → 70~105자(대표 지시). 2026-11-17 운명원 대목 다섯 조각(45~55자)이
+    # 들어가며 80~110자(대표). 표기 켬: 본문 75~105자 → 전체 80~110자
+    assert P.TARGET_TOTAL == (80, 110)
+    assert P.body_target(min_body=35, max_body=115, max_chars=120) == (75, 105)
     # 표기 끔: 본문이 곧 전체
-    assert P.body_target(min_body=40, max_body=120, max_chars=120) == (70, 105)
+    assert P.body_target(min_body=40, max_body=120, max_chars=120) == (80, 110)
     # 한도가 좁아도 목표가 한도 밖으로 나가지 않는다
-    assert P.body_target(min_body=35, max_body=60, max_chars=65) == (65, 65)
+    assert P.body_target(min_body=35, max_body=60, max_chars=65) == (75, 75)
 
 
 ANALYSIS = {"topic": "권태기", "concern": "설레지 않는데 계속 만나도 될까", "tone": "차분",
@@ -172,9 +194,10 @@ def test_draft_user_includes_key_phrases_scene_tone_and_failures():
                          min_body=35, max_body=115, key_phrases=["휴대폰만", "권태기"])
     assert "[핵심 말] '휴대폰만', '권태기' — 이 중 하나 이상을 글자 그대로 넣는다" in first
     assert "[짚을 장면] '각자 휴대폰만 봐요' (출처: 자막) — 이 장면·말을 내 말로 짚는다" in first
-    assert "35~115자" in first and "65~100자를 목표로" in first
-    # ②·④는 빼도 된다고 분명히 적는다
-    assert "길어지면 ②나 ④를 빼고 문장을 줄인다(①과 ③ 두 문장이면 충분하다)" in first
+    assert "35~115자" in first and "75~105자를 목표로" in first
+    # 2026-11-17 다섯 조각: 운명원 대목이 길어 영상 반응은 한 문장으로
+    assert ("운명원 대목이 두 토막 45~55자쯤이니 영상 반응은 한 문장(길어야 두 문장)으로 쓴다"
+            in first)
     assert "고민 한 줄('설레지 않는데 계속 만나도 될까')을 그대로 옮기지 말고" in first
     for tone in P.TONE_LABELS:
         assert tone in first
@@ -300,11 +323,14 @@ def test_good_examples_have_different_closing_structures():
     assert len(openers) == len(P.GOOD_EXAMPLES)
 
 
-def test_good_examples_closings_follow_the_example_concern():
-    # 운명원에 거는 바람이 예시 고민(먼저 못 다가감 · 기다림)에서 나온다
-    words = ("이어질 인연", "제 차례는 언제", "썸도 결말", "다시 설렐 날")
-    for ex, word in zip(P.GOOD_EXAMPLES, words, strict=True):
-        assert word in closing(ex), (word, ex.body)
+def test_good_examples_closings_carry_all_five_pieces():
+    # 2026-11-17 다섯 조각(대표): 예전에는 바람이 예시 고민에서 나온 말(「이어질 인연」 등)을
+    # 담았는지 봤다. 이제 운명원 대목은 때·이름·연애 사주·들은 평판·가 보겠다는 말로 짠다
+    from app.analysis.validator import brand_pieces
+
+    for ex in P.GOOD_EXAMPLES:
+        assert brand_pieces(ex.body, "운명원") == [], ex.body
+        assert P.copied_model(ex.body) == -1, ex.body  # 본보기를 그대로 옮기지 않았다
 
 
 def test_good_examples_are_korean_only_for_v12():
@@ -347,30 +373,31 @@ def test_draft_user_lists_used_closings_and_bodies_to_avoid():
 
 def test_hearsay_and_ending_choices_prefer_the_least_used():
     # 2026-11-17(대표): 횟수가 같으면 목록 순서가 아니라 무작위 → 씨앗을 넣어 정해지게 본다.
-    # 예전에는 빈 기록에서 늘 목록 맨 앞 두 줄을 기대했다(그게 「같은 말만 나온다」의 원인)
-    leads = [P.fill_hearsay(t, "운명원") for t, _ in P.HEARSAY_LINES]
+    # 같은 날 다섯 조각: 통째 목록(HEARSAY_LINES·WISH_ENDINGS) 대신 조각마다 덜 쓴 것을 골라
+    # 잇는다. 그래서 「쓴 줄이 맨 뒤」 대신 「쓴 조각이 그 조각 목록의 맨 뒤」를 본다
     first = P.hearsay_choices("운명원", [], rng=random.Random(1))
-    assert len(first) == 2 and set(first) <= set(leads)
+    assert len(first) == 2
     assert first == P.hearsay_choices("운명원", [], rng=random.Random(1))  # 같은 씨앗 → 같은 답
-    used = ["[광고] 운명원 연애 사주 잘 본다던데 한번 보고 싶다.",
-            "[광고] 요새 운명원이 연애 사주를 그렇게 잘 본다던데 궁금해지네요."]
-    # 쓴 두 줄은 덜 쓴 줄들보다 뒤로 간다(전체 순서의 맨 뒤 둘)
-    every = P.hearsay_choices("운명원", used, n=len(leads), rng=random.Random(2))
-    assert set(every[-2:]) == {"운명원 연애 사주 잘 본다던데",
-                               "요새 운명원이 연애 사주를 그렇게 잘 본다던데"}
-    # C1 다듬기: 딱딱한 「여쭤보고 싶네요」는 뺐다
-    assert "여쭤보고 싶네요" not in P.WISH_ENDINGS
-    ends = P.ending_choices(used, n=len(P.WISH_ENDINGS), rng=random.Random(3))
-    assert set(ends[-2:]) == {"한번 보고 싶다", "궁금해지네"}  # 쓴 끝말 둘은 맨 뒤
+    used = ["[광고] 요새 운명원이 연애 사주를 그렇게 잘 본다고 하던데 저도 한번 가 보려고요."]
+    order = P._least_used(P.LEAD_TIMES, used, (), random.Random(2))
+    assert order[-1] == "요새"
+    assert P._least_used(P.LEAD_HOWS, used, (), random.Random(2))[-1] == "그렇게"
+    assert P._least_used(P.LEAD_TAILS, used, (), random.Random(2))[-1] == "고 하던데"
+    leads = P.hearsay_choices("운명원", used, n=4, rng=random.Random(2))
+    # (「요새 들어」는 「요새」와 다른 조각이다)
+    assert not any(lead.startswith("요새 운명원") or "그렇게" in lead for lead in leads), leads
+    # 끝말: 「한번」과 「가 보려고요」(= 편한 맞춤법 「가보려구요」)가 뒤로 간다
+    assert P._least_used(P.END_WHENS, used, (), random.Random(3))[-1] == "한번"
+    assert P._least_used(P.END_ACTIONS, used, (), random.Random(3))[-1] == "가보려구요"
+    ends = P.ending_choices(used, n=4, rng=random.Random(3))
+    assert all(e.startswith("저도 ") for e in ends) and "저도 한번 가보려구요" not in ends
+    # C1 다듬기: 딱딱한 「여쭤보고 싶네요」는 없다
+    assert not any("여쭤" in a for a in P.END_ACTIONS)
     # 같은 영상 앞 초안에 쓴 것은 덜 쓴 것보다도 뒤로 간다
-    mine = ["[광고] 운명원이 연애 사주를 잘 봐준다고 하던데 다음에 한번 가 봐야겠네요."]
-    every = P.hearsay_choices("운명원", used, n=len(leads), avoid=mine, rng=random.Random(4))
-    assert every[-1] == "운명원이 연애 사주를 잘 봐준다고 하던데"
-    assert set(every[-3:-1]) == {"운명원 연애 사주 잘 본다던데",
-                                 "요새 운명원이 연애 사주를 그렇게 잘 본다던데"}
-    ends = P.ending_choices([], n=len(P.WISH_ENDINGS), avoid=["…한번 보고 싶다."],
-                            rng=random.Random(5))
-    assert ends[-1] == "한번 보고 싶다"
+    mine = ["[광고] 최근에 운명원이 연애 쪽 사주를 잘 봐준다던데 저도 기회 되면 가볼 생각이에요."]
+    order = P._least_used(P.LEAD_TIMES, used, mine, random.Random(4))
+    assert order[-2:] == ["요새", "최근에"]
+    assert P._least_used(P.END_WHENS, [], ["저도 기회 되면 …"], random.Random(5))[-1] == "기회 되면"
 
 
 def test_opening_sentence_skips_the_disclosure():
@@ -382,24 +409,33 @@ def test_opening_sentence_skips_the_disclosure():
 def test_draft_user_suggests_hearsay_endings_and_lists_used_openings():
     text = P.draft_user(
         analysis=ANALYSIS, quote="q", source="comment", min_body=35, max_body=115,
-        brand="운명원", hearsay=["요즘 운명원 얘기 자주 보이던데"], endings=["궁금해지네요"],
+        brand="운명원", hearsay=["요즘 운명원이 연애 사주를 그렇게 잘 본다고 하던데"],
+        endings=["저도 한번 가 보려고요"],
         used_openings=["기대치 차이라는 말에 뜨끔했어요."] * 2,
     )
-    # 2026-11-17: 목록은 권유일 뿐(목록에 없는 자연스러운 말도 된다)
-    assert "운명원을 꺼내는 말은 이번에 이런 식으로(권유일 뿐이다 — " in text
-    assert "'요즘 운명원 얘기 자주 보이던데'" in text
-    assert ("바람의 끝말은 이번에 이런 식으로(목록에 없는 자연스러운 말도 된다): "
-            "'궁금해지네요'") in text
+    # 2026-11-17: 목록은 권유일 뿐. 다섯 조각이 되며 「조각을 바꿔도 되지만 다 넣는다」
+    assert ("운명원을 꺼내는 말은 이번에 이런 식으로(권유일 뿐이다 — 조각을 바꿔도 되지만 "
+            "때·이름·연애 사주·잘 본다는 들은 얘기는 다 넣는다): ") in text
+    assert "'요즘 운명원이 연애 사주를 그렇게 잘 본다고 하던데'" in text
+    assert ("바람의 끝말은 이번에 이런 식으로(목록에 없는 말도 되지만 가 보겠다는 뜻은 "
+            "넣는다): '저도 한번 가 보려고요'") in text
     assert "이미 쓴 첫 반응(다른 영상에 승인됨) — 이 틀로 시작하지 말 것:" in text
     assert text.count("- 기대치 차이라는 말에 뜨끔했어요.") == 1
     plain = P.draft_user(analysis=ANALYSIS, quote="q", source="comment", min_body=35,
                          max_body=115)
     assert "꺼내는 말은" not in plain and "끝말은" not in plain and "첫 반응" not in plain
+    assert "본보기" not in plain
+    # 바로 앞 초안이 본보기를 그대로 옮겼으면 이번에는 그 말을 쓰지 말라고 한다(S8과 짝)
+    again = P.draft_user(analysis=ANALYSIS, quote="q", source="comment", min_body=35,
+                         max_body=115, last_model=0)
+    assert ("바로 앞 초안이 본보기 1번의 꺼내는 말을 그대로 썼다 — 이번에는 그 말을 쓰지 "
+            "않는다.") in again
 
 
 def test_draft_system_asks_for_a_wish_about_my_own_love_life():
-    assert "**내 연애의 일**" in SYSTEM
-    assert "핵심 말이나 영상 속 용어를 바람에 끼워 넣지 않는다" in SYSTEM
+    # 2026-11-17 다섯 조각: 「내 연애의 일」 바람 대신 가 보겠다는 말 앞에 내 일을 짧게
+    assert "가 보겠다는 말 앞에 이 영상의 고민에서 나온 내 일을 짧게 붙여도 된다" in SYSTEM
+    assert "핵심 말이나 영상 속 용어는 ③에 끼워 넣지 않는다" in SYSTEM
     assert "사실 문장을 '~하는 곳이라던데'처럼 그대로 옮기지 않는다" in SYSTEM
     assert "'~라는 말에 ~네요' 틀만 쓰지 말고" in SYSTEM
 
@@ -432,12 +468,13 @@ def test_draft_system_says_ga_bwayagetda_takes_no_fortune_or_timing():
 
 
 def test_draft_system_keeps_key_phrases_out_of_the_wish_and_endings_light():
-    assert "핵심 말은 ①에만 쓰고 바람은 쉬운 내 말로 쓴다" in SYSTEM
-    assert "언제 되는지 궁금해지네요' ✗" in SYSTEM
-    assert "'나도 언제 짝 만나는지 한번 보고 싶다' ○" in SYSTEM
+    # 2026-11-17 다섯 조각: ④가 없어졌고 끝말은 가 보겠다는 말이다
+    assert "핵심 말은 ①에만 쓴다('내짝 찾기 언제 되는지 …' ✗)" in SYSTEM
+    assert "'저도 언제 짝 만날지 조만간 한번 상담받아보고 싶어요'" in SYSTEM
     assert "'여쭤보고 싶네요'처럼 딱딱한 끝말은 피한다" in SYSTEM
-    assert "②와 ④는 빼도 된다 — ①과 ③ 두 문장만으로도 좋은 댓글이다" in SYSTEM
-    assert "② 내 처지 한마디(없어도 된다)" in SYSTEM
+    assert "②는 빼도 된다. 마무리 문장은 따로 붙이지 않는다" in SYSTEM
+    assert "② 내 처지 한마디(없어도 된다. 쓰면 ①과 합쳐 두 문장 안)" in SYSTEM
+    assert "④" not in SYSTEM
 
 
 def test_draft_system_says_the_title_is_not_something_said_in_the_video():

@@ -5,6 +5,9 @@
   **남이 본 얘기를 전하는 것**도(V8), 「잘 맞는다고 하던데」「잘 봐준다고 하던데」(V10)도.
 - 그대로 막는 것: **내가 써 본 척**(V8)과 **내 단정·효능 단정**(V10).
 - 평판이 빠진 꺼내는 말(「운명원 얘기 자주 보이던데」)은 다듬기 검사 S7이 다시 쓰게 한다.
+- 2026-11-17 다섯 조각(때·이름·연애 사주·잘 본다는 들은 얘기·가 보겠다는 말)이 V14가 되어 아래
+  통과 글은 모두 「요즘/요새/최근」으로 열고 「가 보고 싶다」 같은 의향으로 맺는다.
+  「정확하다던데」는 대표 본보기(「꽤 정확하다는 얘기가 있더라구요」)대로 들은 얘기라 통과로 옮겼다.
 """
 
 from __future__ import annotations
@@ -31,19 +34,22 @@ def _run(text: str):
 
 PASS = [
     # 대표가 든 꼴
-    "요새 운명원이 연애 사주를 그렇게 잘 본다던데 나도 한번 보고 싶다.",
-    "운명원이 연애 사주를 잘 봐준다고 하던데 나도 한번 보고 싶다.",
-    "운명원이 연애 사주 잘 보기로 유명하다던데 나도 한번 보고 싶다.",
-    "친구가 운명원에서 연애 사주 봤는데 잘 맞는다고 하던데 나도 한번 보고 싶다.",
-    "주변에서 운명원 연애 사주 잘 본다고들 하던데 나도 한번 보고 싶다.",
+    "요새 운명원이 연애 사주를 그렇게 잘 본다던데 나도 한번 가 보고 싶다.",
+    "요즘 운명원이 연애 사주를 잘 봐준다고 하던데 나도 한번 가 보고 싶다.",
+    "요즘 운명원이 연애 사주 잘 보기로 유명하다던데 나도 한번 가 보고 싶다.",
+    "최근에 친구가 운명원에서 연애 사주 봤는데 잘 맞는다고 하던데 나도 한번 가 보고 싶다.",
+    "요즘 주변에서 운명원 연애 사주 잘 본다고들 하던데 나도 한번 가 보고 싶다.",
     # 같은 뜻의 다른 꼴
-    "운명원이 연애 사주 잘 맞춘다고 하던데 나도 한번 보고 싶다.",
-    "운명원 연애 사주가 잘 맞힌다고 하던데 나도 한번 보고 싶다.",
-    "운명원 연애 사주 잘 맞는대요. 나도 한번 보고 싶다.",
-    "아는 언니가 운명원에서 연애 사주 받아 봤는데 잘 봐준다던데 저도 궁금해요.",
-    "동생이 운명원 다녀왔는데 잘 맞췄대요. 나도 한번 보고 싶다.",
-    "요즘 운명원이 연애사주 잘 본다고 하는 얘기가 자주 보이던데 오래 갈지 물어보고 싶어요.",
-    "운명원이 연애운을 잘 봐준다길래 우리도 오래 갈 수 있을지 궁금해졌어요.",
+    "요즘 운명원이 연애 사주 잘 맞춘다고 하던데 나도 한번 가 보고 싶다.",
+    "요새 운명원 연애 사주가 잘 맞힌다고 하던데 나도 한번 가 보고 싶다.",
+    "요즘 운명원 연애 사주 잘 맞는대요. 나도 한번 가 보고 싶다.",
+    "최근에 아는 언니가 운명원에서 연애 사주 받아 봤는데 잘 봐준다던데 저도 상담받아 보고 싶어요.",
+    "요즘 동생이 운명원 다녀왔는데 연애 사주 잘 맞췄대요. 나도 한번 가 보고 싶다.",
+    "요즘 운명원이 연애사주 잘 본다고 하는 얘기가 자주 보이던데 저도 한번 가 보려고요.",
+    "요새 운명원이 연애 사주를 잘 봐준다길래 저도 한번 가 볼까 해요.",
+    # 2026-11-17 대표 본보기: 정확하다는 말도 들은 얘기 꼴이면 된다
+    "요즘 운명원 연애사주가 꽤 정확하다는 얘기가 있더라구요. 저도 한번 직접 알아보고 싶어요.",
+    "요즘 운명원 연애 사주가 정확하다던데 나도 한번 가 보고 싶다.",
 ]
 FAIL = [
     # 내가 써 본 척(V8) — 과제 금지
@@ -59,7 +65,8 @@ FAIL = [
     ("운명원 잘 봐요. 요즘 소문 났던데 보고 싶다.", "V10"),
     ("운명원은 무조건 맞는다던데 나도 한번 보고 싶다.", "V10"),
     ("운명원 100% 맞는다던데 나도 한번 보고 싶다.", "V10"),
-    ("운명원이 정확하다던데 나도 한번 보고 싶다.", "V10"),
+    ("요즘 운명원 연애 사주 정확해요. 나도 한번 가 보고 싶다.", "V10"),
+    ("요즘 운명원이 연애 사주 잘 맞춰요. 나도 한번 가 보고 싶다.", "V10"),
     ("운명원 연애 사주가 용하대요. 나도 한번 보고 싶다.", "V10"),
     ("운명원이 제일 잘 본다던데 나도 한번 보고 싶다.", "V10"),
 ]
@@ -89,13 +96,15 @@ CEO_CONTEXT = (
 )
 CEO_BEFORE = ("좋은 소리를 들으면 스스로 움직이죠, 그 말에 매번 타박부터 한 게 생각나네요. "
               "요즘 운명원 얘기 자주 보이던데 다음 연애는 오래 갈지 물어보고 싶어요.")
+# 2026-11-17 다섯 조각: 대표가 고친 문장의 끝(「오래 갈지 물어보고 싶어요」)에 가 보겠다는 말이
+# 없어 「저도 한번 가 보려고요」로 맺었다(그 밖은 그대로)
 CEO_AFTER = ("좋은 소리를 들으면 스스로 움직이죠, 그 말에 매번 타박부터 한 게 생각나네요. "
-             "요즘 운명원이 연애사주 잘 본다고 하는 얘기가 자주 보이던데 다음 연애는 오래 갈지 "
-             "물어보고 싶어요.")
+             "요즘 운명원이 연애사주 잘 본다고 하는 얘기가 자주 보이던데 저도 한번 가 "
+             "보려고요.")
 
 
 def test_ceo_corrected_sentence_passes_all_fourteen_checks():
-    assert len(CEO_AFTER) == 101
+    assert len(CEO_AFTER) == 92
     result = validate(
         CEO_AFTER, context_text=CEO_CONTEXT, rules=RULES, brand_facts=FACTS, previous_texts=[],
         evidence_quote="좋은 소리를 들으면 또 하고 싶어져요", key_phrases=["스스로 움직이죠"],
@@ -118,17 +127,14 @@ def test_lead_without_reputation_is_written_again_s7():
 
 
 def test_every_lead_in_the_list_carries_a_reputation():
-    for template, _ in P.HEARSAY_LINES:
-        lead = P.fill_hearsay(template, "운명원")
-        assert S.has_reputation(lead + " 나도 보고 싶다.", "운명원"), lead
-    leads = [P.fill_hearsay(t, "운명원") for t, _ in P.HEARSAY_LINES]
-    assert "요새 운명원이 연애 사주를 그렇게 잘 본다던데" in leads
-    assert "운명원이 연애 사주를 잘 봐준다고 하던데" in leads
-    assert "운명원이 연애 사주 잘 보기로 유명하다던데" in leads
-    assert "친구가 운명원에서 연애 사주 봤는데 잘 맞는다고 하던데" in leads
-    assert "주변에서 운명원 연애 사주 잘 본다고들 하던데" in leads
-    assert not any(lead.endswith(("얘기 자주 보이던데", "눈에 띄던데")) and "잘" not in lead
-                   for lead in leads)
+    # 2026-11-17: 통째 목록(HEARSAY_LINES) 대신 조각별 목록. 모든 틀 × 들은 얘기 꼴이 평판을 담는다
+    for claim in P.LEAD_CLAIMS:
+        for tail in P.LEAD_TAILS:
+            filled = claim.format(brand="운명원", brand_i="운명원이", love="연애 사주", how="꽤")
+            lead = "요즘 " + filled + tail
+            assert S.has_reputation(lead + " 나도 가 보고 싶다.", "운명원"), lead
+    leads = P.hearsay_choices("운명원", [], n=8)
+    assert all(S.has_reputation(lead + " 나도 가 보고 싶다.", "운명원") for lead in leads)
 
 
 def test_brand_particle_follows_the_name():
@@ -136,12 +142,13 @@ def test_brand_particle_follows_the_name():
     assert P.fill_hearsay("{brand_i} 잘 본다던데", "사주나라") == "사주나라가 잘 본다던데"
 
 
-def test_good_examples_use_different_reputations_and_one_relays_a_friend():
-    marks = ("잘 보기로 유명하다던데", "잘 맞는다고 하던데", "잘 본다고들 하던데",
-             "그렇게 잘 본다고 하던데")
+def test_good_examples_use_different_reputations():
+    # 2026-11-17 다섯 조각: 좋은 예는 대표 본보기의 결(때로 열고 들은 얘기로 꺼냄)이라 「친구가 …
+    # 봤는데」 예는 없앴다. 대신 넷이 평판 말과 들은 얘기 꼴을 서로 다르게 쓴다
+    marks = ("잘 맞춘다고 하던데", "잘 맞는다는 얘기를 들었는데", "잘 봐준다고 하더라구요",
+             "잘 본다는 이야기가 있던데")
     used = [next(m for m in marks if m in ex.body) for ex in P.GOOD_EXAMPLES]
     assert len(set(used)) == 4, used
-    assert any("친구가" in ex.body and "봤는데" in ex.body for ex in P.GOOD_EXAMPLES)
 
 
 def test_prompt_states_the_persona():

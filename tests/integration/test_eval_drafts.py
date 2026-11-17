@@ -104,13 +104,13 @@ def test_eval_runs_the_real_pipeline_with_fake_llm(tmp_db_path, fake_llm):
                 "evidence": [{"quote": quote_a, "source": "transcript"},
                              {"quote": quote_b, "source": "transcript"},
                              {"quote": "매일 꽃을 사 왔대요", "source": "transcript"}]}
-    # C1-V14: 운명원은 들은 얘기로 꺼내고 바람으로 맺는다
-    good_a = (f"'{quote_a}'라는 말이 오래 남네요. 운명원 연애 사주 잘 본다던데 "
-              "한번 보고 싶어요.")
+    # C1-V14: 운명원 대목 다섯 조각(2026-11-17 대표: 때·이름·연애 사주·들은 평판·가 보겠다는 말)
+    good_a = (f"'{quote_a}'라는 말이 오래 남네요. 요즘 운명원 연애 사주 잘 본다던데 "
+              "저도 한번 가 보려고요.")
     # C1: 자료를 13자 이상 이어서 옮기지 않는다(V13)
     good_b = ("같은 식당, 같은 카페에서 데이트가 끝난다는 말에 공감했어요. "
-              "요즘 운명원 연애 사주 잘 본다고 평이 좋던데 연애 흐름을 짚어 보고 "
-              "싶네요.")  # 굳은 틀(셈 확인용)
+              "요즘 운명원 연애 사주 잘 본다고 하던데 연애 흐름을 짚어 보러 저도 한번 "
+              "가 보려고요.")  # 굳은 틀(셈 확인용)
     llm = fake_llm([analysis,
                     {"body": "연애 사주 상담을 받아 보세요.", "used_quote": "",
                      "tone_label": "조언형"},

@@ -53,11 +53,11 @@ FAKE_PROTECTOR = Protector(protect=_fake_protect, unprotect=_fake_unprotect)
 YT = "/youtube/v3/"
 QUOTE = "하루에 한 번 연락으로 싸운 적 있어요"
 PICK = "FITVIDEO002"
-# C1-V14: 운명원은 들은 얘기로 꺼내고 바람으로 맺는다
+# C1-V14: 운명원 대목 다섯 조각(2026-11-17 대표: 때·이름·연애 사주·들은 평판·가 보겠다는 말)
 ENDINGS = ["받아 보면 좋겠어요", "받아 보고 싶어요", "가 볼까 싶어요", "가 봐야겠어요"]
 # 규칙 검사 두 건(V1 한 줄 아님, V2 링크)에 걸리는 글
 BAD_DRAFT = ("[광고] '하루에 한 번 연락'으로 싸웠다는 말에 공감해요." + chr(10)
-             + "운명원 잘 본다던데 상담도 한번 받아 보고 싶어요 https://example.com/a")
+             + "요즘 운명원 연애 사주 잘 본다던데 상담도 한번 받아 보고 싶어요 https://example.com/a")
 
 TITLES = [
     "순애남들은 이런 여자들을 좋아합니다 #남자심리 #연애심리 #썸 #인팁특징 #20대 #30대 #연애",
@@ -88,7 +88,7 @@ def topic_for(n: int) -> str:
 def draft_for(n: int) -> str:
     ending = ENDINGS[n % len(ENDINGS)]
     return ("[광고] '하루에 한 번 연락'으로 싸웠다는 댓글이 마음에 남네요. "
-            f"운명원 연애 사주 잘 본다던데 저도 한번 {ending}")
+            f"요즘 운명원 연애 사주 잘 본다던데 저도 한번 {ending}")
 
 
 def _videos() -> list[dict]:

@@ -35,14 +35,16 @@ ANALYSIS = {
 }
 KEYS = ["장거리", "하루에 한 번 연락", "기대치 차이"]
 # C1 새 기준(시청자 말투, 핵심 말을 담고 자료를 13자 이상 이어서 옮기지 않음)으로 다시 씀
+# 2026-11-17(대표 다섯 조각): 운명원 대목을 「때·이름·연애 사주·잘 본다는 들은 얘기·가 보겠다는
+# 말」로 바꿨다(V14가 넓어졌다)
 GOOD_BODY = (
     "하루에 한 번 연락 갖고 싸웠다는 댓글 보니 남 일 같지 않네요ㅠㅠ "
-    "운명원 연애 사주 잘 본다던데 이번 인연은 오래 갈지 알면 좋겠어요."
+    "요즘 운명원 연애 사주 잘 본다고 하던데 저도 언제 한번 가 보려고요."
 )
-GOOD_CLOSING = "운명원 연애 사주 잘 본다던데 이번 인연은 오래 갈지 알면 좋겠어요."
+GOOD_CLOSING = "요즘 운명원 연애 사주 잘 본다고 하던데 저도 언제 한번 가 보려고요."
 GOOD_BODY_2 = (
     "기대치 차이라는 말에 뜨끔했어요. 연애만 하면 마음 속도가 엇갈리는 편이라... "
-    "요즘 운명원 연애 사주 잘 본다고 평이 좋던데 제 인연은 언제쯤인지 물어보고 싶네요."
+    "요새 운명원이 연애사주를 꽤 잘 봐준다는 얘기가 있던데, 저도 조만간 상담받아보고 싶네요."
 )
 NO_BRAND = (
     "하루에 한 번 연락 갖고 싸웠다는 댓글에 공감해요. 연애 사주 상담을 한번 받아 보고 싶네요."
@@ -51,7 +53,7 @@ NO_BRAND_TAG = "하루에 한 번 연락 갖고 싸웠다는 댓글에 공감해
 MANY_FAILS = "운명원 최고! www.example.com #연애"
 OTHER_BODY = (
     "썸 타다 끝나는 게 제 전문이라 웃프네요ㅋㅋ 하루에 한 번 연락도 어려운 1인... "
-    "운명원이 연애 쪽으로 유명하다던데 이번 썸은 연애로 갈지 궁금해지네요."
+    "최근에 운명원이 연애 쪽 사주로 유명하다던데 저도 한번 방문해 볼까 해요."
 )
 
 
@@ -386,7 +388,7 @@ def test_human_edit_is_checked_again(setup):
     assert broken["edited_by_human"] is True and broken["attempts"] == 1
     fixed_text = (
         "[광고] 하루에 한 번 연락 때문에 다툰 적 있다는 댓글에 공감했어요. "
-        "요즘 운명원 연애 사주 잘 본다고 평이 좋던데 연애 사주 한번 보고 싶네요."
+        "요즘 운명원 연애 사주 잘 본다고 하던데 저도 한번 상담받아보고 싶네요."
     )
     fixed = client.patch(f"/api/drafts/{made['id']}", json={"body": fixed_text}).json()
     assert fixed["passed"] is True and fixed["body"] == fixed_text
@@ -444,7 +446,7 @@ def test_editing_an_approved_draft_needs_approval_again(setup):
     made = client.post("/api/drafts", json={"video_id": VID}).json()
     client.post(f"/api/drafts/{made['id']}/approve")
     edited = client.patch(f"/api/drafts/{made['id']}",
-                          json={"body": made["body"].replace("좋겠어요", "좋아요")}).json()
+                          json={"body": made["body"].replace("가 보려고요", "가 볼까 해요")}).json()
     assert edited["status"] == "draft" and edited["approved_at"] is None
 
 

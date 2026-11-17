@@ -234,7 +234,7 @@ def wait_job(http: httpx.Client, job_id: str, state: str, timeout: float = 45.0)
 @pytest.mark.parametrize("target", ["youtube", "assist", "youtube_auto"])
 def test_api_real_posting_on_any_video(live_app, target):
     _, http, db_path, seen, _ = live_app
-    body = "[광고] 요즘 운명원 얘기 많이 보이던데 저도 언젠가 연애 사주 한번 보고 싶어요."
+    body = "[광고] 요즘 운명원 연애 사주 잘 본다던데 저도 언젠가 한번 가 보고 싶어요."
     draft_id = add_approved_draft(db_path, VID, body)
     res = http.post("/api/jobs", json={"video_id": VID, "draft_id": draft_id, "target": target})
     assert res.status_code == 200, res.text
@@ -248,7 +248,7 @@ def test_api_real_posting_on_any_video(live_app, target):
 
 def test_api_real_posting_without_label_and_signed_out_profile(live_app):
     _, http, db_path, seen, modes = live_app
-    body = "요즘 운명원 얘기 많이 보이던데 저도 언젠가 연애 사주 한번 보고 싶어요."
+    body = "요즘 운명원 연애 사주 잘 본다던데 저도 언젠가 한번 가 보고 싶어요."
     draft_id = add_approved_draft(db_path, VID, body, disclosed=False)
     job = http.post("/api/jobs", json={"video_id": VID, "draft_id": draft_id,
                                        "target": "youtube", "profile": "유튜브1"}).json()

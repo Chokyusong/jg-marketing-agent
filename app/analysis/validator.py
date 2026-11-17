@@ -70,7 +70,7 @@ CHECK_NAMES: dict[str, str] = {
     "V11": "이전 글과 다름",
     "V12": "한글·영문·숫자·문장부호만(ㅠㅠ·ㅋㅋ 됨)",
     "V13": "영상 글을 길게 베끼지 않음",
-    "V14": "브랜드는 들은 얘기로 꺼내고 바람으로 맺음",
+    "V14": "브랜드 대목 다섯 조각(요즘·이름·연애 사주·평판·의향)",
 }
 PATTERN_CODES = ("V8", "V9", "V10")
 
@@ -88,6 +88,15 @@ LINK_PATTERNS: tuple[str, ...] = (
     r"닷\s?컴",
 )
 
+# 「상담받아 보고 싶어요」「상담받아보려구요」「상담받아 볼까」「상담받고 싶어요」「상담받으러」
+# 같은 권유·의향은 뺀다(2026-11-17 대표 본보기: 「저도 기회 되면 상담받아보고 싶어요」)
+_CONSULTED = (
+    r"상담\s?받(?!\s?아\s?(?:보(?:세요|시|셔|실|고\s?싶|려|면)|볼|봐야|봐\s?보)|고\s?싶|"
+    r"을\s?(?:수|까)|으실|으러|으려|기)"
+)
+# 「직접 알아보고 싶어요」「직접 가 보려고요」처럼 뒤에 의향이 오면 써 본 척이 아니다
+_NOT_INTENT = r"(?![^.!?…,]{0,12}?(?:려[고구]|고\s?싶|볼까|생각|야겠|야지))"
+
 # V8 직접 이용한 후기 표현
 REVIEW_PATTERNS: tuple[str, ...] = (
     r"봤는데",
@@ -103,9 +112,10 @@ REVIEW_PATTERNS: tuple[str, ...] = (
     r"써\s?봤",
     r"이용해\s?봤",
     r"이용했",
+    r"봤더니",
     # 권하는 말·의향은 뺀다: 상담받아 보세요·상담받아보시는·상담받아 보고 싶다·상담받을 수·
-    # 상담받으실·상담받으러 오세요·상담받기
-    r"상담\s?받(?!\s?아\s?보(?:세요|시|셔|실|고\s?싶)|을\s?수|으실|으러\s?오|기)",
+    # 상담받으실·상담받으러 오세요·상담받기·상담받아보려구요
+    _CONSULTED,
     r"예약\s?(?:했|해\s?놨|해\s?뒀|함|완료)",
     r"후기",
     r"소름",
@@ -115,8 +125,8 @@ REVIEW_PATTERNS: tuple[str, ...] = (
     r"맞히",
     r"효과\s?(?:봤|를\s?봤|있었)",
     r"덕분에",
-    r"직접\s?(?:가|받|봤|해\s?봤|상담)",
-    r"실제로\s?(?:가|받|봤|해\s?봤|상담)",
+    r"직접\s?(?:가|받|봤|해\s?봤|상담)" + _NOT_INTENT,
+    r"실제로\s?(?:가|받|봤|해\s?봤|상담)" + _NOT_INTENT,
 )
 
 # V9 지어낸 연애 사연(내 애인·전 애인 이야기). 시청자 말투의 공감·의향("저도 한번 보고 싶네요",
@@ -161,9 +171,11 @@ CLAIM_PATTERNS: tuple[str, ...] = (
     r"잘\s?(?:보는|봐\s?주는)\s?(?:곳|데)(?:이에요|예요|입니다|이야|야|이죠)",
 )
 
-# 들은 얘기 꼴이면 넘어가는 평판 표현(V10). 「무조건」「100%」「정확」「최고」「용하」는 들은 얘기도
-# 막는다(과제 금지: 확인할 수 없는 효능 단정).
+# 들은 얘기 꼴이면 넘어가는 평판 표현(V10). 「무조건」「100%」「최고」「용하」는 들은 얘기도
+# 막는다(과제 금지: 확인할 수 없는 효능 단정). 「정확」은 2026-11-17 대표 본보기(「연애사주가 꽤
+# 정확하다는 얘기가 있더라구요」)로 들은 얘기 꼴이면 넘어간다 — 「정확해요」는 그대로 막는다.
 REPUTATION_PATTERNS: frozenset[str] = frozenset({
+    r"정확(?:하|히|한|도|해)",
     r"잘\s?(?:맞혀|맞춰|맞히|맞추|맞췄|맞더)",
     r"잘\s?맞(?:는다|는대|아요|아서|더|대)",
     r"(?:맞는|맞힌|맞춘)\s?(?:대요|대서|대더라|다네요|다니까|다던데|다더라)",
@@ -186,16 +198,18 @@ RELAY_PATTERNS: frozenset[str] = frozenset({
     r"써\s?봤",
     r"이용해\s?봤",
     r"이용했",
-    r"상담\s?받(?!\s?아\s?보(?:세요|시|셔|실|고\s?싶)|을\s?수|으실|으러\s?오|기)",
+    r"봤더니",
+    _CONSULTED,
     r"맞췄",
     r"맞추더",
     r"맞히",
 })
-# 전하는 말: 「~다고 하던데」「~대요」「~라더라」「~다던데」「~다는 얘기」「~기로 유명」
+# 전하는 말: 「~다고 하던데」「~대요」「~라더라」「~다던데」「~다는 얘기」「~다는 이야기가
+# 있던데」「~기로 유명」
 HEARSAY_TAIL = re.compile(
     r"[다라]\s?고\s?(?:하|들|해|그러)|[다라]고들|[대래](?:요|서|더라|니까)|"
-    r"[다라](?:던데|더라|네요|니까|길래|며|는데)|[다라]는\s?(?:얘기|말|소문|평|글)|"
-    r"[단란]\s?(?:얘기|말|소문|평)|(?:기로|으로|로)\s?유명"
+    r"[다라](?:던데|더라|네요|니까|길래|며|는데)|[다라]는\s?(?:얘기|이야기|말|소문|평|글)|"
+    r"[단란]\s?(?:얘기|이야기|말|소문|평)|(?:기로|으로|로)\s?유명"
 )
 # 남(써 본 사람): 「친구가」「아는 언니가」「주변에서」「동생이」. 「우리 오빠」는 V9가 본다.
 THIRD_PERSON = re.compile(
@@ -984,88 +998,69 @@ def _v11_previous(text: str, previous_texts: Sequence[str], rules: ValidatorRule
     )
 
 
-# V14: 브랜드를 꺼내는 말(들은 얘기·평판)과 맺는 말(내 바람·의향). 과제 PDF 예시가 「운명원
-# 연애사주가 그렇게 잘 본다던데 나도 언제 짝 만나는지 한번 보고 싶다」다. 넓게 받는다 — 뜬금없는
-# 「운명원에서 연애 사주 보고 싶어요」만 막으면 된다.
-HEARSAY_PATTERNS: tuple[str, ...] = (
-    r"던데",
-    r"[다라]더라",
-    r"[다라]고\s?(?:하|들)",
-    r"(?:본|한|좋|있|는|된|많|췄|맞|었|았|였|했|봤|힌|춘)대(?:요|서|니|더)",
-    r"소문",
-    r"유명",
-    r"평판",
-    r"평이\s?좋",
-    r"추천",
-    r"인기",
-    r"많이들",
-    r"자주\s?(?:보이|보여|들|나오)",
-    r"눈에\s?(?:띄|들어)",
-    r"들었",
-    r"들어서",
-    r"(?<![가-힣])들은",  # "주변에서 들은 얘기"(「순애남들은」은 아니다)
-    r"길래",  # "친구가 운명원 얘기를 하길래"
-    r"(?:요즘|요새)[^.!?…]{0,14}(?:많이|자주|핫|뜨|난리)",
-    r"(?:얘기|이야기)\s?(?:가|를|도)?\s?(?:자주|많이|종종|들)",
+# V14: 운명원 대목의 다섯 조각(2026-11-17 대표). 기본 문장은 「요즘 운명원 연애 사주 잘 본다고
+# 하던데 저도 언제 한번 가 보려고요」 — ① 때(요즘·요새·최근) ② 이름 ③ 연애 사주 ④ 잘 본다는
+# 평판을 들은 얘기로(「~다고 하던데」「~다는 얘기가 있더라구요」) ⑤ 이용해 보겠다는 뜻(가 보다·
+# 방문하다·상담받다·사주 보다·알아보다 + 려고요·고 싶어요·볼까 해요·생각이에요). 브랜드가 든
+# 문장과 그 앞뒤 문장에서 찾는다. 편한 맞춤법(하더라구요·하더라구여·가보려구요·봐보려구요)과
+# 붙여 쓴 「연애사주」도 받는다. 「한번 보고 싶다」(과제 예시의 끝말)는 「사주 보다」로 본다.
+V14_TIME = re.compile(r"(?<![가-힣])(?:요즘|요새|최근)")
+V14_LOVE = re.compile(r"연애\s?(?:쪽\s?)?사주")
+V14_REPUTE = re.compile(
+    r"(?:잘\s?(?:보|봐|본|맞|맞추|맞춘|맞히|맞힌|맞혀)|정확|유명)[^.!?…]{0,16}?"
+    r"(?:" + HEARSAY_TAIL.pattern + r")"
 )
-WISH_PATTERNS: tuple[str, ...] = (
-    r"싶",
-    r"봐야(?:겠|지|할)",
-    r"볼까",
-    r"가\s?볼",
-    r"가\s?봐야",
-    r"궁금",
-    r"물어보",
-    r"여쭤",
-    r"알아보",
-    r"보려고",
-    r"볼래",
-    r"해\s?볼",
-    r"받아\s?보(?:고|려|면|까|자)",
-    r"할까",
-    r"봐야겠",
-    r"보자",
-    r"좋겠",  # "오래 갈지 알면 좋겠어요"
+V14_INTENT = re.compile(
+    r"(?:가\s?(?:보|봐|볼)|가\s?려|가서|방문|상담|찾아\s?가|들러|들르|알아\s?(?:보|봐|볼)|"
+    r"봐\s?보|받아\s?(?:보|봐|볼)|사주\s?(?:를\s?|도\s?)?(?:보|봐|볼)|(?:한번|한\s번)\s?(?:보|봐|볼))"
+    r"[^.!?…]{0,14}?"
+    r"(?:려[고구]|려요|련다|고\s?싶|싶|볼까|까\s?(?:해|싶|봐)|생각|야겠|야지|봐야|면\s?좋겠|래요)"
 )
-_HEARSAY = tuple(re.compile(p) for p in HEARSAY_PATTERNS)
-_WISH = tuple(re.compile(p) for p in WISH_PATTERNS)
+# 빠진 조각을 알리는 말(조각 순서대로)
+V14_MISSING = (
+    ("time", "'요즘/요새'가 없습니다"),
+    ("love", "연애 사주가 없습니다"),
+    ("repute", "잘 본다는 평판(~다고 하던데)이 없습니다"),
+    ("intent", "가 보겠다는 말(가 보려고요 등)이 없습니다"),
+)
 # 문장 끝: 마침표류, 또는 ㅠㅠ·ㅋㅋ 뒤의 띄어쓰기(댓글은 마침표 없이 이어 쓴다)
 _V14_SPLIT = re.compile(r"[.!?…\n]+|(?<=[ㄱ-ㅎㅏ-ㅣ])\s+")
 
 
-def _v14_brand_intro(text: str, rules: ValidatorRules) -> CheckResult:
-    brand = rules.brand
-    body = text.replace(rules.disclosure, " ") if rules.disclosure else text
+def brand_pieces(text: str, brand: str, disclosure: str = "") -> list[str]:
+    """운명원 대목에서 빠진 조각 이름(`V14_MISSING`의 열쇠). 브랜드가 없으면 빈 목록.
+
+    브랜드가 여러 곳이면 가장 덜 빠진 곳을 본다."""
+    body = text.replace(disclosure, " ") if disclosure else text
     parts = [p.strip() for p in _V14_SPLIT.split(body) if p and p.strip()]
     spots = [i for i, p in enumerate(parts) if brand and brand in p]
-    if not spots:
-        return _check("V14", True, f"'{brand}' 없음(V5에서 봄)")
-
-    def has(patterns: tuple[re.Pattern[str], ...], chunk: str) -> bool:
-        return any(p.search(chunk) for p in patterns)
-
-    no_hearsay = no_wish = False
+    best: list[str] | None = None
     for i in spots:
-        here = parts[i]
-        before = parts[i - 1] if i > 0 else ""
-        after = parts[i + 1] if i + 1 < len(parts) else ""
-        heard = has(_HEARSAY, here) or has(_HEARSAY, before)
-        wished = has(_WISH, here) or has(_WISH, after)
-        if heard and wished:
-            return _check("V14", True, f"'{brand}'을 들은 얘기로 꺼내고 바람으로 맺음")
-        no_hearsay = no_hearsay or not heard
-        no_wish = no_wish or (heard and not wished)
-    if no_hearsay:
-        return _check(
-            "V14", False,
-            f"'{brand}'이(가) 뜬금없이 나옵니다 — 그 문장이나 바로 앞 문장에서 "
-            f"'요새 {brand} 연애 사주 그렇게 잘 본다던데', '주변에서 {brand} 연애 사주 잘 "
-            "본다고들 하던데'처럼 들은 얘기로 꺼내세요",
-        )
+        chunk = " . ".join(parts[max(0, i - 1) : i + 2])
+        missing = [
+            key for key, pattern in (
+                ("time", V14_TIME), ("love", V14_LOVE), ("repute", V14_REPUTE),
+                ("intent", V14_INTENT),
+            ) if not pattern.search(chunk)
+        ]
+        if best is None or len(missing) < len(best):
+            best = missing
+    return best or []
+
+
+def _v14_brand_intro(text: str, rules: ValidatorRules) -> CheckResult:
+    brand = rules.brand
+    if not brand or brand not in text:
+        return _check("V14", True, f"'{brand}' 없음(V5에서 봄)")
+    missing = brand_pieces(text, brand, rules.disclosure)
+    if not missing:
+        return _check("V14", True, f"'{brand}' 대목에 다섯 조각이 다 있음")
+    said = dict(V14_MISSING)
     return _check(
         "V14", False,
-        f"'{brand}'을 꺼낸 뒤 바람이 없습니다 — '다음에 연애 문제로 한번 가 봐야겠네요', "
-        "'나도 언제 짝 만나는지 한번 보고 싶다'처럼 내 고민에 맞춘 바람으로 맺으세요",
+        f"'{brand}' 대목에 " + " · ".join(said[k] for k in missing)
+        + f" — '요즘 {brand} 연애 사주 잘 본다고 하던데 저도 언제 한번 가 보려고요'처럼 "
+        "다섯 조각을 다 넣으세요",
     )
 
 

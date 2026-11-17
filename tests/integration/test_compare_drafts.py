@@ -57,10 +57,11 @@ def test_run_and_table_with_fake_llm(tmp_db_path, fake_llm):
                 "viewer_needs": "권태기를 넘기는 법",
                 "evidence": [{"quote": quote_a, "source": "transcript"},
                              {"quote": quote_b, "source": "transcript"}]}
-    good_a = (f"'{quote_a}'라는 말이 오래 남네요. 운명원 연애 사주 잘 본다던데 "
-              "한번 보고 싶어요.")
+    good_a = (f"'{quote_a}'라는 말이 오래 남네요. 요즘 운명원 연애 사주 잘 본다던데 "
+              "저도 한번 가 보려고요.")
     good_b = ("같은 식당, 같은 카페에서 데이트가 끝난다는 말에 공감했어요. "
-              "요즘 운명원 연애 사주 잘 본다고 평이 좋던데 연애 흐름을 짚어 보고 싶네요.")
+              "요즘 운명원 연애 사주 잘 본다고 하던데 연애 흐름을 짚어 보러 저도 한번 가 "
+              "보려고요.")
     llm = fake_llm([analysis,
                     {"body": "연애 사주 상담을 받아 보세요.", "used_quote": "",
                      "tone_label": "조언형"},
@@ -110,8 +111,8 @@ def test_run_and_table_with_fake_llm(tmp_db_path, fake_llm):
 ANALYSIS = {"topic": "권태기", "concern": "설렘이 사라진 3년 연애", "tone": "차분",
             "viewer_needs": "권태기를 넘기는 법",
             "evidence": [{"quote": "만나도 각자 휴대폰만 봐요", "source": "transcript"}]}
-GOOD = ("'만나도 각자 휴대폰만 봐요'라는 말이 오래 남네요. 운명원 연애 사주 잘 본다던데 "
-        "한번 보고 싶어요.")
+GOOD = ("'만나도 각자 휴대폰만 봐요'라는 말이 오래 남네요. 요즘 운명원 연애 사주 잘 본다던데 "
+        "저도 한번 가 보려고요.")
 
 
 def _with_fake_llm(monkeypatch, llm):
@@ -241,7 +242,8 @@ class FirstChoiceLLM:
         ending = _first_quoted(user, ENDING_HEAD)
         self.leads.append(lead)
         self.endings.append(ending)
-        return {"body": f"댓글 보니 남 일 같지 않네요. {lead} 나도 {ending}.",
+        joint = ". " if lead.endswith(("요", "여")) else ", "  # 끝말은 「저도 …」로 시작한다
+        return {"body": f"댓글 보니 남 일 같지 않네요. {lead}{joint}{ending}.",
                 "used_quote": quote, "tone_label": "공감형"}
 
 

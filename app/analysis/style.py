@@ -4,7 +4,7 @@
 막지 않는다 — 모델이 쓴 초안을 한 번 더 쓰게 하는 까닭(다시 쓸 차례가 남았을 때)과 다듬기
 단계(`prompts.polish_user`)에 넘길 「남은 문제」로만 쓴다. 사람이 고친 글에는 쓰지 않는다.
 
-- S1 길이: 전체 110자를 넘음(목표 70~105자, 한도 40~120자는 V1 그대로)
+- S1 길이: 전체 110자를 넘음(목표 80~110자, 한도 40~120자는 V1 그대로)
 - S2 바람에 핵심 말: 운명원 문장(바람)에 영상의 핵심 말을 끼움
   (「내짝 찾기 언제 되는지 궁금해지네요」)
 - S3 띄어쓰기·말꼴: 「이유여쭤보고」처럼 붙여 씀, 「없었네라는 말에」처럼 말끝에 바로 「라는」
@@ -12,6 +12,8 @@
 - S6 늘어진 문장: 「~는데/인데」로 이은 문장에 운명원의 「~던데」를 또 이음(2026-11-17)
 - S7 평판 없음: 운명원을 꺼내는 대목에 무엇을 잘하는지(연애 사주를 잘 본다·잘 봐준다·잘 맞는다·
   유명하다)가 없음(2026-11-17 대표: 운명원은 「연애 사주 잘 봐주는 곳으로 유명한 곳」)
+- S8 본보기 연달아: 대표의 본보기(`prompts.BRAND_MODELS`)의 꺼내는 말을 그대로 옮긴 초안이 바로
+  앞 초안과 같은 본보기를 옮김(2026-11-17 대표: 「그대로 베끼지 말고 이 결로」)
 - S5 영상 사연을 내 것으로: 영상 속 **숫자**(「3년 사귄」「2년째」「석 달」)를 영상 얘기라는
   표지(「~대요」「~라니」「~다는 말에」) 없이 내 일처럼 옮긴 문장. 비슷한 처지라고 말하는 것
   (「완전 제 얘기네요」「저도 비슷해서」「우리 사이」)은 시청자 말투로 둔다(기획 담당 2026-11-17:
@@ -31,8 +33,8 @@ import re
 from collections.abc import Sequence
 from difflib import SequenceMatcher
 
-from app.analysis.validator import contains_key_phrase, normalize
-from app.llm.prompts import HEARSAY_LINES
+from app.analysis.validator import V14_REPUTE, contains_key_phrase, normalize
+from app.llm.prompts import copied_model, fold
 
 SOFT_MAX_TOTAL = 110
 # 1~5회차 실제 초안: 다른 영상 초안끼리 가장 닮은 것이 0.55, 같은 영상 두 초안은 0.18~0.67,
@@ -41,7 +43,8 @@ SAME_VIDEO_SIMILARITY = 0.55
 
 _SPLIT = re.compile(r"[.!?…\n]+|(?<=[ㄱ-ㅎㅏ-ㅣ])\s+")
 _WISH = re.compile(
-    r"싶|봐야|볼까|가\s?볼|궁금|물어보|여쭤|알아보|보려고|볼래|해\s?볼|받아\s?보|할까|보자|좋겠"
+    r"싶|봐야|볼까|가\s?볼|궁금|물어보|여쭤|알아보|보려고|볼래|해\s?볼|받아\s?보|할까|보자|좋겠|"
+    r"려[고구]|생각|방문|상담"
 )
 # 붙여 쓴 꼴: 앞말에 바로 붙은 「여쭤보·물어보·알아보」(되물어보·캐물어보는 한 낱말)
 _GLUED = re.compile(r"(?<=[가-힣])(?<![되캐])(여쭤보|물어보|알아보)")
@@ -66,15 +69,9 @@ _ABOUT_VIDEO = re.compile(
     r"말에|말이|대요|래요|댔|랬|대\b|래\b|라니|다니|다는|라는|던데|다고|라고|사연|영상|댓글|"
     r"그분|이분|(?:거|걸|글|영상|댓글|사연|얘기|말)\s?보니|듣고|봤는데|셨|시죠|시네|으시"
 )
-# 운명원 꺼내는 말의 표지(앞 초안과 같은 틀인지 볼 때)
-# 꺼내는 말 목록의 표지(긴 것부터) + 목록 밖의 흔한 꼴
-HEARSAY_MARKS = tuple(sorted({m for _, m in HEARSAY_LINES}, key=len, reverse=True)) + (
-    "잘 본다고", "보이던데", "많이들 본다", "하던데", "눈에 띄던데", "들었", "소문",
-    "핫하던데", "길래", "평이 좋", "여기저기서", "유명하다", "입소문", "많다더라",
-)
 # S7(2026-11-17, 대표): 운명원 페르소나 = 「연애 사주 잘 봐주는 곳으로 유명한 곳」(과제 원문).
 # 꺼내는 대목(운명원 문장 + 바로 앞 문장)에 잘한다는 평판이 없으면 다시 쓰게 한다.
-_REPUTATION = re.compile(r"잘\s?(?:보|봐|본|볼|맞)|유명|평이\s?좋|평판이\s?좋|용하")
+_REPUTATION = re.compile(r"잘\s?(?:보|봐|본|볼|맞)|유명|평이\s?좋|평판이\s?좋|용하|정확")
 # S6(2026-11-17, PDF 대조): 「~는데/인데」로 이은 문장에 브랜드의 「~던데」를 또 이음 —
 # 「저도 고민인데 운명원 … 잘 본다던데 …」, 「동아리 선배라서 더 조심스러운데 요즘 운명원 얘기 자주
 # 보이던데」. 지난 초안 156개(1~8회차·C1 전)에 대 보니 1개만 걸렸고 그 글은 「늘어진다」로 짚었던
@@ -121,10 +118,16 @@ def wish_part(text: str, brand: str) -> str:
 
 
 def hearsay_mark(text: str, brand: str) -> str:
-    """운명원 문장에 쓴 꺼내는 말 표지(없으면 빈 글)."""
+    """운명원 문장에 쓴 꺼내는 말 표지: 잘한다는 말부터 들은 얘기 꼴의 낱말 끝까지
+    (「잘 본다고 하던데」「정확하다는 얘기」). 없으면 빈 글(맞춤법 차이는 견줄 때 `fold`로
+    지운다)."""
     for s in _sentences(text):
         if brand and brand in s:
-            return next((m for m in HEARSAY_MARKS if m in s), "")
+            m = V14_REPUTE.search(s)
+            if not m:
+                return ""
+            rest = re.match(r"[가-힣]*", s[m.end():])
+            return m.group(0) + (rest.group(0) if rest else "")
     return ""
 
 
@@ -153,11 +156,12 @@ def style_issues(
     earlier: Sequence[str] = (),
     context: str = "",
     max_total: int = SOFT_MAX_TOTAL,
+    last_shown: str = "",
 ) -> list[str]:
     """다시 쓰게 할 까닭들(없으면 빈 목록).
 
     `earlier`: 같은 영상에 앞서 쓴 초안 글. `context`: 영상 자료 글(S5 숫자 대조, 없으면 S5를
-    보지 않는다).
+    보지 않는다). `last_shown`: 바로 앞에 사람에게 보인 초안(S8, 없으면 보지 않는다).
     """
     issues: list[str] = []
     body = _body(text, disclosure)
@@ -213,6 +217,12 @@ def style_issues(
             f"S6 늘어진 문장: '~는데/~인데' 뒤에 {brand}의 '~던데'를 또 이었습니다 — 앞을 끊어 "
             f"'…고민이에요. 요즘 {brand} …던데'처럼 새 문장으로 꺼내세요"
         )
+    model = copied_model(body)
+    if model >= 0 and last_shown and copied_model(last_shown) == model:
+        issues.append(
+            f"S8 본보기 연달아: {brand}을(를) 꺼내는 말이 바로 앞 초안처럼 본보기 {model + 1}번을 "
+            "그대로 옮겼습니다 — 때·세기 말·들은 얘기 꼴을 바꿔 다른 말로 꺼내세요"
+        )
     copied = _copied_number(body, context, brand)
     if copied:
         issues.append(
@@ -263,7 +273,7 @@ def _same_video(
                 f"S4 앞 초안과 비슷함: 같은 영상의 앞 초안과 {round(ratio * 100)}% 같습니다 — 짚는 "
                 "장면·핵심 말·말투·운명원 꺼내는 말·끝말을 바꿔 다른 글로 쓰세요"
             ]
-        if mark and mark == hearsay_mark(old_body, brand):
+        if mark and fold(mark) == fold(hearsay_mark(old_body, brand)):
             return [
                 f"S4 앞 초안과 비슷함: 운명원을 앞 초안과 같은 말('{mark}')로 꺼냈습니다 — 다른 "
                 "들은 얘기로 꺼내세요"

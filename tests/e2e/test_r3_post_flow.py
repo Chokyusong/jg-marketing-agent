@@ -102,7 +102,8 @@ def test_real_post_by_default_label_off_on_another_video_then_practice_once(live
         page.wait_for_function(
             "() => !document.getElementById('draft-text').value.startsWith('[광고]')")
         bare = ("'하루에 한 번 연락'으로 싸웠다는 말에 오래 고개가 끄덕여지네요. "
-                "요즘 운명원 얘기 많이 보이던데 연애 사주 한번 보고 싶어요.")
+                "최근에 운명원 연애 쪽 사주가 꽤 정확하다는 얘기를 들었는데 저도 기회 되면 "
+                "방문해 볼까 해요.")  # 다섯 조각, 앞 초안들(draft_for)과 V11로 겹치지 않게
         page.fill("#draft-text", bare)  # 표기 끔 저장을 기다리지 않고 바로 고쳐 써도 글이 남는다
         page.wait_for_function(
             "(t) => document.getElementById('draft-text').value === t"
@@ -127,7 +128,7 @@ def test_real_post_by_default_label_off_on_another_video_then_practice_once(live
         assert page.is_checked("#disclose")  # 새 영상은 다시 설정 기본값(켬)
         practice = ("[광고] 영상 속 '하루에 한 번 연락'으로 싸웠다는 고백을 들으니 "
                     "서로 연락 기대치가 다를 때가 많다는 생각이 드네요. "
-                    "주변에서 운명원 얘기 종종 하던데 연애 사주가 궁금해져요.")
+                    "요새 운명원이 연애사주를 되게 잘 봐준다고 하던데 가보려구요.")
         page.fill("#draft-text", practice)
         page.wait_for_function(DRAFT_TAG.format("검사 통과"), timeout=15000)
         page.click("#job-primary")
@@ -265,7 +266,7 @@ def test_records_screen_posts_first_real_and_practice_apart(live):
     services = live["app"].state.services.get()
     vid = video_id(2)
     long_body = ("[광고] 영상 속 '하루에 한 번 연락'으로 싸웠다는 말에 고개가 끄덕여졌어요. "
-                 "요즘 운명원 얘기 자주 보이던데 저도 연애 사주 한번 보고 싶네요.")
+                 "요즘 운명원 연애 사주 잘 본다던데 저도 한번 상담받아보고 싶네요.")
     with db.session(services.settings.db_path) as conn:
         conn.execute("INSERT OR IGNORE INTO videos(video_id, title, fetched_at, source) "
                      "VALUES (?, '연락 문제로 싸운 커플 이야기', ?, 'search')",
