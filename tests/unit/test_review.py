@@ -99,3 +99,28 @@ def test_user_carries_the_evidence_quote_when_given():
     user = R.review_user(body="본문", title="t", concern="c", evidence="영상 속 구절")
     assert "[근거 구절(영상 자료에서)] 영상 속 구절" in user
     assert "[근거 구절" not in R.review_user(body="본문")
+
+
+def test_system_lists_what_is_not_a_problem_with_the_mistaken_examples():
+    # 2026-11-18(기획 담당 B): 처음 검수의 거짓 여럿이 잘못 짚은 것이었다. 그 예문을 「문제가
+    # 아닌 것」으로 적고, 분명한 문제만 거짓 · 애매하면 참
+    system = R.review_system(brand="운명원")
+    assert "[문제가 아닌 것 — 이것 때문에 false로 답하지 않는다]" in system
+    # (가) 잇는 혼잣말은 영상 근거가 없어도 된다(「영상 근거 없이 단정」으로 짚었다)
+    assert "(가) 잇는 혼잣말" in system
+    assert "영상에 근거가 없어도 된다(5번으로 보지 않는다)" in system
+    assert "'결국 궁합의 문제도 있나 봐요'" in system
+    assert "'서로 닿는 타이밍이 관건인가 봐요'" in system
+    # (나) 「저도 + 영상 고민에서 온 까닭」은 지어낸 경험이 아니다(「지어낸 내 경험」으로 짚었다)
+    assert "지어낸 경험이 아니다(6번으로 보지 않는다)" in system
+    assert "'저도 고백이 망설여서 한번 가 보려고요'" in system
+    assert "'저도 가족 갈등 때문에 한번 가보고 싶네요'" in system
+    assert "지어낸 경험은 두 가지뿐이다" in system
+    # (다) 운명원 대목 조각·대표 본보기 꼴은 되풀이가 아니다(「'사주' 두 번」으로 짚었다)
+    assert "되풀이가 아니다(7번으로 보지 않는다)" in system
+    assert "'연애 사주'와 끝의 '사주 봐보려구요'가 함께 나와도 된다" in system
+    assert "저도 언제 한번 방문해서 사주 봐보려구요." in system
+    assert "저도 다음에 한번 사주 봐보고 싶네요'" in system
+    # 분명한 문제만 거짓, 애매하면 참
+    assert "**분명한 문제만 false**다" in system and "애매하면 true다" in system
+    assert "영상과 **반대**되는 말" in system
