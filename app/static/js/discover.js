@@ -112,6 +112,22 @@ export function commentedText(commented) {
   return commented.youtube ? '댓글 달았음' : '댓글 달았음 · 연습';
 }
 
+// 2026-11-18 자료가 얇은 영상: 이미 읽은 영상에만 「자막 있음」/「자막 없음」. 서버가 목록에 붙여 주고
+// (video.transcript: yes·no·빈 글), 이번에 고른 영상은 ② 자료가 오면 바로 바꾼다. 자막을 미리 읽지 않는다
+const readTranscript = new Map();
+
+function noteContext(state) {
+  const ctx = state.context;
+  if (ctx && ctx.video_id) readTranscript.set(ctx.video_id, ctx.transcript_source === 'none' ? 'no' : 'yes');
+}
+
+export function transcriptBadge(video) {
+  const flag = readTranscript.get(video.video_id) || video.transcript || '';
+  if (flag === 'yes') return el('span', { class: 'tbadge is-yes', text: '자막 있음' });
+  if (flag === 'no') return el('span', { class: 'tbadge is-no', title: '제목·설명·댓글만 읽어 초안이 밋밋할 수 있어요', text: '자막 없음' });
+  return null;
+}
+
 function videoRow(video, selected) {
   const day = formatDay(video.published_at);
   const ago = formatAgo(video.published_at);
@@ -122,6 +138,7 @@ function videoRow(video, selected) {
     el('span', { class: 'video-meta' }, [
       day ? el('b', { class: 'vid-day', text: day }) : null,
       [ago, formatViews(video.view_count)].filter(Boolean).map((t) => ` · ${t}`).join(''),
+      transcriptBadge(video),
     ]),
     video.rising ? el('span', { class: 'rising-line' }, [
       el('span', { class: 'rising-tag', text: '뜨기 직전' }),
@@ -238,6 +255,7 @@ export function initDiscover() {
   });
   $('rising-btn').addEventListener('click', () => runRising());
   subscribe((state) => {
+    noteContext(state);
     renderList(state);
     renderMeta(state);
     renderError(state);

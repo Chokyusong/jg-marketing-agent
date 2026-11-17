@@ -366,7 +366,8 @@ def test_v7_without_key_phrases_uses_title_words_or_a_shared_phrase():
     ]
     title_word = "[광고] 장거리면 연락이 더 어렵겠다 싶어요. 운명원에서 연애 사주 한번 보고 싶네요."
     v7 = check(run(title_word), "V7")
-    assert v7.passed and "제목·해시태그" in v7.message
+    # 2026-11-18: 해시태그에서는 뽑지 않는다(제목에서만) — 문구도 「제목에서 뽑은 핵심 말」
+    assert v7.passed and "제목에서 뽑은" in v7.message
     shared = check(run(GOOD), "V7")
     assert shared.passed and "겹치는 말" in shared.message
 
@@ -379,6 +380,16 @@ def test_v7_fail_when_nothing_from_the_video():
 
 def test_hashtags_become_key_phrase_candidates():
     assert V.hashtags("영상 #하지원 #이상형 #하지원 #a") == ["하지원", "이상형"]
+
+
+def test_v7_fallback_does_not_ask_for_hashtag_only_words():
+    # 2026-11-18: 분석이 없을 때 V7이 해시태그로만 있는 말(「인팁특징」)을 핵심 말로 내밀지 않는다
+    context = "인팁 연애 이야기 #인팁특징\n좋아하는 사람한테 연락을 못 하겠어요"
+    text = "[광고] 오늘도 좋은 하루 보내시고 행복한 일만 가득하시길 바라요. 운명원이 응원합니다."
+    v7 = V.validate(text, context_text=context, rules=RULES, brand_facts=[],
+                    previous_texts=[]).checks
+    v7 = next(c for c in v7 if c.code == "V7")
+    assert not v7.passed and "인팁특징" not in v7.message
 
 
 # ---------------------------------------------------------------- V8 이용 후기 표현 없음

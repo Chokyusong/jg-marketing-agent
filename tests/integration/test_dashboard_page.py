@@ -306,8 +306,10 @@ def test_context_js_wires_the_three_apis(make_client):
                     "method: 'DELETE'"):
         assert snippet in api
     js = client.get("/static/js/context.js").text
-    for text in ("붙여 넣은 자막 ", "자막 없음 · 제목과 설명으로 대신", "인기 댓글 ",
-                 "댓글이 막힌 영상", "transcript:saved"):
+    # 2026-11-18: 자막이 없으면 무엇만 읽었는지 + 초안이 밋밋할 수 있다
+    # (예전 「자막 없음 · 제목과 설명으로 대신」)
+    for text in ("붙여 넣은 자막 ", "자막이 없어 제목·설명·댓글만 읽었습니다",
+                 "초안이 밋밋할 수 있어요", "인기 댓글 ", "댓글이 막힌 영상", "transcript:saved"):
         assert text in js
     assert "api.buildContext(videoId)" in js
     assert "api.saveTranscript(videoId, text)" in js

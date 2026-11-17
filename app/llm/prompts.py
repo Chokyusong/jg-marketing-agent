@@ -643,7 +643,8 @@ def analysis_messages(prompt_text: str, *, retry_note: str = "") -> tuple[str, s
         "'자존심이 아니라 겁'). '연애', '사랑', '남자', '여자', '영상', '마음', '고민'처럼 "
         "어느 연애 영상에나 나오는 낱말 하나만은 핵심 말이 아니다. "
         "광고·협찬·채널 홍보·방송 일정 안내 말(설명란의 '연애상담 라이브', '매주 ○요일')은 "
-        "넣지 않는다. "
+        "넣지 않는다. 해시태그(#…) 낱말은 핵심 말이 아니다('#인팁특징' ✗) — 근거로도 쓰지 "
+        "않는다. "
         "has_love_concern이 false면 빈 목록.\n\n"
         "[영상 자료 시작]\n"
         f"{prompt_text}\n"
@@ -794,6 +795,8 @@ def draft_system(
         "답인가 봐' ✗ → '그때그때 말하는 게 답인가 봐', '헤어지자는 거야부터 떠오를 듯' ✗ → "
         "'헤어지자는 말부터 떠오를 듯').\n"
         "- '~하는 방법이 궁금해서', '~에 대해 알 수 있었습니다' 같은 설명문으로 쓰지 않는다.\n"
+        "- 해시태그(#…) 낱말('인팁특징' 같은 태그 말)은 핵심 말도 댓글 재료도 아니다 — 쓰지 "
+        "않는다.\n"
         "- 영상 자막·제목·설명과 고민 한 줄을 길게 그대로 옮기지 않는다. 핵심 말만 그대로 쓰고 "
         "나머지는 내 말로 바꾼다(따옴표는 써도 되고 안 써도 된다). 자막은 받아쓰기라 말하다 만 "
         "문장이 많다. 영상 제목을 따옴표로 통째로 옮기지 않는다(\"'제목'이라는 제목부터\"는 "
@@ -888,6 +891,7 @@ def draft_user(
     used_reasons: Sequence[str] = (),
     bridge: bool = False,
     used_bridges: Sequence[str] = (),
+    thin: bool = False,
 ) -> str:
     """초안 요청. 다시 쓸 때는 앞의 본문과 실패 문구(`Validation.failure_lines()`)를 넣는다.
 
@@ -903,6 +907,8 @@ def draft_user(
     `bridge`: 참이면 영상 반응과 운명원 대목 사이에 ② 잇는 한 문장을 넣게 한다(2026-11-18).
     `used_bridges`: 앞서 보인 초안(다른 영상 포함)의 잇는 문장(`bridge_sentence`). 겹치지 말라고
     넣는다.
+    `thin`: 자막이 없는 영상(제목·설명·인기 댓글만, 2026-11-18). 제목 낱말을 되풀이하지 말고 인기
+    댓글에 나온 사연·말을 ① 영상 반응의 재료로 쓰게 한다.
     """
     target_lo, target_hi = body_target(min_body=min_body, max_body=max_body, max_chars=max_chars)
     concern = analysis.get("concern", "")
@@ -920,6 +926,12 @@ def draft_user(
         f"[짚을 장면] '{quote}' (출처: {SOURCE_LABELS.get(source, source)}) — 이 장면·말을 내 말로 "
         "짚는다(길게 그대로 옮기지 않는다)"
     )
+    if thin:
+        parts.append(
+            "[자료] **자막이 없는 영상**이라 제목·설명·인기 댓글만 있다. 영상 반응은 제목 낱말을 "
+            "되풀이하지 말고 인기 댓글에 나온 사연·말(짚을 장면)을 재료로 쓴다. 해시태그(#…) "
+            "낱말은 쓰지 않는다."
+        )
     tone_line = " · ".join(f"{t}({TONE_HINTS.get(t, '')})" for t in tones)
     avoid = [t for t in dict.fromkeys(avoid_tones) if t]
     parts.append(

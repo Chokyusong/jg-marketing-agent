@@ -351,8 +351,11 @@ class DraftService:
         analysis = self.stored_analysis(video_id)
         if analysis is None or analysis.legacy:
             analysis = self.analyze(video_id)  # C1: 예전 분석은 다시 한다(핵심 말·고민의 꼴)
-        evidence = analyzer.pick_evidence(analysis.evidence, avoid_quotes)
         kit = self._prepare(video_id, analysis, disclose)
+        # 2026-11-18 자료가 얇은 영상: 자막이 없으면 근거도 인기 댓글을 먼저(제목 낱말 되풀이 대신)
+        evidence = analyzer.pick_evidence(
+            analysis.evidence, avoid_quotes, prefer_comments=kit.thin
+        )
         llm, rules, mark = kit.llm, kit.rules, kit.mark
         system, schema, max_body = kit.system, kit.schema, kit.max_body
         previous, avoid_bodies = kit.previous, kit.avoid_bodies
@@ -488,8 +491,11 @@ class DraftService:
         endings = prompts.ending_choices(shown, n=3, avoid=avoid_bodies, rng=self.rng)
         used_openings = [prompts.opening_sentence(t, disclosure=rules.disclosure) for t in shown]
 
-        try:  # S5(영상 숫자를 내 것으로)를 볼 영상 자료 글
-            context_text = self.context.search_text(self.context.current(video_id))
+        thin = False  # 자막이 없는 영상(제목·설명·인기 댓글만, 2026-11-18)
+        try:  # S5(영상 숫자를 내 것으로)·S13(해시태그 낱말)을 볼 영상 자료 글
+            current = self.context.current(video_id)
+            context_text = self.context.search_text(current)
+            thin = not current.transcript_text
         except AppError:
             context_text = ""
         self._context_text = context_text
@@ -512,6 +518,7 @@ class DraftService:
             previous=previous, avoid_bodies=avoid_bodies, avoid_phrases=avoid_phrases,
             avoid_tones=avoid_tones, tones=tones, schema=schema, used_closings=used_closings,
             hearsay=hearsay, endings=endings, used_openings=used_openings, want_reason=want_reason,
+            thin=thin,
         )
 
     def _draft_prompt(
@@ -542,6 +549,7 @@ class DraftService:
             used_reasons=self._used_reasons,
             bridge=True,
             used_bridges=self._used_bridges,
+            thin=kit.thin,
         )
 
     def _style(

@@ -7,6 +7,16 @@
 
 ## 새 변경 (README를 줄인 뒤)
 
+### 2026-11-18 자료가 얇은 영상 알리기
+
+- 기획 담당(대표 승인): 자막이 없는 영상은 제목·설명·댓글만 읽어 초안이 밋밋해지기 쉽다. 사람이 미리 알 수 있게 알리고, 있는 자료를 더 낫게 쓴다.
+- 화면 ②: 자막 줄을 「자막이 없어 제목·설명·댓글만 읽었습니다. 초안이 밋밋할 수 있어요」로(읽지 못한 이유가 있으면 「자막을 읽지 못해(이유) …」, 자동 읽기를 껐으면 「자막 자동 읽기가 꺼져 있어 …」). 자막이 있으면 예전처럼 「자동으로 읽은 자막 N자 · 인기 댓글 N개」 두 줄(같은 뜻이라 그대로 둠).
+- 화면 ①: **이미 읽은 영상에만** 날짜 줄 끝에 「자막 있음」/「자막 없음」 배지(줄 높이 그대로). 목록 API 항목에 `transcript`(yes·no·빈 글) 필드를 더했다 — 저장된 맥락만 보고 자막을 미리 읽지 않는다. 고른 영상은 ② 자료가 오면 바로 바뀐다.
+- 해시태그(#낱말)는 핵심 말·근거·댓글 재료가 아니다(「#인팁특징」이 댓글에 「인팁특징」으로 들어갔다): 핵심 말은 #태그를 뺀 자료 글에 그대로 있어야 남고, 코드가 뽑는 핵심 말(분석이 없을 때·V7)도 제목에서만(해시태그에서 뽑지 않음), 태그만 있는 근거 구절은 버린다. 분석·초안 프롬프트에 한 줄씩. 초안에 태그로만 있는 3자 이상 낱말이 들어가면 다듬기 검사 **S13**이 한 번 다시 쓰게 한다(규칙 검사로는 막지 않음).
+- 자막이 없으면: 분석 안내의 근거 순서를 「연애 고민을 말하는 댓글 > 제목 > 설명」으로, 초안 근거도 댓글을 먼저 고르고(`pick_evidence(prefer_comments=True)`), 초안 프롬프트에 「**자막이 없는 영상** — 제목 낱말을 되풀이하지 말고 인기 댓글에 나온 사연·말을 ① 재료로」.
+- 테스트: `tests/unit/test_thin_material.py`(새: 해시태그 빼기·핵심 말·코드로 뽑는 핵심 말·태그 근거·댓글 먼저·안내·S13·프롬프트), `tests/integration/test_thin_material_api.py`(새: 배지는 읽은 영상에만·목록이 자막을 미리 읽지 않음·자막을 넣으면 「있음」·자막이 없으면 프롬프트 줄과 댓글 근거), `test_validator.py`(V7이 태그 말을 내밀지 않음), e2e `test_program_flow.py`(② 안내·① 배지 하나).
+- 고친 기존 테스트(새 문구·규칙 때문): `test_validator.py::test_v7_without_key_phrases_uses_title_words_or_a_shared_phrase`(「제목·해시태그」 → 「제목에서 뽑은」), `test_dashboard_page.py::test_context_js_wires_the_three_apis`(「자막 없음 · 제목과 설명으로 대신」 → 「자막이 없어 제목·설명·댓글만 읽었습니다」·「초안이 밋밋할 수 있어요」), e2e `test_viewport_fit.py::test_rising_list_fits_and_blocks_posting`(「자막을 읽지 못해 제목과 설명으로 대신합니다」 → 「자막을 읽지 못해(」 + 「제목·설명·댓글만 읽었습니다」).
+
 ### 2026-11-18 AI 검수 한 번
 
 - 기획 담당(대표 승인): 규칙 검사·다듬기 검사로 못 잡는 어색함(「혼자 사셔라가 괜히 현실적으로 들리네」, 18개 중 1개꼴)을 잡으려고, 규칙 검사를 통과한 초안을 AI가 한 번 더 읽는다(`app/analysis/review.py`). 묻는 것은 문법(조사·어미·끝난 말에 조사)·뜻·영상 얘기 → 잇는 문장 → 운명원의 이어짐·유튜브 댓글 말투 네 가지, 답은 JSON `ok`·`problems`.
@@ -241,6 +251,7 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | `POST /api/analysis/{video_id}` | 영상 맥락을 AI로 분석해 저장하고 돌려준다: `topic`·`concern`·`tone`·`viewer_needs`, `evidence`(근거 문장 `quote`·출처 `source`·`source_label`, 자료에 있는 것만 최대 4개), `dropped_count`(자료에 없거나 광고·협찬·응모 글이라 버린 근거 수), `fallback`(예전 필드, 이제 늘 `false`), `model`, `has_love_concern`(늘 `true`)·`love_reason`(모델이 적은 판단 까닭). 연애 고민을 찾지 못하면 422 `no_love_concern`(초안을 만들지 않는다) |
 | `GET /api/analysis/{video_id}` | 저장된 분석(없으면 `null`). AI를 부르지 않는다 |
 | `POST /api/drafts` | `{"video_id", "another": false, "avoid_quotes": [], "review": null}` AI 초안을 만든다(분석이 없으면 먼저 분석). 검사에 걸리면 걸린 항목을 넣어 최대 3번, 다 걸리면 가장 덜 걸린 것을 저장. `another: true`면 이 영상에서 쓴 근거를 피한다. 응답: `id`·`body`(`[광고] ` 포함)·`evidence_quote`·`evidence_source`·`evidence_label`·`tone_label`·`attempts`·`first_passed`·`passed`·`status`(draft·approved·superseded)·`edited_by_human`·`validation`(`POST /api/validate`와 같은 모양)·`review`(2026-11-18 AI 검수 한 번: `status`·`label`·`problems`). `review`를 비우면 규칙 검사를 통과한 초안을 바로 검수하고, `false`면 `pending`으로 둔다 |
+| `GET /api/videos` 항목의 `transcript` | 2026-11-18: 이미 읽은 영상만 `yes`(자막 있음)·`no`(자막 없음), 안 읽었으면 빈 글(필드 추가, 자막을 미리 읽지 않음). `GET /api/videos/{id}`·`POST /api/videos/resolve`·`GET /api/videos/rising`도 같다 |
 | `POST /api/drafts/{id}/review` | 2026-11-18: AI 검수 한 번. 규칙 검사를 통과한 모델 초안을 AI가 읽고 어색하면 한 번 다시 쓴다. 검수할 것이 없으면(이미 함·사람이 고침·설정을 끔) 그대로, 검수가 실패해도 오류 없이 `status: error`. 응답은 초안 |
 | `GET /api/drafts?video_id=` | 초안 목록(새것부터) |
 | `PATCH /api/drafts/{id}` | `{"body": "..."}` 사람이 고친 글 저장 후 다시 검사. 승인한 글을 고치면 승인이 풀린다 |

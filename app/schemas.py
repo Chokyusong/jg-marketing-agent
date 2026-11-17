@@ -43,6 +43,9 @@ class VideoOut(BaseModel):
     source: Literal["search", "link", "rising"]
     fetched_at: str
     commented: CommentedOut = Field(default_factory=CommentedOut)  # 7단계(필드 추가)
+    # 2026-11-18 자료가 얇은 영상: 이미 읽은 영상만 yes(자막 있음)·no(자막 없음), 안 읽었으면 빈 글
+    # (목록을 불러도 자막을 미리 읽지 않는다)
+    transcript: Literal["yes", "no", ""] = ""
     # R4: 뜨기 직전 목록에서 온 영상만(시간당 조회수, 「뜨기 직전」 표시). 초안까지만 된다
     views_per_hour: float | None = None
     rising: bool = False

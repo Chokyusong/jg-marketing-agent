@@ -46,7 +46,13 @@ import re
 from collections.abc import Sequence
 from difflib import SequenceMatcher
 
-from app.analysis.validator import V14_REPUTE, contains_key_phrase, normalize
+from app.analysis.validator import (
+    V14_REPUTE,
+    contains_key_phrase,
+    hashtags,
+    normalize,
+    strip_hashtags,
+)
 from app.llm.prompts import bridge_sentence, copied_model, fold, intent_reason, with_i
 
 SOFT_MAX_TOTAL = 110
@@ -193,6 +199,7 @@ def style_issues(
     `used_reasons`: 앞서 보인 초안들의 ⑤ 까닭(S10, 없으면 보지 않는다).
     `need_bridge`: 참이면 잇는 문장·까닭이 둘 다 없는 글을 S11로 잡는다(모델이 쓴 초안만).
     `used_bridges`: 앞서 보인 초안·좋은 예의 잇는 문장(S12, 없으면 보지 않는다).
+    `context`는 S13(해시태그로만 있는 낱말을 댓글에 씀, 2026-11-18)에도 쓴다.
     """
     issues: list[str] = []
     body = _body(text, disclosure)
@@ -277,6 +284,12 @@ def style_issues(
             f"S12 잇는 문장 되풀이: '{bridge}'은 앞서 쓴 잇는 문장('{old_bridge}')과 거의 같습니다 "
             "— 이 영상 고민에 맞는 다른 말로 쓰세요"
         )
+    tag = hashtag_word(body, context)
+    if tag:
+        issues.append(
+            f"S13 해시태그 낱말: '{tag}'은 영상의 해시태그(#{tag})에만 있는 말입니다 — 해시태그 "
+            "낱말은 댓글에 쓰지 말고 영상 속 사연·인기 댓글의 말로 쓰세요"
+        )
     ended = _ENDED_PARTICLE.search(body)
     if ended:
         start = max(body.rfind(" ", 0, ended.start()) + 1, 0)
@@ -321,6 +334,22 @@ def repeated_reason(reason: str, used: Sequence[str]) -> str:
             continue
         if fold(old) == mine or len(stems & _reason_stems(old)) >= 2:
             return old
+    return ""
+
+
+def hashtag_word(body: str, context: str) -> str:
+    """S13(2026-11-18): 글에 든 해시태그 낱말(자료에서 #태그로만 나오는 3자 이상 말, 없으면 빈 글).
+
+    「#인팁특징」이 핵심 말로 뽑혀 댓글에 「인팁특징」이 들어갔다. 태그로도 있지만 제목·자막·댓글에
+    그대로도 있는 말(「#연애」와 「연애」)은 걸지 않는다."""
+    if not context:
+        return ""
+    plain = normalize(strip_hashtags(context))
+    body_n = normalize(body)
+    for tag in hashtags(context, limit=40):
+        n = normalize(tag)
+        if len(n) >= 3 and n not in plain and n in body_n:
+            return tag
     return ""
 
 

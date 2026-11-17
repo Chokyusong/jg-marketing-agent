@@ -26,8 +26,12 @@ ServicesDep = Annotated[Services, Depends(get_services)]
 def _mark_commented(items: list[VideoOut], services: Services) -> None:
     """7단계: 영상마다 댓글을 단(게시 완료) 대상을 붙인다. 기존 필드는 그대로."""
     marks = services.rules.commented_map(v.video_id for v in items)
+    # 2026-11-18: 이미 읽은 영상에만 「자막 있음/없음」(저장된 맥락만 본다, 새로 읽지 않는다)
+    read = services.context.transcript_map([v.video_id for v in items])
     for item in items:
         item.commented = CommentedOut(**marks.get(item.video_id, {}))
+        if item.video_id in read:
+            item.transcript = "yes" if read[item.video_id] else "no"
 
 
 @router.get("", response_model=VideoListOut)

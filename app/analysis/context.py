@@ -56,7 +56,8 @@ MIDDLE_CUT = "\n…(중략)…\n"
 NO_TRANSCRIPT_NOTE = (
     "[안내] 자막이 없어 제목·설명·인기 댓글로 분석한다. 설명란과 댓글에는 광고·협찬·상품 소개·"
     "이벤트 응모 글이 섞여 있을 수 있다. 그런 글은 영상의 연애 고민이 아니다. "
-    "근거는 제목 > 연애 고민을 말하는 댓글 > 설명 순으로 고른다."
+    "근거는 연애 고민을 말하는 댓글 > 제목 > 설명 순으로 고른다(제목 낱말을 되풀이하지 않게 "
+    "인기 댓글에 나온 사연·말을 먼저). 해시태그(#…) 낱말은 근거·핵심 말로 쓰지 않는다."
 )
 TRANSCRIPT_LABELS = {
     "manual": "붙여 넣은 자막",
@@ -320,6 +321,24 @@ class ContextService:
             raise AppError(ErrorKind.INVALID_URL, detail="영상 ID 형식이 아님")
         self.manual.clear(video_id)
         return self.build(video_id)
+
+    def transcript_map(self, video_ids: list[str]) -> dict[str, bool]:
+        """이미 읽은(맥락을 만든) 영상 → 자막이 있는지(2026-11-18, ① 목록의 「자막 있음/없음」).
+
+        저장된 것만 본다 — YouTube도 자막 공급처도 부르지 않는다. 안 읽은 영상은 넣지 않는다."""
+        ids = [v for v in dict.fromkeys(video_ids) if v]
+        if not ids:
+            return {}
+        marks = ",".join("?" * len(ids))
+        with db.session(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT video_id, transcript_source, transcript_text <> '' AS has_text "
+                f"FROM video_context WHERE built_at IS NOT NULL AND video_id IN ({marks})",
+                ids,
+            ).fetchall()
+        return {
+            r["video_id"]: bool(r["has_text"]) and r["transcript_source"] != "none" for r in rows
+        }
 
     def prompt_text(self, context: VideoContext, max_chars: int | None = None) -> str:
         return fit_prompt(context, max_chars or self.context_chars).text

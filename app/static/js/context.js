@@ -40,12 +40,14 @@ export function transcriptLine(ctx) {
     return `자동으로 읽은 자막 ${n(ctx.transcript_chars)}자${label}`;
   }
   if (ctx.transcript_source === 'unofficial') return `비공식 조회 자막 ${n(ctx.transcript_chars)}자`;
-  if (ctx.transcript_reason === 'off') return '자막 자동 읽기가 꺼져 있어 제목과 설명으로 대신합니다';
+  // 2026-11-18 자료가 얇은 영상: 자막이 없으면 무엇만 읽었는지와 초안이 밋밋할 수 있다는 것을 알린다
+  if (ctx.transcript_reason === 'off') return `자막 자동 읽기가 꺼져 있어 제목·설명·댓글만 읽었습니다. ${THIN_NOTE}`;
   if (ctx.transcript_reason) {
-    return `자막을 읽지 못해 제목과 설명으로 대신합니다(${ctx.transcript_note || '이유 모름'})`;
+    return `자막을 읽지 못해(${ctx.transcript_note || '이유 모름'}) 제목·설명·댓글만 읽었습니다. ${THIN_NOTE}`;
   }
-  return '자막 없음 · 제목과 설명으로 대신 읽음';
+  return `자막이 없어 제목·설명·댓글만 읽었습니다. ${THIN_NOTE}`;
 }
+const THIN_NOTE = '초안이 밋밋할 수 있어요';
 
 function commentsLine(ctx) {
   if (ctx.comments_disabled) return '댓글이 막힌 영상';

@@ -480,6 +480,14 @@ _VERBISH = (
 )
 _TOKEN = re.compile(r"[0-9A-Za-z가-힣]+")
 _HASHTAG = re.compile(r"[#＃]([0-9A-Za-z가-힣_]{2,20})")
+_HASHTAG_TOKEN = re.compile(r"[#＃][^\s#＃]+")
+
+
+def strip_hashtags(text: str) -> str:
+    """글에서 해시태그(#낱말)를 뺀다(2026-11-18). 해시태그 낱말은 핵심 말·댓글 재료가 아니다 —
+    설명란 「#인팁특징」이 핵심 말로 뽑혀 댓글에 「인팁특징」이 들어갔다."""
+    out = _HASHTAG_TOKEN.sub(" ", unicodedata.normalize("NFC", text or ""))
+    return "\n".join(" ".join(line.split()) for line in out.split("\n")).strip()
 
 
 def _strip_particle(word: str) -> str:
@@ -704,12 +712,13 @@ def _v7_key_phrases(
             "V7", False,
             f"이 영상의 핵심 말({shown})이 글에 없습니다 — 이 중 하나 이상을 그대로 넣으세요",
         )
-    title = (context_text or "").split("\n", 1)[0]
-    tags = hashtags((context_text or "")[:3000])
-    derived = derive_key_phrases([title, *tags], context_text, rules)
+    # 2026-11-18: 해시태그 낱말은 핵심 말로 뽑지 않는다(제목에서 #태그를 빼고, 자료에 #태그 말고
+    # 그대로 있는 말만)
+    title = strip_hashtags((context_text or "").split("\n", 1)[0])
+    derived = derive_key_phrases([title], strip_hashtags(context_text or ""), rules)
     hits = [p for p in derived if contains_key_phrase(body, p)]
     if hits:
-        return _check("V7", True, f"핵심 말 {_found(hits)} 담음 · 제목·해시태그에서 뽑은 핵심 말")
+        return _check("V7", True, f"핵심 말 {_found(hits)} 담음 · 제목에서 뽑은 핵심 말")
     shared = find_evidence(body, context_text) or ""
     if len(normalize(shared)) >= MIN_EVIDENCE_CHARS and not is_common_word(shared):
         return _check(

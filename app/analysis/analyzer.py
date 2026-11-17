@@ -30,9 +30,9 @@ from app.analysis.context import VideoContext
 from app.analysis.validator import (
     derive_key_phrases,
     find_evidence,
-    hashtags,
     normalize,
     quote_in_context,
+    strip_hashtags,
     usable_key_phrases,
 )
 from app.errors import AppError, ErrorKind
@@ -48,6 +48,7 @@ _CLAUSE = re.compile(
 # 초안 근거 고르는 순서: 자막 > 제목 > (연애 고민을 말하는) 댓글 > 설명. 설명란은 광고·협찬 글이
 # 섞여 있기 쉬워 맨 뒤다(실제 데이터 보정).
 SOURCE_ORDER = ("transcript", "title", "comment", "description")
+THIN_SOURCE_ORDER = ("transcript", "comment", "title", "description")  # 자막이 없을 때(2026-11-18)
 # 광고·협찬·이벤트 응모 글의 표시. 이런 말이 든 구절은 영상의 연애 고민 근거가 될 수 없다.
 # ('이벤트'는 '생일 이벤트', '구독'은 '구독자 사연'처럼 연애 이야기에도 나와서 그대로 넣지 않았다)
 PROMO_MARKERS = (
@@ -224,6 +225,7 @@ def check_evidence(
             not quote_in_context(quote, search_text)
             or is_promo(quote)
             or is_channel_promo(quote, context)
+            or hashtag_only(quote)  # 2026-11-18: 「#인팁특징 #MBTI연애」 같은 태그 줄
         ):
             dropped.append(quote)
             continue
@@ -244,23 +246,37 @@ def check_evidence(
 def check_key_phrases(
     raw: Any, search_text: str, context: VideoContext | None = None
 ) -> tuple[list[str], list[str]]:
-    """모델이 준 핵심 말 → (쓸 수 있는 것, 버린 것). 광고·협찬·설명란 채널 홍보 말도 버린다."""
+    """모델이 준 핵심 말 → (쓸 수 있는 것, 버린 것). 광고·협찬·설명란 채널 홍보 말도 버린다.
+
+    2026-11-18: 해시태그로만 있는 말(「#인팁특징」)은 버린다 — 자료에서 #태그를 뺀 글에 그대로
+    있어야 핵심 말이다."""
     items = [_clean(x, 60) for x in raw] if isinstance(raw, list) else []
-    items = [x for x in items if x]
+    items = [x for x in items if x and not x.lstrip().startswith(("#", "＃"))]
     kept = [
-        p for p in usable_key_phrases(items, search_text)
+        p for p in usable_key_phrases(items, strip_hashtags(search_text))
         if not is_promo(p) and not (context is not None and is_channel_promo(p, context))
     ]
     kept_n = {normalize(p) for p in kept}
-    dropped = [x for x in items if normalize(x.strip("'\"‘’“”「」#")) not in kept_n]
-    return kept[:MAX_KEY_PHRASES], dropped
+    raw_items = [_clean(x, 60) for x in raw] if isinstance(raw, list) else []
+    dropped = [x.strip().lstrip("#＃") for x in raw_items
+               if x and normalize(x.strip("'\"‘’“”「」#＃")) not in kept_n]
+    return kept[:MAX_KEY_PHRASES], list(dict.fromkeys(dropped))
 
 
 def fallback_key_phrases(context: VideoContext, search_text: str) -> list[str]:
-    """핵심 말이 없을 때 제목·해시태그(제목·설명)에서 코드로 뽑는다(광고 말은 뺀다)."""
+    """핵심 말이 없을 때 제목에서 코드로 뽑는다(광고 말은 뺀다).
+
+    2026-11-18: 해시태그(제목·설명의 #낱말)에서는 뽑지 않는다 — 해시태그 낱말은 핵심 말·댓글
+    재료가 아니다(「#인팁특징」이 댓글에 들어갔다)."""
     video = context.video.video
-    texts = [video.title, *hashtags(video.title), *hashtags(video.description)]
-    return [p for p in derive_key_phrases(texts, search_text) if not is_promo(p)][:MAX_KEY_PHRASES]
+    texts = [strip_hashtags(video.title)]
+    found = derive_key_phrases(texts, strip_hashtags(search_text))
+    return [p for p in found if not is_promo(p)][:MAX_KEY_PHRASES]
+
+
+def hashtag_only(quote: str) -> bool:
+    """해시태그를 빼면 남는 말이 거의 없는 구절(「#인팁특징 #MBTI연애」)."""
+    return len(normalize(strip_hashtags(quote))) < 6
 
 
 def has_love_concern(data: dict[str, Any]) -> bool:
@@ -384,13 +400,19 @@ def _ask(llm: LLMClient, system: str, user: str) -> dict[str, Any]:
     )
 
 
-def pick_evidence(evidence: Sequence[Evidence], avoid_quotes: Sequence[str] = ()) -> Evidence:
+def pick_evidence(
+    evidence: Sequence[Evidence], avoid_quotes: Sequence[str] = (), *,
+    prefer_comments: bool = False,
+) -> Evidence:
     """초안에 쓸 근거 하나: 피할 구절이 아닌 것 중 자막 > 제목 > 댓글 > 설명 순(같으면 모델 순서).
 
+    `prefer_comments`(2026-11-18, 자막이 없는 영상): 댓글 > 제목 > 설명 — 제목 낱말을 되풀이하지
+    않고 인기 댓글에 나온 사연·말을 ① 재료로 쓰게 한다.
     모두 이미 썼으면 가장 앞의 것을 다시 쓴다(초안 문장은 V11·프롬프트로 달라진다).
     """
     avoid = {normalize(q) for q in avoid_quotes if q}
-    rank = {s: i for i, s in enumerate(SOURCE_ORDER)}
+    order = THIN_SOURCE_ORDER if prefer_comments else SOURCE_ORDER
+    rank = {s: i for i, s in enumerate(order)}
     ordered = sorted(
         enumerate(evidence), key=lambda pair: (rank.get(pair[1].source, 9), pair[0])
     )
