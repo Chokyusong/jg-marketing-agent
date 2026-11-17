@@ -8,7 +8,8 @@
 - 이미 준비됨: 이 저장소(.venv가 있는 상태)에서 Install.cmd → 종료 코드 0과 「이미 준비됨」.
   .venv는 그대로.
 
-출력은 한국어 Windows 콘솔과 같은 cp949로 나온다. cp949로 풀어서 한글이 그대로인지 본다.
+출력은 콘솔 창이 있으면 한국어 Windows 콘솔과 같은 cp949로, 콘솔 없이 돌리면 PowerShell 부분이
+UTF-8로 나온다. 줄마다 UTF-8·cp949로 풀어서(`_decode`) 한글이 그대로인지 본다.
 실제 설치(패키지 내려받기)는 인터넷이 필요해 자동 테스트에 넣지 않았다
 (한 번 돌린 결과는 docs/STAGES.md P단계).
 """
@@ -36,8 +37,24 @@ def _run(cmd_file: Path, *args: str) -> tuple[int, str]:
         timeout=120,
         stdin=subprocess.DEVNULL,
     )
-    out = (proc.stdout + proc.stderr).decode("cp949")
-    return proc.returncode, out
+    return proc.returncode, _decode(proc.stdout) + _decode(proc.stderr)
+
+
+def _decode(raw: bytes) -> str:
+    """설치 파일 출력을 푼다. 콘솔 창이 있으면 cmd·PowerShell이 cp949로 내고, 콘솔 없이 돌리면
+    (출력을 파일로 받는 실행 등) PowerShell 부분이 UTF-8로 나온다 — 한 출력 안에 둘이 섞일 수 있어
+    줄마다 UTF-8 → cp949 차례로 풀고, 둘 다 안 되면 깨진 글자만 바꿔 넣는다(2026-11-18)."""
+    lines = []
+    for line in raw.splitlines(keepends=True):
+        for codec in ("utf-8", "cp949"):
+            try:
+                lines.append(line.decode(codec))
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            lines.append(line.decode("utf-8", errors="replace"))
+    return "".join(lines)
 
 
 def _copy_installer(dest: Path) -> None:
@@ -78,3 +95,10 @@ def test_already_ready_says_so_and_changes_nothing():
     assert "이미 준비됨" in out
     assert "pip" not in out.lower()  # 다시 설치하지 않았다
     assert venv_cfg.stat().st_mtime == before
+
+
+def test_decode_reads_console_and_no_console_output():
+    # 콘솔 창(cp949)과 콘솔 없음(UTF-8)의 출력이 한 줄씩 섞여도 한글이 그대로
+    mixed = "처음 실행입니다\r\n".encode("cp949") + "Python 3.12가 필요합니다\r\n".encode()
+    assert _decode(mixed) == "처음 실행입니다\r\nPython 3.12가 필요합니다\r\n"
+    assert _decode(b"\xff\xfe ok\n") == "�� ok\n"  # 둘 다 아니면 깨진 글자만 바꾼다
