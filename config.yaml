@@ -32,8 +32,11 @@ transcript:
   timeout_seconds: 10     # 자막을 읽어 오는 데 기다리는 시간(넘으면 「자막 없음」으로 넘어간다)
 browser:
   default_target: youtube # youtube(실제 게시, 기본) | sandbox(연습 모드)
-  headless: false         # 창 없이 돌릴지(자동 테스트는 true). 창이 보이면 아래 위치에 뜬다
-  window_position: "60,-1060"   # 크롬 창 위치 x,y(2번 모니터). 모니터 배치에 맞게 바꾼다
+  headless: false         # 창 없이 돌릴지(자동 테스트는 true)
+  # 크롬 창을 띄울 화면: 비우면 자동(권장) — 작업을 시작할 때마다 지금 모니터를 읽어 프로그램 창이
+  # 없는 모니터(하나뿐이면 그 왼쪽)에 작업 영역에 맞는 크기로 띄운다(app/browser/placement.py).
+  # 설정 화면 「크롬 창 띄울 화면」에서 모니터를 고를 수 있다. 좌표(window_position)는 쓰지 않는다
+  # (예전 판이 저장한 좌표가 남아 있으면 그대로 읽어 준다)
   typing_delay_ms: [60, 160]    # 글자마다 기다리는 밀리초(최소, 최대). 설정 화면의 「글자 입력 속도」
   # chrome_path: ""       # 비우면 설치된 크롬을 찾는다. 프로필 폴더는 %LOCALAPPDATA%\JGMarketingAgent\profiles
 llm:

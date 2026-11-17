@@ -142,14 +142,17 @@ class PlaywrightYouTubeDriver(PlaywrightSandboxDriver):
         *,
         video_id: str,
         headless: bool,
-        window_position: tuple[int, int],
+        window_position: tuple[int, int] | None,
         rng: random.Random | None = None,
         prepare_context: Callable[[Any], None] | None = None,
         selectors: YouTubeSelectors = SELECTORS,
+        window_size: tuple[int, int] | None = None,
+        window_target: Any = None,
     ) -> None:
         if not is_video_id(video_id):
             raise ValueError(f"영상 ID 형식이 아닙니다: {video_id!r}")
-        super().__init__(headless=headless, window_position=window_position, rng=rng)
+        super().__init__(headless=headless, window_position=window_position, rng=rng,
+                         window_size=window_size, window_target=window_target)
         self.video_id = video_id
         self.prepare_context = prepare_context  # 테스트: 가짜 페이지를 끼워 넣는 자리
         self.sel = selectors

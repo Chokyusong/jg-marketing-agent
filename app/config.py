@@ -52,8 +52,9 @@ DEFAULT_BRAND_FACTS = ("운명원은 연애 사주 상담을 하는 곳이다",)
 # 7단계: 과제 설정 예시의 프로필 이름(화면 이름. 폴더 이름은 profile-1… — app/ops/profiles.py)
 DEFAULT_PROFILES = ("유튜브1", "유튜브2", "유튜브3")
 POST_TARGETS = ("sandbox", "youtube")  # 게시 대상: 통제된 테스트 페이지 / 실제 유튜브(사람이 게시)
-# 8단계: 브라우저 연결(DESIGN 6.3). 창 위치 기본은 2번 모니터(AGENTS.md 창 규칙)
-DEFAULT_WINDOW_POSITION = (60, -1060)
+# 8단계: 브라우저 연결(DESIGN 6.3). 2026-11-17부터 창 위치 기본은 「자동」(좌표 없음,
+# app/browser/placement.py). 예전 기본값(대표 PC의 위쪽 2번 모니터)은 쓰지 않는다
+DEFAULT_WINDOW_POSITION: tuple[int, int] | None = None
 DEFAULT_TYPING_DELAY_MS = (60, 160)
 PROFILES_DIR_ENV = "JG_PROFILES_DIR"  # 프로필 폴더 위치를 바꿀 때(테스트·다른 PC). 비우면 아래 기본
 
@@ -67,15 +68,21 @@ def default_profiles_root(environ: dict[str, str] | None = None) -> Path:
 
 @dataclass(frozen=True)
 class BrowserSettings:
-    """`browser` 절(8단계). 창은 기본으로 보이게(headless 거짓) 띄우고 위치는 2번 모니터."""
+    """`browser` 절(8단계). 창은 기본으로 보이게(headless 거짓) 띄우고 위치는 자동(2026-11-17)."""
 
     headless: bool = False
-    window_position: tuple[int, int] = DEFAULT_WINDOW_POSITION
+    # 옛 좌표(예전 판이 저장한 값). 없으면 None → 자동. 작업마다 정한 실제 위치로 바꿔 넘긴다
+    window_position: tuple[int, int] | None = DEFAULT_WINDOW_POSITION
     typing_delay_ms: tuple[int, int] = DEFAULT_TYPING_DELAY_MS
     chrome_path: str | None = None  # 비우면 설치된 크롬을 찾는다(app/browser/chrome.py)
     profiles_root: Path = field(default_factory=default_profiles_root)
     # 실패한 작업의 화면 캡처(`<작업ID>.png`). 저장소 안이지만 .gitignore가 막는다
     screenshot_dir: Path = ROOT / "error_screenshots"
+    # 2026-11-17 창 위치 자동: 고른 화면(auto · 모니터 ID · 빈 값=자동, 옛 좌표가 있으면 옛 방식)
+    window_screen: str = ""
+    # 작업마다 정해 넘기는 값(설정 파일에는 없다): 창 크기(크롬 DIP)와 연 뒤 확인할 목표
+    window_size: tuple[int, int] | None = None
+    window_target: Any = field(default=None, compare=False, repr=False)
 
 
 @dataclass(frozen=True)
@@ -285,8 +292,8 @@ def _default_target(browser: Any) -> str:
     return target
 
 
-def _window_position(raw: Any) -> tuple[int, int]:
-    """`"60,-1060"` 또는 `[60, -1060]` → (60, -1060)."""
+def _window_position(raw: Any) -> tuple[int, int] | None:
+    """`"60,-1060"` 또는 `[60, -1060]` → (60, -1060). 비우면 None(자동)."""
     if raw is None or raw == "":
         return DEFAULT_WINDOW_POSITION
     parts = raw.split(",") if isinstance(raw, str) else raw
@@ -330,6 +337,7 @@ def _browser_settings(raw: Any, env: dict[str, str]) -> BrowserSettings:
         screenshot_dir=Path(str(raw["screenshot_dir"]))
         if raw.get("screenshot_dir")
         else BrowserSettings.screenshot_dir,
+        window_screen=_clean(str(raw.get("window_screen") or "")) or "",
     )
 
 

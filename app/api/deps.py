@@ -24,7 +24,7 @@ from app.browser.chrome import find_chrome, popen_launcher
 from app.browser.hooks import BrowserHooks
 from app.browser.jobs import JobService
 from app.browser.login import LoginWindows, ProfileAccounts, default_checker
-from app.browser.screens import Monitor, read_monitors
+from app.browser.screens import Monitor, app_window_monitor, read_monitors
 from app.config import Settings, load_settings, reload_settings
 from app.errors import AppError, ErrorKind, remember_log_secrets
 from app.llm.base import LLMClient, LLMHealth
@@ -70,6 +70,14 @@ class Services:
         if self.hooks.chrome_finder is not None:
             return self.hooks.chrome_finder()
         return find_chrome(self.settings.browser.chrome_path)
+
+    def app_monitor(self, monitors: list[Monitor]) -> Monitor | None:
+        """프로그램 창이 있는 모니터(창 위치 자동 규칙). 테스트는 hooks.app_monitor로 바꾼다."""
+        reader = self.hooks.app_monitor or app_window_monitor
+        try:
+            return reader(monitors)
+        except Exception:
+            return None
 
     def monitors(self) -> list[Monitor]:
         """지금 연결된 모니터 영역(9단계, 창 위치 확인). 테스트는 hooks.screens로 바꾼다."""
@@ -188,6 +196,7 @@ def build_services(
         playwright_ready=services.jobs.playwright_ready,
         screens=services.monitors,
         clock=clock,
+        app_monitor=services.app_monitor,
     )
     return services
 
@@ -227,6 +236,7 @@ def build_jobs(services: Services, *, clock: Clock = utc_now) -> JobService:
         verify_comment=hooks.verify_comment or verify_comment,
         clock=clock,
         screens=services.monitors,
+        app_monitor=services.app_monitor,
         confirm_before_post=settings.confirm_before_post,
         **extra,
     )

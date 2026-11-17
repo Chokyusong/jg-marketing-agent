@@ -37,7 +37,8 @@ from app.browser.chrome import (
     profile_in_use,
     require_profile_free,
 )
-from app.browser.screens import Monitor, check_window_position
+from app.browser.placement import WindowPlan, plan_window
+from app.browser.screens import Monitor
 from app.browser.youtube_driver import SELECTORS, YouTubeSelectors
 from app.config import BrowserSettings
 from app.errors import AppError, ErrorKind
@@ -266,6 +267,7 @@ class ProfileAccounts:
         screens: Callable[[], Sequence[Monitor]] | None = None,
         clock: Clock = utc_now,
         task_running: Callable[[], bool] = lambda: False,
+        app_monitor: Callable[[Sequence[Monitor]], Monitor | None] | None = None,
     ) -> None:
         self.db_path = db_path
         self.profiles = profiles
@@ -278,6 +280,7 @@ class ProfileAccounts:
         self.checker = checker
         self.playwright_ready = playwright_ready
         self.screens = screens
+        self.app_monitor = app_monitor  # 프로그램 창이 있는 모니터(창 위치 자동 규칙)
         self.clock = clock
         # 작업 스레드에서 짧은 일(다른 로그인 확인)이 도는지. 바쁜데 이것이 아니면 게시 중으로 본다
         self.task_running = task_running
@@ -327,15 +330,26 @@ class ProfileAccounts:
 
     # ------------------------------------------------------------ 창 열기
 
-    def _position(self) -> tuple[int, int]:
-        wanted = self.browser.window_position
+    def _plan(self) -> WindowPlan:
+        """창을 띄울 곳(게시용 크롬과 같은 규칙, 열 때마다 모니터를 다시 읽는다)."""
         monitors: list[Monitor] = []
         if self.screens is not None:
             try:
                 monitors = list(self.screens())
             except Exception:
                 monitors = []
-        return check_window_position(wanted, monitors).position or wanted
+        app = None
+        if self.app_monitor is not None and monitors:
+            try:
+                app = self.app_monitor(monitors)
+            except Exception:
+                app = None
+        b = self.browser
+        return plan_window(monitors, screen=b.window_screen, legacy=b.window_position,
+                           app_monitor=app)
+
+    def _position(self) -> tuple[int, int] | None:
+        return self._plan().position
 
     def open_window(self, name: str, *, url: str = LOGIN_URL) -> LoginState:
         """그 프로필 폴더로 일반 크롬을 연다(로그인 주소 또는 유튜브 첫 화면). 셸 없이 인자 목록."""
@@ -349,7 +363,8 @@ class ProfileAccounts:
             raise AppError(ErrorKind.PROFILE_IN_USE, detail="프로그램이 연 창이 아직 열려 있음")
         path = ensure_profile_dir(self.browser.profiles_root, profile.folder)
         require_profile_free(path)
-        args = assist_args(chrome, path, url, self._position())
+        plan = self._plan()
+        args = assist_args(chrome, path, url, plan.position, plan.size)
         proc = self.launcher(args)
         self.windows.track(name, proc)
         return self.state_of(name)

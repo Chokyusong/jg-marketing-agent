@@ -122,18 +122,22 @@ def window_arg(position: tuple[int, int]) -> str:
 
 
 def assist_args(
-    chrome: Path, user_data_dir: Path, url: str, window_position: tuple[int, int]
+    chrome: Path,
+    user_data_dir: Path,
+    url: str,
+    window_position: tuple[int, int] | None,
+    window_size: tuple[int, int] | None = None,
 ) -> list[str]:
-    """실제 유튜브를 사람에게 열어 주는 크롬 실행 인자. 자동화 옵션은 하나도 넣지 않는다."""
-    return [
-        str(chrome),
-        f"--user-data-dir={user_data_dir}",
-        window_arg(window_position),
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--new-window",
-        url,
-    ]
+    """실제 유튜브를 사람에게 열어 주는 크롬 실행 인자. 자동화 옵션은 하나도 넣지 않는다.
+
+    2026-11-17: 위치·크기는 `app/browser/placement.py`가 정한다(모르면 빼고 크롬이 정한다).
+    자동화 연결이 없으므로 연 뒤 확인·바로잡기는 하지 않는다."""
+    args = [str(chrome), f"--user-data-dir={user_data_dir}"]
+    if window_position is not None:
+        args.append(window_arg(window_position))
+    if window_size is not None:
+        args.append(f"--window-size={int(window_size[0])},{int(window_size[1])}")
+    return args + ["--no-first-run", "--no-default-browser-check", "--new-window", url]
 
 
 def popen_launcher(args: Sequence[str]) -> subprocess.Popen[bytes]:

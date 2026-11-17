@@ -332,7 +332,7 @@ V12는 2026-11-16 5단계 점검에서 더했다. 실제 모델(qwen3.8:27b) 초
 - **Playwright 동기 API를 전용 스레드에서** 돌린다. Windows에서 uvicorn 이벤트 루프와 Playwright 비동기 API가 충돌하는 문제를 피한다.
 - 크롬은 `launch_persistent_context(user_data_dir=..., channel="chrome")`로 연다. 프로필 폴더는 저장소 밖(`%LOCALAPPDATA%\JGMarketingAgent\profiles\profile-1` 등)에 둔다. 폴더 이름은 영문, 화면에 보이는 이름만 한글(유튜브1)이다.
 - 구글 로그인은 자동화 창에서 막히는 경우가 많다. `scripts/setup_profile.ps1`이 일반 크롬을 같은 폴더로 열어 사람이 한 번 로그인해 둔다. `sandbox`에는 로그인이 필요 없다.
-- **창 위치.** 시험·녹화용 창은 주 모니터에 띄우지 않는다. 자동 테스트는 창 없이(headless) 돌리고, 시연처럼 창이 보여야 할 때는 `config.yaml`의 `browser.window_position`(기본 `60,-1060`, 위쪽 2번 모니터)을 쓴다. 9단계부터 크롬을 띄우기 전에 실제 모니터 배치를 읽어(`app/browser/screens.py`) 그 위치가 어느 모니터에도 없으면 주 모니터 `60,60`에 띄우고 작업 기록에 남긴다(모니터 배치가 다른 PC에서 창이 화면 밖에 떠 안 보이는 일을 막는다).
+- **창 위치.** 시험·녹화용 창은 주 모니터에 띄우지 않는다. 자동 테스트는 창 없이(headless) 돌린다. 2026-11-17부터 크롬 창 위치는 **어느 PC에서나 저절로** 정한다(대표 PC 좌표 `60,-1060`을 기본값에서 뺐다). 설정 `browser.window_screen`이 `auto`(「자동 (권장)」, 기본) 또는 비어 있으면 작업을 시작할 때마다 지금 모니터를 읽어(`app/browser/screens.py`, 물리 픽셀·작업 영역·배율) 자동 규칙(`app/browser/placement.py`, 순수 함수): 모니터가 둘 이상이면 프로그램 창이 있는 모니터가 아닌 모니터(여럿이면 주 모니터가 아닌 것 중 프로그램 창에 가장 가까운 것, 프로그램 창 위치를 모르면 주 모니터에 있다고 본다)의 작업 영역 가운데. 모니터가 하나면 그 왼쪽, 작업 영역 폭의 60% 안쪽(③칸이 가려지지 않게). 크기는 작업 표시줄을 뺀 작업 영역(`rcWork`) 안에서 1280×900을 넘지 않고, 작은 화면에서는 줄인다. 모니터 ID를 고르면 그 모니터(프로그램 창도 거기 있으면 왼쪽 60%), 그 모니터가 지금 없으면 자동으로 떨어지고 작업 기록에 「크롬 창: 고른 모니터가 지금 연결돼 있지 않아 자동으로 고른 화면에 띄웁니다」 한 줄. 예전 판이 저장한 좌표(`browser.window_position`)만 있으면 옛 방식 그대로(화면 밖이면 주 모니터 `60,60`, 작업 기록에 남김). 같은 규칙을 게시용 크롬(Playwright)·[로그인하기]·[유튜브 열기] 창에 쓴다. 게시용 크롬은 연 뒤 실제 창 위치를 크롬에게 물어(페이지 `screenX`·`screen.avail*`, DevTools `Browser.getWindowForTarget`·`setWindowBounds`) 정한 모니터 작업 영역 밖이면 바로잡는다. 보통 크롬 창(로그인·유튜브 열기)은 자동화 연결이 없어 처음 위치·크기만 준다. 크롬 좌표는 DIP(배율을 뺀 값)라 배율이 섞인 PC에서는 어림값이다(placement.py 머리말에 좌표 기준과 출처). 프로그램 창(`app/desktop.py`)은 1600×1000을 주 모니터 작업 영역(논리 픽셀) 안에 맞추고, 최소 크기 1100×720보다 작은 화면이면 최대화로 띄운다.
 - 실패하면 `error_screenshots/<작업ID>.png`를 남기고 사유를 `runs`에 적는다.
 
 ## 7. YouTube Data API
@@ -381,7 +381,7 @@ transcript:
   provider: manual        # manual | unofficial
 browser:
   default_target: youtube # youtube(실제 게시, 기본) | sandbox(연습 모드). 옛 assist·youtube_auto도 youtube
-  window_position: "60,-1060"
+  # window_screen: auto   # 크롬 창 띄울 화면: auto(기본, 자동) · 모니터 ID. 좌표는 쓰지 않는다(2026-11-17)
   typing_delay_ms: [60, 160]
 llm:
   active: ollama          # 4단계에 provider → active로 바꿨다(옛 키도 읽는다). 모양은 5.2.1
@@ -428,7 +428,7 @@ llm:
   - 저장한 키도 로그 가리기 대상이다.
   - Windows가 아니면 저장을 거절하고(503 `secret_store_unavailable`) `.env`를 안내한다.
   - [연결 확인]은 1단위짜리 호출(`i18nLanguages`)로 결과를 쉬운 말로 알린다(연결됨 · 키 없음 · 키 거부 · 할당량 · 인터넷 · 알 수 없음).
-- **크롬 창 위치**: 좌표를 치지 않는다. 설정 화면에서 모니터를 고르면(`GET /api/screens`) 그 모니터 왼쪽 위에서 `+60,+60`을 `browser.window_position`에 저장한다.
+- **크롬 창 위치**: 좌표를 치지 않는다. 첫 칸 「자동 (권장)」(`auto`, 기본)을 고르면 `browser.window_screen=auto`를 저장하고 옛 좌표 `browser.window_position`은 지운다. 모니터를 고르면(`GET /api/screens`) 그 ID와, 옛 판과 맞추려고 그 모니터 왼쪽 위에서 `+60,+60`을 `browser.window_position`에 저장한다. 설정 화면에는 좌표 대신 「지금은 모니터 2(위쪽)에 뜹니다」 한 줄(`GET /api/settings`의 `browser.window_where`, `GET /api/screens`의 `where`·`auto_where`·`note`, 2026-11-17 필드 추가).
 - `comment.disclose_default`·`posting.confirm_before_post`는 R2에서는 저장·읽기만 한다(화면에 「곧 적용」). 게시 동작에는 R3에서 쓴다.
 
 ### 8.2 프로필 로그인 (R2, 2026-11-17)

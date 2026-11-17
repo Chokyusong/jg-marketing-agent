@@ -38,13 +38,18 @@ def test_settings_shows_rules_profiles_model_and_limits(make_client, tmp_path):
     assert data["discover"]["query"] == "연애 고민"
     assert data["transcript_provider"] == "auto"  # R4: 자막 자동으로 읽기가 기본
     b = data["browser"]
-    assert b["window_position"] == "60,-1060"
-    assert b["window_position_used"] == "60,-1060" and b["window_position_adjusted"] is False
+    # 2026-11-17 창 위치 자동: 좌표는 비고 「자동」으로 위쪽 모니터에 뜬다
+    assert b["window_position"] == "" and b["window_screen"] == "auto" and b["window_auto"] is True
+    assert b["window_position_used"] == "320,-990" and b["window_position_adjusted"] is False
+    assert b["window_where"] == "지금은 모니터 2(위쪽)에 뜹니다"
+    assert b["window_size_used"] == "1280×900" and b["window_fell_back"] is False
     assert b["chrome_found"] is False and b["playwright_ready"] is True
 
 
 def test_settings_reports_window_moved_on_single_monitor(make_client):
-    client = make_client(key=None, browser_hooks=hooks([MAIN]))
+    # 2026-11-17: 옛 판이 저장한 좌표가 남은 경우(옛 방식 그대로)
+    client = make_client(key=None, browser_hooks=hooks([MAIN]),
+                         overrides={"browser": {"window_position": "60,-1060"}})
     b = client.get("/api/settings").json()["browser"]
     assert b["window_position"] == "60,-1060"
     assert b["window_position_used"] == "60,60"

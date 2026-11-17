@@ -132,7 +132,8 @@ def test_browser_settings_defaults(make_config):
 
     s = load_settings(make_config(), env_path=None, environ={})
     assert s.browser.headless is False
-    assert s.browser.window_position == (60, -1060)
+    # 2026-11-17 창 위치 자동: 기본 좌표 없음(None) → 작업마다 모니터를 읽어 정한다
+    assert s.browser.window_position is None and s.browser.window_screen == ""
     assert s.browser.typing_delay_ms == (60, 160)
     assert s.browser.chrome_path is None
     assert s.browser.profiles_root.parts[-2:] == ("JGMarketingAgent", "profiles")

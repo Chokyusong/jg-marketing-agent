@@ -177,7 +177,9 @@ def test_shorts_seconds_reach_video_search(client):
 def test_screens_list_and_choice_saves_safe_position(make_client):
     client = make_client(key=None, browser_hooks=hooks([MAIN, LEFT]))
     data = client.get("/api/screens").json()
-    assert data["checked"] is True and data["window_position"] == "60,-1060"
+    # 2026-11-17 창 위치 자동: 기본은 좌표 없이 「자동」
+    assert data["checked"] is True and data["window_position"] == ""
+    assert data["screen"] == "auto" and data["where"] == "지금은 모니터 2(왼쪽)에 뜹니다"
     labels = [i["label"] for i in data["items"]]
     assert labels == ["모니터 1 · 주 모니터 · 1920×1080", "모니터 2 · 왼쪽 모니터 · 1920×1080"]
     left = data["items"][1]
@@ -201,8 +203,10 @@ def test_unknown_screen_and_typed_position_are_refused(client):
 
 def test_screens_when_monitors_cannot_be_read(make_client):
     client = make_client(key=None, browser_hooks=hooks([]))
-    assert client.get("/api/screens").json() == {
-        "checked": False, "window_position": "60,-1060", "items": []}
+    data = client.get("/api/screens").json()
+    assert {k: data[k] for k in ("checked", "window_position", "items")} == {
+        "checked": False, "window_position": "", "items": []}  # 2026-11-17: 기본 좌표 없음
+    assert data["screen"] == "auto"
 
 
 # ---------------------------------------------------------------- 유튜브 API 키
@@ -355,3 +359,32 @@ def test_models_lists_installed_with_general_first(make_client, mock_http):
 def test_models_when_ollama_is_off(client):
     data = client.get("/api/llm/models").json()
     assert data["reachable"] is False and data["items"] == []
+
+
+def test_choosing_auto_clears_the_old_position(make_client):
+    """2026-11-17 창 위치 자동: 「자동 (권장)」을 고르면 옛 좌표를 지우고 자동으로 띄운다."""
+    client = make_client(key=None, browser_hooks=hooks([MAIN, UPPER]),
+                         overrides={"browser": {"window_position": "-1860,60"}})
+    before = client.get("/api/screens").json()
+    assert before["screen"] == "" and before["where"] == "지금은 모니터 1(주 모니터)에 뜹니다"
+    assert before["auto_where"] == "지금은 모니터 2(위쪽)에 뜹니다"
+    res = put(client, **{"browser.window_screen": "auto"})
+    assert res.status_code == 200, res.text
+    b = res.json()["browser"]
+    assert b["window_screen"] == "auto" and b["window_auto"] is True
+    assert b["window_position"] == "" and b["window_position_used"] == "320,-990"
+    after = client.get("/api/screens").json()
+    assert after["screen"] == "auto" and after["where"] == "지금은 모니터 2(위쪽)에 뜹니다"
+    browser = client.app.state.services.get().settings.browser
+    assert browser.window_position is None and browser.window_screen == "auto"
+
+
+def test_missing_chosen_monitor_shows_fallback_note(make_client):
+    client = make_client(key=None, browser_hooks=hooks([MAIN]),
+                         overrides={"browser": {"window_screen": "0_-1080_1920_1080"}})
+    b = client.get("/api/settings").json()["browser"]
+    assert b["window_fell_back"] is True
+    assert b["window_where"] == "지금은 모니터 1(주 모니터)에 뜹니다"
+    assert "연결돼 있지 않아" in b["window_position_note"]
+    screens = client.get("/api/screens").json()
+    assert "연결돼 있지 않아" in screens["note"]

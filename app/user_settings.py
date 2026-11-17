@@ -278,8 +278,9 @@ FIELDS: dict[str, Field] = {
     "browser.typing_speed": Field(
         "choice", "글자 입력 속도", ("browser", "typing_speed"), choices=tuple(TYPING_SPEEDS)
     ),
-    # 크롬 창을 띄울 화면: 모니터 ID(GET /api/screens). 저장할 때 그 모니터의 안전한 위치를 계산해
-    # browser.window_position에도 넣는다(좌표를 직접 치지 않는다)
+    # 크롬 창을 띄울 화면: auto(「자동 (권장)」, 기본) 또는 모니터 ID(GET /api/screens). 모니터를
+    # 고르면 그 모니터의 안전한 위치를 browser.window_position에도 넣는다(옛 판과 맞추려고. 좌표를
+    # 직접 치지 않는다). auto는 그 좌표를 지운다
     "browser.window_screen": Field(
         "str", "크롬 창을 띄울 화면", ("browser", "window_screen"), 1, 60
     ),

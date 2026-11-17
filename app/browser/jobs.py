@@ -42,6 +42,9 @@ get(job_id) -> JobView          상태, 지난 단계, 메시지, 실패 사유,
   `run_task(fn)`로 같은 작업 스레드에서 돌린다. 게시 작업이 진행 중이면 받지 않고, 도는 동안에는
   새 게시를 받지 않는다. `busy()`는 둘 중 하나라도 돌고 있는지, `close_if_idle()`은 쉬고 있을 때만
   더 받지 않게 닫는다(설정을 저장해 서비스를 다시 만들 때).
+- **창 위치(2026-11-17 자동).** 창이 보이는 실행은 작업을 시작할 때마다 모니터를 다시 읽어
+  `placement.plan_window`로 정한다(기본 자동, 고른 모니터가 없으면 자동으로 떨어지고 기록에 한 줄).
+  크기도 그 모니터 작업 영역에 맞춘다. 아래 9단계 확인은 옛 좌표가 남아 있을 때만 쓴다.
 - **창 위치(9단계).** 창이 보이는 실행(headless가 아닐 때)은 띄우기 전에 `browser.window_position`이
   실제 모니터 안인지 본다(`screens.check_window_position`). 밖이면 주 모니터의 안전한 위치로 바꿔
   띄우고 작업 기록(job_events)에 그렇게 했다고 남긴다.
@@ -66,6 +69,7 @@ from urllib.parse import urlencode, urlsplit
 
 from app import db
 from app.browser.chrome import ensure_profile_dir, require_profile_free
+from app.browser.placement import WindowPlan, plan_window
 from app.browser.sandbox_driver import (
     LOCAL_HOSTS,
     BrowserDriver,
@@ -74,7 +78,7 @@ from app.browser.sandbox_driver import (
     Stopped,
     require_sandbox_url,
 )
-from app.browser.screens import Monitor, check_window_position
+from app.browser.screens import Monitor
 from app.config import BrowserSettings
 from app.errors import AppError, ErrorKind
 from app.ops.profiles import ProfileService
@@ -261,7 +265,8 @@ YouTubeDriverFactory = Callable[[BrowserSettings, str], BrowserDriver]
 
 def default_driver_factory(settings: BrowserSettings) -> BrowserDriver:
     return PlaywrightSandboxDriver(
-        headless=settings.headless, window_position=settings.window_position
+        headless=settings.headless, window_position=settings.window_position,
+        window_size=settings.window_size, window_target=settings.window_target,
     )
 
 
@@ -269,7 +274,8 @@ def default_youtube_driver_factory(settings: BrowserSettings, video_id: str) -> 
     from app.browser.youtube_driver import PlaywrightYouTubeDriver
 
     return PlaywrightYouTubeDriver(
-        video_id=video_id, headless=settings.headless, window_position=settings.window_position
+        video_id=video_id, headless=settings.headless, window_position=settings.window_position,
+        window_size=settings.window_size, window_target=settings.window_target,
     )
 
 
@@ -311,6 +317,7 @@ class JobService:
         approval_timeout: float = APPROVAL_TIMEOUT_SECONDS,
         rng: random.Random | None = None,
         screens: Callable[[], Sequence[Monitor]] | None = None,
+        app_monitor: Callable[[Sequence[Monitor]], Monitor | None] | None = None,
         youtube_driver_factory: YouTubeDriverFactory = default_youtube_driver_factory,
         confirm_before_post: bool = False,
     ) -> None:
@@ -320,6 +327,7 @@ class JobService:
         self.confirm_before_post = bool(confirm_before_post)
         # 모니터 목록을 읽는 함수(9단계). None이면 확인하지 않고 설정값 그대로 띄운다
         self.screens = screens
+        self.app_monitor = app_monitor  # 프로그램 창이 있는 모니터(자동 규칙, 모르면 None)
         self.rules = rules
         self.profiles = profiles
         self.browser = browser
@@ -732,8 +740,10 @@ class JobService:
             if job.cancel_flag.is_set():
                 raise JobCancelled
             browser = self.browser
-            if not browser.headless:  # 창이 보일 때만 위치를 확인한다
-                browser = replace(browser, window_position=self._place_window(job))
+            if not browser.headless:  # 창이 보일 때만 위치를 정한다(작업마다 모니터를 다시 읽는다)
+                plan = self._place_window(job)
+                browser = replace(browser, window_position=plan.position, window_size=plan.size,
+                                  window_target=plan.target)
             if job.mode == "sandbox":
                 driver = job.driver = self.driver_factory(browser)
             else:
@@ -749,24 +759,33 @@ class JobService:
         finally:
             self._close_driver(job)
 
-    def _place_window(self, job: Job) -> tuple[int, int]:
-        """창을 띄울 위치. 설정값이 화면 밖이면 주 모니터의 안전한 위치로 바꾸고 기록에 남긴다."""
-        wanted = self.browser.window_position
-        if self.screens is None:
-            job.window_position = wanted
-            return wanted
-        try:
-            monitors = list(self.screens())
-        except Exception:  # 모니터를 못 읽어도 작업은 설정값으로 계속한다
-            log.exception("job %s: 모니터 정보를 읽지 못했습니다", job.id)
-            monitors = []
-        check = check_window_position(wanted, monitors)
-        position = check.position or wanted
-        job.window_position = position
-        if check.adjusted:
-            log.info("job %s: %s", job.id, check.note)
-            self._event(job, job.state, f"크롬 {check.note}", change=False)
-        return position
+    def _place_window(self, job: Job) -> WindowPlan:
+        """창을 띄울 곳(자동 · 고른 모니터 · 옛 좌표). 바꾸거나 떨어지면 기록에 한 줄 남긴다."""
+        b = self.browser
+        monitors: list[Monitor] = []
+        if self.screens is not None:
+            try:
+                monitors = list(self.screens())
+            except Exception:  # 모니터를 못 읽어도 작업은 계속한다(크롬이 정하는 곳)
+                log.exception("job %s: 모니터 정보를 읽지 못했습니다", job.id)
+        app_monitor = None
+        if self.app_monitor is not None and monitors:
+            try:
+                app_monitor = self.app_monitor(monitors)
+            except Exception:
+                app_monitor = None
+        plan = plan_window(monitors, screen=b.window_screen, legacy=b.window_position,
+                           app_monitor=app_monitor)
+        if plan.mode == "unknown" and self.screens is None:
+            plan = replace(plan, note="")  # 모니터를 읽는 곳이 없다(테스트): 알릴 것 없음
+        job.window_position = plan.position
+        if plan.adjusted:  # 옛 좌표가 화면 밖(예전과 같은 문구)
+            log.info("job %s: %s", job.id, plan.note)
+            self._event(job, job.state, f"크롬 {plan.note}", change=False)
+        elif plan.fell_back:
+            log.info("job %s: %s", job.id, plan.note)
+            self._event(job, job.state, f"크롬 창: {plan.note}", change=False)
+        return plan
 
     @staticmethod
     def _close_driver(job: Job) -> None:
@@ -813,6 +832,9 @@ class JobService:
             driver.open(job.profile_path, job.open_url)  # type: ignore[arg-type]
         except DriverError as exc:
             raise self._driver_failed(job, exc) from None
+        note = getattr(driver, "window_note", "")
+        if isinstance(note, str) and note:  # 연 뒤 확인에서 창을 정한 모니터에 맞추지 못함
+            self._event(job, job.state, note, change=False)
         self._check_cancel(job)
         self._event(job, "typing", "댓글 입력 자리를 눌러 한 글자씩 입력하는 중")
         try:

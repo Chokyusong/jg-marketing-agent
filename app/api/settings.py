@@ -30,7 +30,8 @@ from app.api.ai_choice import kind_of, label_of, readiness, sends_to
 from app.api.deps import ServiceHolder, Services, get_services
 from app.api.status import _problem
 from app.browser.chrome import profile_dir
-from app.browser.screens import check_window_position, find_choice, screen_choices
+from app.browser.placement import AUTO, plan_window
+from app.browser.screens import find_choice, screen_choices
 from app.config import (
     DEFAULT_OLLAMA_MODEL,
     LLM_KEY_TYPES,
@@ -107,19 +108,38 @@ def llm_settings(services: Services) -> SettingsLLMOut:
     )
 
 
+def window_plan(services: Services):
+    """지금 모니터로 크롬 창을 띄울 곳(설정 화면 한 줄 「지금은 모니터 2(위쪽)에 뜹니다」)."""
+    b = services.settings.browser
+    monitors = services.monitors()
+    app = services.app_monitor(monitors) if monitors else None
+    plan = plan_window(monitors, screen=b.window_screen, legacy=b.window_position,
+                       app_monitor=app)
+    return plan, bool([m for m in monitors if m.valid])
+
+
 def browser_settings(services: Services) -> SettingsBrowserOut:
     b = services.settings.browser
-    check = check_window_position(b.window_position, services.monitors())
+    plan, checked = window_plan(services)
     target = services.settings.default_target
+    screen = b.window_screen or ("" if b.window_position is not None else AUTO)
+    note = plan.note if checked else "모니터 정보를 읽지 못해 설정값 그대로"
+    if plan.mode == "legacy" and not plan.adjusted:
+        note = "화면 안"
     return SettingsBrowserOut(
         default_target=target,  # type: ignore[arg-type]
         default_target_label=TARGET_LABELS.get(target, target),
         headless=b.headless,
         window_position=_xy(b.window_position) or "",
-        window_position_used=_xy(check.position),
-        window_position_adjusted=check.adjusted,
-        window_position_checked=check.checked,
-        window_position_note=check.note,
+        window_position_used=_xy(plan.position),
+        window_position_adjusted=plan.adjusted,
+        window_position_checked=checked,
+        window_position_note=note,
+        window_screen=screen,
+        window_auto=plan.mode == "auto",
+        window_where=plan.where_text,
+        window_size_used=f"{plan.size[0]}×{plan.size[1]}" if plan.size else "",
+        window_fell_back=plan.fell_back,
         typing_delay_ms=list(b.typing_delay_ms),
         chrome_found=services.find_chrome() is not None,
         playwright_ready=services.jobs.playwright_ready(),
@@ -262,7 +282,10 @@ def update_settings(body: SettingsUpdateIn, request: Request) -> SettingsOut:
     if "browser.window_screen" in changes:
         screen_id = str(changes.pop("browser.window_screen") or "")
         choice = find_choice(screen_choices(services.monitors()), screen_id)
-        if choice is None:
+        if screen_id == AUTO:  # 「자동 (권장)」: 옛 좌표는 지운다(기본값과 같아 파일에서 빠진다)
+            computed["browser.window_screen"] = AUTO
+            computed["browser.window_position"] = ""
+        elif choice is None:
             errors["browser.window_screen"] = "연결된 모니터에서 골라 주세요"
         else:
             computed["browser.window_screen"] = choice.id
@@ -531,4 +554,13 @@ def screens(services: Annotated[Services, Depends(get_services)]) -> ScreensOut:
         )
         for c in screen_choices(services.monitors(), position)
     ]
-    return ScreensOut(checked=bool(items), window_position=_xy(position) or "", items=items)
+    plan, _checked = window_plan(services)
+    b = services.settings.browser
+    screen = b.window_screen or ("" if b.window_position is not None else AUTO)
+    auto_plan = plan_window(services.monitors(), screen=AUTO,
+                            app_monitor=services.app_monitor(services.monitors()))
+    return ScreensOut(
+        checked=bool(items), window_position=_xy(position) or "", items=items,
+        screen=screen, where=plan.where_text, auto_where=auto_plan.where_text,
+        note=plan.note,
+    )

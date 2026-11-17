@@ -438,7 +438,11 @@ def test_sandbox_assets_are_local(plain):
     assert css.status_code == 200 and "@import" not in css.text and "http" not in css.text
 
 
-@pytest.mark.parametrize("setup_overrides", [{"browser": {"headless": False}}])
+# 2026-11-17: 기본 좌표가 없어져(자동) 옛 좌표를 설정에 직접 넣어 옛 방식을 본다
+LEGACY = {"browser": {"headless": False, "window_position": "60,-1060"}}
+
+
+@pytest.mark.parametrize("setup_overrides", [LEGACY])
 def test_window_moves_to_main_monitor_when_position_is_off_screen(setup):
     """9단계: 모니터가 하나인 PC(심사자 PC)에서는 60,-1060이 화면 밖 → 주 모니터 60,60으로."""
     client, services, approve_one, drivers, launched, options = setup
@@ -454,7 +458,7 @@ def test_window_moves_to_main_monitor_when_position_is_off_screen(setup):
     assert notes == ["크롬 창 위치(60,-1060)가 화면 밖이라 주 모니터(60,60)에 띄웁니다"]
 
 
-@pytest.mark.parametrize("setup_overrides", [{"browser": {"headless": False}}])
+@pytest.mark.parametrize("setup_overrides", [LEGACY])
 def test_window_stays_on_upper_monitor_when_it_exists(setup):
     client, services, approve_one, drivers, launched, options = setup
     d = approve_one()
@@ -464,3 +468,31 @@ def test_window_stays_on_upper_monitor_when_it_exists(setup):
     job = wait_state(client, job["id"], "posted")
     assert options["settings"][0].window_position == (60, -1060)
     assert not any("화면 밖" in e["message"] for e in job["events"])
+
+
+@pytest.mark.parametrize("setup_overrides", [{"browser": {"headless": False}}])
+def test_window_auto_picks_the_monitor_without_the_app(setup):
+    """2026-11-17 창 위치 자동: 기본(좌표 없음)이면 작업마다 모니터를 읽어 위쪽 모니터 가운데."""
+    client, services, approve_one, drivers, launched, options = setup
+    d = approve_one()
+    job = client.post(
+        "/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": "youtube"}
+    ).json()
+    wait_state(client, job["id"], "posted")
+    (settings,) = options["settings"]
+    assert settings.window_position == (320, -990) and settings.window_size == (1280, 900)
+    assert settings.window_target is not None
+
+
+@pytest.mark.parametrize(
+    "setup_overrides", [{"browser": {"headless": False, "window_screen": "-1920_0_1920_1080"}}])
+def test_missing_chosen_monitor_falls_back_with_one_line(setup):
+    client, services, approve_one, drivers, launched, options = setup
+    d = approve_one()
+    job = client.post(
+        "/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": "youtube"}
+    ).json()
+    job = wait_state(client, job["id"], "posted")
+    notes = [e["message"] for e in job["events"] if "연결돼 있지 않아" in e["message"]]
+    assert notes == ["크롬 창: 고른 모니터가 지금 연결돼 있지 않아 자동으로 고른 화면에 띄웁니다"]
+    assert options["settings"][0].window_position == (320, -990)

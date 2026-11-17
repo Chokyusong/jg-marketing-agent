@@ -705,6 +705,12 @@ class SettingsBrowserOut(BaseModel):
     window_position_checked: bool  # 모니터 정보를 읽어 확인했는지
     window_position_note: str
     typing_delay_ms: list[int]
+    # 2026-11-17 창 위치 자동(필드 추가): 고른 화면(auto · 모니터 ID · 빈 값=옛 좌표)과 지금 뜰 곳
+    window_screen: str = "auto"
+    window_auto: bool = True
+    window_where: str = ""  # 「지금은 모니터 2(위쪽)에 뜹니다」
+    window_size_used: str = ""  # 「1280×900」(크롬 DIP)
+    window_fell_back: bool = False  # 고른 모니터가 없어 자동으로 떨어졌는지
     chrome_found: bool
     playwright_ready: bool
 
@@ -874,6 +880,11 @@ class ScreensOut(BaseModel):
     checked: bool  # 모니터 정보를 읽었는지
     window_position: str  # 지금 설정한 창 위치
     items: list[ScreenOut]
+    # 2026-11-17 창 위치 자동(필드 추가)
+    screen: str = "auto"  # 지금 고른 것: auto · 모니터 ID · 빈 값(옛 좌표)
+    where: str = ""  # 「지금은 모니터 2(위쪽)에 뜹니다」
+    auto_where: str = ""  # 「자동 (권장)」을 고르면 뜰 곳
+    note: str = ""  # 고른 모니터가 없어 자동으로 떨어졌을 때 등
 
 
 class ProfileLoginOut(BaseModel):

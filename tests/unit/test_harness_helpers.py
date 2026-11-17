@@ -19,7 +19,8 @@ def test_config_yaml_matches_design(base_config):
     assert base_config["browser"]["default_target"] == "youtube"  # R3: 실제 게시가 기본
     assert base_config["posting"]["confirm_before_post"] is False  # R3: [댓글 달기] 한 번으로
     assert "own_video_ids" not in base_config  # R3: 내 채널 영상 구분 없음
-    assert base_config["browser"]["window_position"] == "60,-1060"
+    # 2026-11-17 창 위치 자동: 대표 PC 좌표를 config.yaml에서 뺐다(비우면 자동)
+    assert "window_position" not in base_config["browser"]
     assert base_config["transcript"]["provider"] == "auto"  # R4: 자막 자동으로 읽기가 기본
 
 

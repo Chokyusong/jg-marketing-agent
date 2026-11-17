@@ -21,6 +21,7 @@ Playwright(Apache-2.0) 사용법 출처(확인 2026-11-16, playwright 1.65.2):
 
 from __future__ import annotations
 
+import logging
 import random
 from collections.abc import Callable
 from pathlib import Path
@@ -35,7 +36,8 @@ LAUNCH_TIMEOUT_MS = 30_000
 STEP_TIMEOUT_MS = 10_000
 CLICK_TIMEOUT_MS = 5_000
 VERIFY_TIMEOUT_MS = 15_000
-HEADED_WINDOW_SIZE = "--window-size=1280,900"
+log = logging.getLogger("app.browser.sandbox_driver")
+HEADED_WINDOW_SIZE = "--window-size=1280,900"  # 크기를 정하지 못했을 때(예전 고정값)
 
 TEXT_PROFILE_IN_USE = "그 프로필의 크롬 창이 이미 열려 있습니다. 그 프로필의 크롬 창을 닫아 주세요."
 
@@ -106,11 +108,18 @@ class PlaywrightSandboxDriver:
         self,
         *,
         headless: bool,
-        window_position: tuple[int, int],
+        window_position: tuple[int, int] | None,
         rng: random.Random | None = None,
+        window_size: tuple[int, int] | None = None,
+        window_target: Any = None,
     ) -> None:
         self.headless = headless
         self.window_position = window_position
+        # 2026-11-17 창 위치 자동: 모니터 작업 영역에 맞춘 크기와, 연 뒤 확인할 목표(placement)
+        self.window_size = window_size
+        self.window_target = window_target
+        self.window_check = ""  # 연 뒤 확인 결과(ok · fit · move · fit_other · other · 빈 값)
+        self.window_note = ""  # 사람에게 알릴 한 줄(바로잡지 못했을 때)
         self.rng = rng or random.Random()
         self.visited: list[str] = []  # 페이지가 실제로 간 주소(테스트가 sandbox뿐인지 확인한다)
         self.blocked: list[str] = []  # 막은 바깥 요청
@@ -121,9 +130,12 @@ class PlaywrightSandboxDriver:
     # ------------------------------------------------------------ 열기
 
     def launch_args(self) -> list[str]:
-        args = [window_arg(self.window_position), "--no-first-run", "--no-default-browser-check"]
+        args = [window_arg(self.window_position)] if self.window_position is not None else []
+        args += ["--no-first-run", "--no-default-browser-check"]
         if not self.headless:
-            args.append(HEADED_WINDOW_SIZE)
+            size = self.window_size
+            args.append(f"--window-size={int(size[0])},{int(size[1])}" if size
+                        else HEADED_WINDOW_SIZE)
         return args
 
     def open(self, user_data_dir: Path, url: str) -> None:
@@ -164,6 +176,54 @@ class PlaywrightSandboxDriver:
             self._ctx.route("**/*", self._guard)
         self._page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
         self._page.on("framenavigated", self._on_navigated)
+        if not self.headless and self.window_target is not None:
+            self._check_window()
+
+    def _check_window(self) -> None:
+        """창을 연 뒤 실제 위치를 크롬에게 묻고 정한 모니터 작업 영역 밖이면 바로잡는다.
+
+        화면 배율이 섞이면 넘긴 좌표와 실제 위치가 어긋날 수 있다(app/browser/placement.py 머리말).
+        위치는 페이지의 `screenX`·`outerWidth`·`screen.avail*`(모두 크롬 DIP)로 읽고, 바로잡기는
+        DevTools `Browser.getWindowForTarget` → `Browser.setWindowBounds`. 실패해도 게시는 계속한다.
+        """
+        from app.browser.placement import LANDED_SCRIPT, correct_window, landed_from
+
+        try:
+            cdp = self._ctx.new_cdp_session(self._page)
+            window_id = cdp.send("Browser.getWindowForTarget")["windowId"]
+        except Exception:
+            log.info("크롬 창 위치를 확인하지 못했습니다(DevTools 연결 없음)")
+            return
+        tried_move = False
+        for _ in range(3):
+            try:
+                landed = landed_from(self._page.evaluate(LANDED_SCRIPT))
+            except Exception:
+                return
+            if landed is None:
+                return
+            bounds, why = correct_window(landed, self.window_target, tried_move=tried_move)
+            self.window_check = why
+            if why == "other":
+                self.window_note = "크롬 창을 고른 모니터로 옮기지 못했습니다(지금 화면 안에 있음)"
+            if bounds is None:
+                return
+            if why == "move":
+                tried_move = True
+            if why == "fit_other":
+                self.window_note = "크롬 창을 고른 모니터로 옮기지 못해 지금 화면 안에 맞췄습니다"
+            left, top, width, height = bounds
+            try:
+                cdp.send("Browser.setWindowBounds",
+                         {"windowId": window_id, "bounds": {"windowState": "normal"}})
+                cdp.send("Browser.setWindowBounds", {"windowId": window_id, "bounds": {
+                    "left": int(left), "top": int(top),
+                    "width": int(width), "height": int(height)}})
+                self._page.wait_for_timeout(200)
+            except Exception:
+                return
+            if why == "fit_other":
+                return
 
     def _guard(self, route: Any) -> None:
         url = route.request.url

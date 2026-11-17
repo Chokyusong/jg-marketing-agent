@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 
 import httpx
@@ -113,10 +114,15 @@ def test_settings_save_shows_on_work_screen_survives_rebuild_and_resets(app_with
         # R3부터 광고 표기 기본값 · 게시 직전 확인도 바로 쓴다(「곧 적용」 표시 없음)
         assert page.locator("#settings-body .tag-soon").count() == 0
         assert not page.is_checked("#set-confirm-before")  # 기본 꺼짐
-        # 모니터는 고르기만(좌표 칸 없음). 위쪽 모니터를 골라 둔 상태
+        # 모니터는 고르기만(좌표 칸 없음). 2026-11-17: 첫 칸 「자동 (권장)」이 기본
         page.wait_for_function("!document.getElementById('set-window-screen').disabled")
         options = page.locator("#set-window-screen option").all_text_contents()
-        assert len(options) == 2 and all("모니터" in o for o in options), options
+        assert options[0] == "자동 (권장)", options
+        assert len(options) == 3 and all("모니터" in o for o in options[1:]), options
+        assert page.input_value("#set-window-screen") == "auto"
+        note = page.text_content("#set-window-note")
+        assert note.startswith("지금은 모니터 ") and note.endswith("에 뜹니다"), note
+        assert re.search(r"-?\d+,\s*-?\d+", note) is None, note  # 좌표를 쓰지 않는다
         assert page.locator("#set-window-position").count() == 0
 
         page.fill("#set-daily-max", "7")

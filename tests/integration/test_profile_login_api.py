@@ -83,7 +83,8 @@ def test_login_opens_plain_chrome_with_profile_folder_and_login_url(client, rec,
     assert args[0] == str(CHROME)
     assert f"--user-data-dir={tmp_path / 'profiles' / 'profile-1'}" in args
     assert args[-1] == LOGIN_URL and LOGIN_URL.startswith("https://accounts.google.com/")
-    assert "--window-position=60,60" in args  # 기본 위치(위쪽 모니터)가 없어 주 모니터로
+    # 2026-11-17 창 위치 자동: 모니터가 하나면 왼쪽 60% 안(③칸이 보이게), 크기도 함께 넘긴다
+    assert "--window-position=8,8" in args and "--window-size=1144,900" in args
     for flag in AUTOMATION_FLAGS:
         assert not any(a.startswith(flag) for a in args), flag
     assert (tmp_path / "profiles" / "profile-1").is_dir()

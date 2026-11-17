@@ -40,7 +40,7 @@
 - 시험·녹화·스크린샷용 창(Playwright·Chromium, 데스크톱 앱 창)은 **절대 주 모니터에 띄우지 않는다.**
 - 브라우저 자동화는 기본 headless. 녹화도 창 없이.
 - 창이 꼭 필요하면 위쪽 2번 모니터: Chromium 인수 `--window-position=60,-1060` (주 모니터 (0,0) 1920×1080, 위쪽 모니터 (0,-1080) 1920×1080). 배치가 바뀌었을 수 있으면 PowerShell `[System.Windows.Forms.Screen]::AllScreens`로 먼저 확인한다. (2026-11-16 확인: 2번 모니터가 왼쪽 `{X=-1920,Y=1}`에 있어 `-1860,60`을 썼다. 띄운 뒤 창 위치를 실제로 재서 2번 모니터 안인지 확인한다)
-- 8단계 게시 작업의 크롬 창 위치는 `config.yaml`의 `browser.window_position`이다. 자동 테스트는 `browser.headless: true`라 창을 띄우지 않는다.
+- 게시 작업·[로그인하기]·[유튜브 열기]의 크롬 창 위치는 2026-11-17부터 자동이다(`browser.window_screen: auto`, `app/browser/placement.py`): 프로그램 창이 없는 모니터, 하나뿐이면 그 왼쪽 60%. `browser.window_position`(좌표)은 기본값에서 뺐고 예전 판이 저장한 값만 그대로 읽는다. 자동 테스트는 `browser.headless: true`라 창을 띄우지 않는다. 확인용으로 창을 띄울 때는 먼저 `plan_window(read_monitors())`로 뜰 모니터를 계산해 주 모니터가 아닐 때만 띄운다.
 - 서브에이전트나 다른 세션에 브라우저 일을 맡길 때도 이 조건을 지시에 넣는다.
 - 서버 동작 확인은 가능하면 브라우저 대신 FastAPI `TestClient`로 한다.
 - 프로그램 창(`app/desktop.py`)을 확인용으로 띄울 때는 환경 변수 `JG_DESKTOP_WINDOW_POS="x,y"`에 2번 모니터 좌표를 준다(비워 두면 주 모니터 가운데에 뜬다). 자동 테스트는 창을 띄우지 않는다.

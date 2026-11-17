@@ -821,7 +821,8 @@ def test_sandbox_url_is_local_only():
 def test_job_settings_are_frozen_copies():
     settings = BrowserSettings()
     assert replace(settings, headless=True).headless is True
-    assert settings.window_position == (60, -1060)
+    # 2026-11-17 창 위치 자동: 기본 좌표가 없어졌다(대표 지시로 config.yaml에서 뺌)
+    assert settings.window_position is None and settings.window_screen == ""
 
 
 @pytest.mark.parametrize("fail_on", ["", "click"])

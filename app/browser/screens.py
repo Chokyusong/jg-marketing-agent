@@ -10,6 +10,11 @@ PC(심사자 PC)에서는 그 좌표가 화면 밖이라 크롬 창이 보이지
   Windows가 아니거나 읽지 못하면 빈 목록 → 확인하지 않고 설정값 그대로 쓴다.
 - 창의 왼쪽 위 점만 보지 않고, 제목 표시줄을 잡을 수 있는 작은 영역(왼쪽 위에서 가로 120px·
   세로 40px 안쪽 점)이 모니터 안에 있어야 "화면 안"으로 본다.
+- 2026-11-17(창 위치 자동): 모니터마다 작업 영역(`rcWork`, 작업 표시줄을 뺀 곳)과 배율
+  (`scale`, GetDpiForMonitor MDT_EFFECTIVE_DPI / 96)도 읽는다. 읽는 동안만 스레드를 Per-Monitor V2
+  DPI 인식으로 바꿔 물리 픽셀을 받는다(아니면 Windows가 값을 바꿔 줄 수 있다).
+  자동 규칙은 `app/browser/placement.py`.
+  `app_window_monitor()`는 이 프로세스의 프로그램 창(제목 「JG Marketing Agent」)이 있는 모니터.
 """
 
 from __future__ import annotations
@@ -35,10 +40,20 @@ class Monitor:
     right: int
     bottom: int
     primary: bool = False
+    # 작업 영역(작업 표시줄을 뺀 곳, left·top·right·bottom). 모르면 None → 모니터 전체
+    work: tuple[int, int, int, int] | None = None
+    scale: float = 1.0  # 화면 배율(125% → 1.25)
 
     @property
     def valid(self) -> bool:
         return self.right > self.left and self.bottom > self.top
+
+    @property
+    def work_rect(self) -> tuple[int, int, int, int]:
+        w = self.work
+        if w is None or not (w[2] > w[0] and w[3] > w[1]):
+            return self.left, self.top, self.right, self.bottom
+        return w
 
     def contains(self, x: int, y: int) -> bool:
         return self.left <= x < self.right and self.top <= y < self.bottom
@@ -149,7 +164,7 @@ def safe_position(m: Monitor) -> tuple[int, int]:
     return m.left + SAFE_OFFSET[0], m.top + SAFE_OFFSET[1]
 
 
-def _where(m: Monitor, main: Monitor | None) -> str:
+def where_of(m: Monitor, main: Monitor | None) -> str:
     """주 모니터에서 본 방향(위쪽·아래쪽·왼쪽·오른쪽)."""
     if main is None or m == main:
         return ""
@@ -175,7 +190,7 @@ def screen_choices(
     out: list[ScreenChoice] = []
     for i, m in enumerate(ordered, start=1):
         w, h = m.right - m.left, m.bottom - m.top
-        where = "주 모니터" if m == main else f"{_where(m, main) or '다른'} 모니터"
+        where = "주 모니터" if m == main else f"{where_of(m, main) or '다른'} 모니터"
         out.append(
             ScreenChoice(
                 id=monitor_id(m),
@@ -199,21 +214,70 @@ def find_choice(choices: Sequence[ScreenChoice], screen_id: str) -> ScreenChoice
 # ---------------------------------------------------------------- Windows API
 
 
+_where = where_of  # 예전 이름
+
+
+DPI_PMV2 = -4  # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+APP_WINDOW_TITLE = "JG Marketing Agent"  # app/desktop.py WINDOW_TITLE과 같다
+
+
+class _PerMonitorDpi:  # pragma: no cover - 실제 Windows에서만
+    """이 블록 안에서만 스레드를 Per-Monitor V2로(물리 픽셀). 끝나면 원래대로 돌린다."""
+
+    def __enter__(self) -> _PerMonitorDpi:
+        import ctypes
+
+        self._old = None
+        try:
+            fn = ctypes.windll.user32.SetThreadDpiAwarenessContext
+            fn.restype = ctypes.c_void_p
+            fn.argtypes = [ctypes.c_void_p]
+            self._fn = fn
+            self._old = fn(ctypes.c_void_p(DPI_PMV2))
+        except (AttributeError, OSError):  # Windows 10 1607보다 오래된 판
+            self._old = None
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        import ctypes
+
+        if self._old:
+            self._fn(ctypes.c_void_p(self._old))
+
+
 def read_monitors() -> list[Monitor]:
-    """지금 연결된 모니터 영역들. 읽지 못하면 빈 목록(확인하지 않는다)."""
+    """지금 연결된 모니터 영역들(물리 픽셀, 작업 영역·배율 포함). 읽지 못하면 빈 목록."""
     if sys.platform != "win32":
         return []
     try:
-        monitors = _enum_monitors()
-        if monitors:
-            return monitors
-        return _virtual_screen()
+        with _PerMonitorDpi():
+            monitors = _enum_monitors()
+            if monitors:
+                return monitors
+            return _virtual_screen()
     except Exception:  # pragma: no cover - Windows API 실패는 드물다
         log.exception("모니터 정보를 읽지 못했습니다")
         return []
 
 
-def _enum_monitors() -> list[Monitor]:  # pragma: no cover - 실제 모니터에 따라 다르다
+def app_window_monitor(
+    monitors: Sequence[Monitor], title: str = APP_WINDOW_TITLE
+) -> Monitor | None:
+    """이 프로세스의 프로그램 창이 있는 모니터. 창이 없으면(개발용 브라우저 실행) None."""
+    if sys.platform != "win32" or not monitors:
+        return None
+    try:
+        with _PerMonitorDpi():
+            rect = _app_monitor_rect(title)
+    except Exception:  # pragma: no cover
+        log.info("프로그램 창이 있는 모니터를 읽지 못했습니다")
+        return None
+    if rect is None:
+        return None
+    return next((m for m in monitors if (m.left, m.top, m.right, m.bottom) == rect), None)
+
+
+def _monitor_info_type():  # pragma: no cover
     import ctypes
     from ctypes import wintypes
 
@@ -225,7 +289,49 @@ def _enum_monitors() -> list[Monitor]:  # pragma: no cover - 실제 모니터에
             ("dwFlags", wintypes.DWORD),
         ]
 
+    return MONITORINFO
+
+
+def _app_monitor_rect(title: str) -> tuple[int, int, int, int] | None:  # pragma: no cover
+    import ctypes
+    import os
+    from ctypes import wintypes
+
     user32 = ctypes.windll.user32
+    user32.FindWindowExW.restype = wintypes.HWND
+    user32.FindWindowExW.argtypes = [wintypes.HWND, wintypes.HWND, wintypes.LPCWSTR,
+                                     wintypes.LPCWSTR]
+    user32.MonitorFromWindow.restype = wintypes.HMONITOR
+    user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+    pid = wintypes.DWORD()
+    hwnd = user32.FindWindowExW(None, None, None, title)
+    while hwnd:
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value == os.getpid():
+            break
+        hwnd = user32.FindWindowExW(None, hwnd, None, title)
+    if not hwnd:
+        return None
+    hmon = user32.MonitorFromWindow(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
+    info_type = _monitor_info_type()
+    info = info_type()
+    info.cbSize = ctypes.sizeof(info_type)
+    if not user32.GetMonitorInfoW(hmon, ctypes.byref(info)):
+        return None
+    r = info.rcMonitor
+    return r.left, r.top, r.right, r.bottom
+
+
+def _enum_monitors() -> list[Monitor]:  # pragma: no cover - 실제 모니터에 따라 다르다
+    import ctypes
+    from ctypes import wintypes
+
+    MONITORINFO = _monitor_info_type()
+    user32 = ctypes.windll.user32
+    try:
+        get_dpi = ctypes.windll.shcore.GetDpiForMonitor
+    except (AttributeError, OSError):
+        get_dpi = None
     found: list[Monitor] = []
     proc_type = ctypes.WINFUNCTYPE(
         wintypes.BOOL, wintypes.HMONITOR, wintypes.HDC, ctypes.POINTER(wintypes.RECT),
@@ -236,8 +342,14 @@ def _enum_monitors() -> list[Monitor]:  # pragma: no cover - 실제 모니터에
         info = MONITORINFO()
         info.cbSize = ctypes.sizeof(MONITORINFO)
         if user32.GetMonitorInfoW(hmon, ctypes.byref(info)):
-            r = info.rcMonitor
-            found.append(Monitor(r.left, r.top, r.right, r.bottom, bool(info.dwFlags & 1)))
+            r, w = info.rcMonitor, info.rcWork
+            scale = 1.0
+            if get_dpi is not None:
+                dx, dy = ctypes.c_uint(), ctypes.c_uint()
+                if get_dpi(hmon, 0, ctypes.byref(dx), ctypes.byref(dy)) == 0 and dx.value:
+                    scale = round(dx.value / 96, 3)  # MDT_EFFECTIVE_DPI
+            found.append(Monitor(r.left, r.top, r.right, r.bottom, bool(info.dwFlags & 1),
+                                 (w.left, w.top, w.right, w.bottom), scale))
         return True
 
     user32.EnumDisplayMonitors(None, None, proc_type(callback), 0)

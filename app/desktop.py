@@ -44,6 +44,7 @@ log = logging.getLogger("app.desktop")
 WINDOW_TITLE = "JG Marketing Agent"
 WINDOW_SIZE = (1600, 1000)
 WINDOW_MIN_SIZE = (1100, 720)
+WINDOW_MARGIN = 8  # 작업 영역(작업 표시줄을 뺀 곳) 가장자리에서 띄우는 간격(논리 픽셀)
 WINDOW_BACKGROUND = "#0A0A0A"  # 화면 배경색(style.css --bg). 불러오는 동안 흰 화면이 번쩍이지 않게
 HOST = "127.0.0.1"
 INSTANCE_NAME = "Local\\JGMarketingAgent.Desktop"
@@ -93,6 +94,42 @@ class WindowSpec:
     min_size: tuple[int, int] = WINDOW_MIN_SIZE
     x: int | None = None  # None이면 가운데
     y: int | None = None
+    # 2026-11-17 창 위치 자동: 주 모니터 작업 영역이 창보다 작으면 최대화로 띄운다
+    maximized: bool = False
+
+
+@dataclass(frozen=True)
+class AppWindowFit:
+    """주 모니터 작업 영역에 맞춘 프로그램 창 크기(pywebview 논리 픽셀)."""
+
+    width: int = WINDOW_SIZE[0]
+    height: int = WINDOW_SIZE[1]
+    min_size: tuple[int, int] = WINDOW_MIN_SIZE
+    maximized: bool = False
+
+
+def fit_app_window(monitors: Any) -> AppWindowFit:
+    """프로그램 창(1600×1000)을 주 모니터 작업 영역 안에 맞춘다(2026-11-17).
+
+    좌표 기준: 모니터 값은 물리 픽셀(app/browser/screens.read_monitors), pywebview의
+    width·height·min_size는 논리 픽셀이라 배율(scale)로 나눈다. 작업 영역이 최소 크기보다
+    작으면(1366×768 노트북 등) 최대화로 띄우고 최소 크기도 작업 영역에 맞춰 줄인다.
+    모니터를 못 읽으면 기본값 그대로.
+    """
+    good = [m for m in (monitors or []) if getattr(m, "valid", False)]
+    primary = next((m for m in good if m.primary), None)
+    if primary is None:
+        return AppWindowFit()
+    left, top, right, bottom = primary.work_rect
+    scale = primary.scale if primary.scale and primary.scale > 0 else 1.0
+    avail_w = int((right - left) / scale)
+    avail_h = int((bottom - top) / scale)
+    room_w = max(1, avail_w - 2 * WINDOW_MARGIN)
+    room_h = max(1, avail_h - 2 * WINDOW_MARGIN)
+    width, height = min(WINDOW_SIZE[0], room_w), min(WINDOW_SIZE[1], room_h)
+    min_size = (min(WINDOW_MIN_SIZE[0], avail_w), min(WINDOW_MIN_SIZE[1], avail_h))
+    maximized = room_w < WINDOW_MIN_SIZE[0] or room_h < WINDOW_MIN_SIZE[1]
+    return AppWindowFit(width=width, height=height, min_size=min_size, maximized=maximized)
 
 
 class WebViewUnavailable(RuntimeError):
@@ -320,6 +357,7 @@ def open_webview_window(spec: WindowSpec) -> None:
         y=spec.y,
         min_size=spec.min_size,
         background_color=WINDOW_BACKGROUND,
+        maximized=spec.maximized,
     )
     webview.start(private_mode=True)
 
@@ -382,6 +420,7 @@ def run(
     ready_timeout: float = READY_TIMEOUT_SECONDS,
     window_pos: tuple[int | None, int | None] = (None, None),
     on_already_running: Callable[[], object] | None = None,
+    window_fit: AppWindowFit | None = None,
 ) -> int:
     """프로그램 한 번 실행. 종료 코드를 돌려준다. 테스트는 open_window·notify를 가짜로 넣는다."""
     lock = lock if lock is not None else InstanceLock()
@@ -412,7 +451,12 @@ def run(
                 notify(TEXT_START_FAILED)
                 return EXIT_START_FAILED
 
-            spec = WindowSpec(url=f"{base_url}/", x=window_pos[0], y=window_pos[1])
+            fit = window_fit or AppWindowFit()
+            spec = WindowSpec(
+                url=f"{base_url}/", x=window_pos[0], y=window_pos[1],
+                width=fit.width, height=fit.height, min_size=fit.min_size,
+                maximized=fit.maximized,
+            )
             try:
                 open_window(spec)
             except WebViewUnavailable as exc:
@@ -460,11 +504,13 @@ def main() -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+    monitors = read_monitors()
     return run(
         open_window=open_webview_window,
         notify=notify_user,
-        window_pos=checked_window_position(window_position_from_env(), read_monitors()),
+        window_pos=checked_window_position(window_position_from_env(), monitors),
         on_already_running=focus_existing_window,
+        window_fit=fit_app_window(monitors),
     )
 
 

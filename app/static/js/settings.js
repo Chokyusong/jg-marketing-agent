@@ -904,24 +904,30 @@ function screenField(s) {
   ];
 }
 
+const AUTO_SCREEN = 'auto'; // 「자동 (권장)」: 작업마다 지금 모니터를 읽어 고른다(app/browser/placement.py)
+
+// 2026-11-17 창 위치 자동: 첫 칸 「자동 (권장)」 + 연결된 모니터. 좌표는 화면에 쓰지 않는다
 function fillScreens() {
   const select = $('set-window-screen');
   if (!select || !data) return;
   const items = screens && screens.checked ? screens.items : [];
-  if (!items.length) {
-    select.replaceChildren(el('option', { value: '', text: '모니터 정보를 읽지 못했습니다' }));
-    select.disabled = true;
-    initial['browser.window_screen'] = '';
-    $('set-window-note').textContent = `지금 위치 ${data.browser.window_position || '–'}`;
-    return;
+  const auto = el('option', { value: AUTO_SCREEN, text: '자동 (권장)' });
+  select.replaceChildren(auto, ...items.map((m) => el('option', { value: m.id, text: m.label })));
+  // 지금 고른 것: auto · 모니터 ID(연결이 끊겼으면 자동) · 빈 값(예전 판이 저장한 위치)
+  const saved = screens ? screens.screen : data.browser.window_screen;
+  let value = AUTO_SCREEN;
+  if (saved && saved !== AUTO_SCREEN && items.some((m) => m.id === saved)) value = saved;
+  if (!saved) {
+    const current = items.find((m) => m.current);
+    if (current) value = current.id;
+    else {
+      select.append(el('option', { value: '', text: '예전에 정한 위치' }));
+      value = '';
+    }
   }
-  const saved = data.edit.values['browser.window_screen'];
-  select.replaceChildren(...items.map((m) => el('option', { value: m.id, text: m.label })));
-  const pick = items.find((m) => m.id === saved) || items.find((m) => m.current) || null;
-  if (!pick) select.prepend(el('option', { value: '', text: `지금 위치(${screens.window_position}) · 모니터 밖` }));
-  select.value = pick ? pick.id : '';
+  select.value = value;
   select.disabled = false;
-  initial['browser.window_screen'] = select.value;
+  initial['browser.window_screen'] = value;
   paintScreenNote();
   markDirty();
 }
@@ -930,15 +936,26 @@ function paintScreenNote() {
   const select = $('set-window-screen');
   const note = $('set-window-note');
   if (!select || !note || !screens) return;
-  const m = screens.items.find((x) => x.id === select.value);
-  note.textContent = m ? `창은 이 화면 왼쪽 위에서 조금 안쪽(${m.position})에 뜹니다` : '';
+  const value = select.value;
+  const lines = [];
+  if (value === initial['browser.window_screen']) {
+    // 저장한 그대로: 서버가 계산한 지금 뜰 곳(고른 모니터가 없으면 자동으로 떨어진 사정도)
+    if (screens.where) lines.push(screens.where);
+    if (screens.note) lines.push(screens.note);
+  } else if (value === AUTO_SCREEN) {
+    if (screens.auto_where) lines.push(`저장하면 ${screens.auto_where.replace(/^지금은 /, '')}`);
+  } else if (screens.items.some((x) => x.id === value)) {
+    lines.push('저장하면 이 모니터에 뜹니다');
+  }
+  if (!screens.checked) lines.push('모니터 정보를 읽지 못해 크롬이 정한 곳에 뜹니다');
+  note.textContent = lines.join(' · ');
 }
 
 async function loadScreens() {
   try {
     screens = await api.screens();
   } catch {
-    screens = { checked: false, items: [], window_position: '' };
+    screens = { checked: false, items: [], window_position: '', screen: AUTO_SCREEN, where: '', auto_where: '', note: '' };
   }
   fillScreens();
 }
