@@ -434,7 +434,8 @@ const LOGIN_HINTS = {
 };
 const LOGIN_POLL_MS = 1500;
 let loginPoll = null;
-const aiLoginTried = {}; // 이름 → 이번에 로그인 상태를 저절로 물어봤는지(칸을 열 때 한 번만)
+const aiLoginTried = {}; // 이름 → 이번에 로그인 상태를 저절로 물어봤는지(화면을 열 때 한 번만)
+const loginAsking = new Set(); // 지금 로그인 상태를 물어보는 중인 이름
 
 let providers = null; // GET /api/llm/providers 응답
 let viewing = null; // 오른쪽에 보이는 AI 이름
@@ -462,7 +463,10 @@ function itemState(p) {
     if (!p.installed) return { tone: 'is-off', text: '설치되지 않음' };
     if (p.login_window_open || p.login_checking) return { tone: 'is-wait', text: '로그인 중' };
     if (p.logged_in === false) return { tone: 'is-bad', text: '로그인 필요' };
-    return { tone: 'is-ok', text: '준비됨' };
+    if (p.logged_in === true) return { tone: 'is-ok', text: '준비됨' };
+    // 2026-11-18: 로그인 여부를 모르는 동안에는 「준비됨」이라고 하지 않는다(설정을 열면 물어본다)
+    if (loginAsking.has(p.name) || !p.login_asked) return { tone: 'is-wait', text: '확인 중' };
+    return { tone: 'is-wait', text: '로그인 모름' };
   }
   if (p.kind === 'local') return { tone: 'is-ok', text: '이 PC' };
   const reason = p.unavailable_reason || '';
@@ -728,7 +732,8 @@ function loginState(p) {
   if (p.login_checking) return '로그인했는지 확인하는 중…';
   if (p.logged_in === true) return '로그인돼 있습니다';
   if (p.logged_in === false) return '로그인 필요 · [로그인하기]를 누르면 그 프로그램의 로그인 창이 열립니다';
-  return LOGIN_HINTS[p.name] || '그 프로그램에서 로그인합니다.';
+  if (loginAsking.has(p.name) || !p.login_asked) return '로그인했는지 확인하는 중…';
+  return `로그인 여부를 확인하지 못했습니다 · ${LOGIN_HINTS[p.name] || '그 프로그램에서 로그인합니다.'} [연결 확인]으로 다시 물어봅니다`;
 }
 
 function programBody(p) {
@@ -792,7 +797,7 @@ function aiPane(p, s) {
 // 첫 실행 안내(2026-11-17): AI를 붙이는 세 길, 권하는 순서대로. 쓸 수 있는 AI가 있으면 접어 둔다
 function pathTarget(path) {
   const items = path.providers.map(findProvider).filter(Boolean);
-  const ready = items.find((p) => p.installed && p.logged_in !== false && p.verified);
+  const ready = items.find((p) => p.installed && p.logged_in === true && p.verified);
   return (ready || items.find((p) => p.installed) || items[0] || {}).name || null;
 }
 
@@ -800,7 +805,9 @@ function firstRun(s) {
   const paths = (providers && providers.first_run) || [];
   if (!paths.length) return null;
   const active = findProvider(s.llm.active);
-  const someReady = paths.some((p) => p.ready) || Boolean(active && !active.unavailable_reason && active.kind !== 'local');
+  const activeReady = active && !active.unavailable_reason && active.kind !== 'local'
+    && (active.kind !== 'program' || active.logged_in === true);
+  const someReady = paths.some((p) => p.ready) || Boolean(activeReady);
   return el('details', { class: 'first-run', id: 'ai-first-run', open: !someReady }, [
     el('summary', { text: '처음이라면 · AI를 붙이는 세 가지 길' }),
     el('ol', { class: 'first-run-list' }, paths.map((path) => el('li', { id: `ai-path-${path.key}` }, [
@@ -849,6 +856,47 @@ function repaintUse(name) {
   const p = findProvider(name);
   const row = $(`ai-use-row-${name}`);
   if (p && row) row.replaceWith(useRow(p));
+}
+
+function needsLoginCheck(p) {
+  return Boolean(p && p.kind === 'program' && p.verified && p.installed && p.logged_in === null
+    && !p.login_asked && !aiLoginTried[p.name] && !p.login_window_open && !p.login_checking);
+}
+
+// 2026-11-18: 설정을 열면 설치된 프로그램의 로그인 상태를 한 번 물어본다(그 프로그램의 상태 명령만
+// — `claude auth status` 같은 것. 로그인 정보 파일은 읽지 않는다). 답이 오기 전에는 「확인 중」
+async function checkLogins() {
+  if (!providers) return;
+  const names = providers.items.filter(needsLoginCheck).map((p) => p.name);
+  if (!names.length) return;
+  for (const name of names) {
+    aiLoginTried[name] = true;
+    loginAsking.add(name);
+  }
+  repaintAiList();
+  const results = await Promise.all(names.map((name) => api.llmTest(name).catch(() => null)));
+  for (const name of names) loginAsking.delete(name);
+  await loadProviders();
+  if (!providers || !data) return;
+  names.forEach((name, i) => {
+    const res = results[i];
+    if (!res) return;
+    const after = findProvider(name);
+    aiNotes[name] = res.result === 'not_logged_in' && after && after.can_open_login
+      ? { text: `${after.label}에 로그인돼 있지 않습니다. [로그인하기]를 누르면 그 프로그램의 로그인 창이 열립니다.`, tone: 'is-bad' }
+      : { text: `${res.message} ${res.action || ''}`.trim(), tone: res.ok ? 'is-ok' : 'is-bad' };
+    repaintPane(name);
+  });
+  repaintAiList();
+  for (const p of providers.items) repaintUse(p.name);
+  const first = $('ai-first-run');
+  if (first) {
+    const fresh = firstRun(data);
+    if (fresh) {
+      fresh.open = first.open;
+      first.replaceWith(fresh);
+    }
+  }
 }
 
 function autoCheckLogin(name) {
@@ -1477,6 +1525,7 @@ async function load({ keepMessage = false } = {}) {
     render(settings);
     loadModels();
     loadScreens();
+    checkLogins();
   } catch (error) {
     data = null;
     $('settings-save').disabled = true;

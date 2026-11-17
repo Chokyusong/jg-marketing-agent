@@ -104,3 +104,14 @@ def test_failed_automatic_check_leaves_unknown():
             break
         threading.Event().wait(0.02)
     assert logins.view("codex-cli").logged_in is None
+
+
+def test_view_tells_not_asked_from_asked_but_unknown():
+    # 2026-11-18: 모름(None)을 「아직 안 물어봄」과 「물었지만 모름」으로 가른다
+    logins = CLILogins()
+    assert logins.view("claude-cli").asked is False
+    logins.remember("claude-cli", None)
+    view = logins.view("claude-cli")
+    assert view.asked is True and view.logged_in is None
+    logins.remember("claude-cli", True)
+    assert logins.view("claude-cli").logged_in is True

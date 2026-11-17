@@ -871,6 +871,9 @@ class LLMProviderOut(BaseModel):
     # 2026-11-17 아무 PC에서나 AI 연결(필드 추가): 로그인된 프로그램의 상태와
     # [설치 방법 보기]·[로그인하기]
     logged_in: bool | None = None  # 마지막으로 그 프로그램에 물어본 로그인 상태(모르면 None)
+    # 2026-11-18 로그인 상태를 이번 실행에서 물어봤는지(필드 추가): 화면이 「모름」을 「준비됨」으로
+    # 보이지 않고, 안 물어봤으면 「확인 중」으로 두고 물어본다
+    login_asked: bool = False
     login_window_open: bool = False  # [로그인하기]로 연 명령 창이 아직 열려 있는지
     login_checking: bool = False  # 그 창이 닫혀 로그인 상태를 저절로 묻는 중인지
     can_open_login: bool = False  # [로그인하기]가 되는지(설치돼 있고 로그인 명령을 아는 프로그램)

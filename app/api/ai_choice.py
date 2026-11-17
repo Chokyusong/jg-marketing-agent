@@ -185,6 +185,7 @@ def _program_view(
     guide = GUIDES.get(program)
     out: dict[str, Any] = {
         "logged_in": view.logged_in if installed else None,
+        "login_asked": view.asked if installed else False,
         "login_window_open": view.window_open,
         "login_checking": view.checking,
         "can_open_login": verified and installed and program in LOGIN_COMMANDS,

@@ -71,6 +71,7 @@ class LoginView:
     window_open: bool  # [로그인하기]로 연 창이 아직 열려 있는지
     checking: bool  # 창이 닫혀 로그인 상태를 저절로 묻는 중인지
     logged_in: bool | None  # 마지막으로 물어본 결과(모르면 None)
+    asked: bool = False  # 이번 실행에서 한 번이라도 물어봤는지(모름 = 안 물어봄 / 물었지만 모름)
 
 
 class CLILogins:
@@ -92,7 +93,8 @@ class CLILogins:
     def view(self, name: str) -> LoginView:
         with self._lock:
             known = self._results.get(name)
-        return LoginView(self.windows.is_open(name), self.windows.is_closing(name), known)
+            asked = name in self._results
+        return LoginView(self.windows.is_open(name), self.windows.is_closing(name), known, asked)
 
     def open(self, name: str, args: list[str], env: dict[str, str]) -> LoginView:
         """그 프로그램의 로그인 명령을 새 창으로 연다. 이미 열려 있으면 다시 열지 않는다."""

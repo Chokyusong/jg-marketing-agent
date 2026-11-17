@@ -45,6 +45,7 @@ class Programs:
         self.installed = set(installed)
         self.logged_in = set(logged_in)
         self.calls: list[list[str]] = []
+        self.gate: threading.Event | None = None  # 놓을 때까지 로그인 상태 명령이 답하지 않는다
 
     def which(self, program):
         return f"C:/fake/{program}.exe" if program in self.installed else None
@@ -55,6 +56,8 @@ class Programs:
         if req.args[1:] == ["--version"]:
             return cli.RunResult(0, f"{program} 9.9.9", "")
         if req.args[1:] in (["login", "status"], ["auth", "status"]):
+            if self.gate is not None:
+                self.gate.wait(10)
             return cli.RunResult(0 if program in self.logged_in else 1, "", "")
         raise AssertionError(f"뜻밖의 실행: {req.args}")
 
@@ -123,7 +126,7 @@ def test_first_run_paths_and_each_program_state(app, programs):
         assert page.locator("#ai-login-gemini-cli").count() == 0
 
         # 첫 실행 안내의 「이 길로 보기」 → 구독 프로그램 중 설치된 Claude Code 칸.
-        # 칸을 열면 로그인 상태를 저절로 한 번 묻는다 → 「로그인 필요」
+        # 설정을 열 때 로그인 상태를 저절로 한 번 물었다(2026-11-18) → 「로그인 필요」
         page.click("#ai-path-program [data-ai-path]")
         assert page.is_visible("#ai-pane-claude-cli")
         page.wait_for_selector("#ai-login-claude-cli")
@@ -225,4 +228,32 @@ def test_setup_screens_fit_without_page_scroll(app, size):
                 where, m["scrollHeight"], m["scrollWidth"])
             assert m["minFont"] >= 12, (where, m["minFont"], m["minFontAt"])
             assert m["buttons"]["min"] >= 36, (where, m["buttons"])
+    assert not errors, errors
+
+
+def test_list_says_checking_until_the_login_answer_comes(app, programs):
+    # 2026-11-18(기획 담당): 설치된 프로그램은 설정을 열 때 로그인 상태를 한 번 묻고, 답이 오기
+    # 전에는 「확인 중」 — 「준비됨」이었다가 칸을 열면 「로그인 필요」로 바뀌지 않는다
+    base = app["base"]
+    programs.gate = threading.Event()
+    with headless_page(base) as (page, errors):
+        page.goto(base + "/")
+        page.wait_for_function(STATUS_LOADED)
+        open_ai(page)
+        page.wait_for_function("document.getElementById('ai-item-claude-cli')"
+                               ".textContent.includes('확인 중')")
+        assert "준비됨" not in page.text_content("#ai-item-claude-cli")
+        assert "준비됨" not in page.text_content("#ai-path-program")
+        assert "확인하는 중" in page.text_content("#ai-pane-claude-cli")
+        programs.gate.set()
+        # 칸을 열지 않아도 답이 오면 바뀐다
+        page.wait_for_function("document.getElementById('ai-item-claude-cli')"
+                               ".textContent.includes('로그인 필요')")
+        assert ["C:/fake/claude.exe", "auth", "status"] in programs.calls
+        assert "준비됨" not in page.text_content("#ai-path-program")
+        # 같은 화면에서 다시 묻지 않는다(칸을 열어도 한 번만)
+        asked = programs.calls.count(["C:/fake/claude.exe", "auth", "status"])
+        page.click("#ai-item-claude-cli")
+        page.wait_for_selector("#ai-login-claude-cli")
+        assert programs.calls.count(["C:/fake/claude.exe", "auth", "status"]) == asked
     assert not errors, errors

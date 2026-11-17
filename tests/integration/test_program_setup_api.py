@@ -185,3 +185,38 @@ def test_api_key_ai_has_no_program_fields(setup):
     make, _ = setup
     p = by_name(make(Programs()))["openai"]
     assert p["install_guide"] is None and p["can_open_login"] is False and p["logged_in"] is None
+
+
+def test_login_asked_tells_not_asked_from_asked_but_unknown(setup):
+    # 2026-11-18(기획 담당): 설정 화면이 로그인 여부를 모르는 동안 「준비됨」이라고 하지 않게,
+    # 목록이 「아직 안 물어봄」과 「물었지만 모름」을 가른다(필드 추가 `login_asked`)
+    make, _ = setup
+    programs = Programs(installed={"claude"})
+    client = make(programs)
+    p = by_name(client)["claude-cli"]
+    # 아직 안 물어봄 → 화면은 「확인 중」으로 두고 묻는다
+    assert p["logged_in"] is None and p["login_asked"] is False
+    assert by_name(client)["codex-cli"]["login_asked"] is False  # 설치되지 않음
+    # 묻는 길은 [연결 확인]과 같다: 버전과 그 프로그램의 로그인 상태 명령만
+    client.post("/api/llm/providers/claude-cli/test")
+    p = by_name(client)["claude-cli"]
+    assert p["logged_in"] is False and p["login_asked"] is True
+    assert programs.calls == [["C:/fake/claude.exe", "--version"],
+                              ["C:/fake/claude.exe", "auth", "status"]]
+
+
+def test_status_command_that_cannot_answer_is_asked_but_unknown(setup):
+    make, _ = setup
+
+    class Silent(Programs):
+        def run(self, req):
+            if req.args[1:] == ["auth", "status"]:
+                self.calls.append(list(req.args))
+                raise cli.RunTimeout()
+            return super().run(req)
+
+    client = make(Silent(installed={"claude"}))
+    res = client.post("/api/llm/providers/claude-cli/test").json()
+    assert res["ok"] is True and "로그인 여부는 확인하지 못했습니다" in res["message"]
+    p = by_name(client)["claude-cli"]
+    assert p["logged_in"] is None and p["login_asked"] is True  # 화면은 「로그인 모름」
