@@ -91,4 +91,4 @@ llm:
       max_tokens_field: max_tokens
     codex-cli: {type: cli, label: Codex, program: codex, sends_to: "OpenAI(Codex)"}
     claude-cli: {type: cli, label: Claude Code, program: claude, sends_to: "Anthropic(Claude Code)"}
-    gemini-cli: {type: cli, label: Gemini CLI, program: gemini, sends_to: "Google(Gemini CLI)"}
+    gemini-cli: {type: cli, label: Gemini 프로그램, program: gemini, sends_to: "Google(Gemini 프로그램)"}  # 화면에 「CLI」를 쓰지 않는다

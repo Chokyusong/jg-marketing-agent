@@ -107,6 +107,12 @@ export const api = {
   deleteKey: () => request('/api/settings/youtube-key', { method: 'DELETE' }),
   testKey: () => request('/api/settings/youtube-key/test', { method: 'POST' }),
   llmModels: () => request('/api/llm/models'),
+  // R5: 글 쓰는 AI 고르기(목록 · 연결 확인 · AI별 모델 목록 · AI별 API 키)
+  llmProviders: () => request('/api/llm/providers'),
+  llmTest: (name) => request(`/api/llm/providers/${encodeURIComponent(name)}/test`, { method: 'POST' }),
+  llmModelsOf: (name) => request(`/api/llm/models?provider=${encodeURIComponent(name)}`),
+  saveLlmKey: (name, key) => request(`/api/settings/llm-key/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify({ key }) }),
+  deleteLlmKey: (name) => request(`/api/settings/llm-key/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   // R4: 모델이 메모리에 올라가 있는지(아니면 ②칸에 「불러오는 중」 안내)
   llmLoaded: () => request('/api/llm/loaded'),
   screens: () => request('/api/screens'),

@@ -7,6 +7,8 @@
 // - 크롬 창 위치는 좌표를 치지 않고 모니터를 고른다(서버가 그 모니터의 안전한 위치를 계산한다).
 // - 저장하면 작업 화면의 기본 검색어 · 개수 · 쇼츠 빼기 · 하루 상한 · 글자 수 규칙도 따라 바꾼다(applyWorkDefaults).
 // - 바깥 글은 textContent로만 넣는다.
+// - R5: 「글 쓰는 AI」 묶음(UI_SPEC 6.1). 왼쪽 목록에서 AI를 보고 [이 AI 쓰기] → (이 PC 밖이면 한 번 확인) → [저장].
+//   AI별 API 키는 따로 바로 저장한다(PUT /api/settings/llm-key/<이름>). 미리 불러오기·추천 모델은 Ollama 칸에만.
 import { api } from './api.js';
 import { el } from './format.js';
 import { applyDailyMax } from './ops.js';
@@ -39,6 +41,10 @@ export const FIELD_IDS = {
   'rising.min_views': 'set-rising-min',
   'rising.max_views': 'set-rising-max',
   'rising.min_views_per_hour': 'set-rising-per-hour',
+  // R5: 「글 쓰는 AI」 묶음의 오류 자리
+  'llm.active': 'ai-active',
+  'llm.models': 'ai-models',
+  'llm.base_urls': 'ai-urls',
 };
 const MAX_FACTS = 10;
 const RESET_WAIT_MS = 5000;
@@ -312,7 +318,7 @@ function paintModelStatus() {
   const name = select ? select.value : data.llm.model;
   let tone = 'is-ok';
   let text;
-  if (data.llm.error) {
+  if (data.llm.error && data.llm.type === 'ollama') {
     tone = 'is-bad';
     text = `${data.llm.error.message} ${data.llm.error.action}`.trim();
   } else if (!models) {
@@ -353,7 +359,9 @@ function modelRows(s) {
   return [
     [label('모델', 'set-model', 'llm.model'), el('dd', { class: 'set-field' }, [select, errSpan('set-model')])],
     readRow('상태', el('span', { id: 'model-status', class: 'flag-line', text: '모델 목록을 읽는 중…' })),
-    readRow('지금 모델', el('span', { id: 'model-now', text: `${llm.model || '–'} · ${llm.local ? '이 PC 안에서 돌아갑니다' : '외부 서비스(영상 자료가 그 회사로 갑니다)'}` })),
+    readRow('지금 모델', el('span', { id: 'model-now', text: llm.type === 'ollama' || !llm.type
+      ? `${llm.model || '–'} · ${llm.local ? '이 PC 안에서 돌아갑니다' : '외부 서비스(영상 자료가 그 회사로 갑니다)'}`
+      : `${current} · 지금은 ${llm.label || llm.active}로 글을 씁니다` })),
     readRow('기다리는 시간', `답 하나에 최대 ${Math.round(llm.timeout_seconds)}초 · 모델을 처음 불러올 때는 ${Math.round(llm.cold_timeout_seconds || 420)}초`),
     switchField('llm.warmup_on_start', '켤 때 미리 불러오기', '켜짐 · 프로그램을 켜면 모델을 미리 불러 둡니다', '꺼짐 · 첫 초안 때 불러옵니다'),
   ];
@@ -384,6 +392,448 @@ async function warmup() {
       $('warmup-btn').textContent = '미리 불러오기';
     }
   }
+}
+
+// ---------------------------------------------------------------- R5: 글 쓰는 AI 고르기(UI_SPEC 6.1)
+// 왼쪽 목록(이 PC에서 · API 키로 · 로그인된 프로그램으로), 오른쪽 준비 칸. 줄을 누르면 그 AI의 칸이 보이고(아직 바꾸지 않는다),
+// [이 AI 쓰기] → (이 PC 밖이면 한 번 확인) → [저장]할 때 바뀐다. 키 값은 화면에 다시 그리지 않는다.
+
+const KIND_WORD = { local: '이 PC에서', api: 'API 키로', program: '로그인된 프로그램으로' };
+const KEY_GUIDES = {
+  openai: ['platform.openai.com에 로그인합니다.', '「API keys」에서 [Create new secret key]를 눌러 키를 만듭니다.', '키를 복사해 위 칸에 붙여 넣고 [키 저장]을 누릅니다. 쓴 만큼 요금이 듭니다.'],
+  claude: ['platform.claude.com(Claude 콘솔)에 로그인합니다.', '「API Keys」에서 [Create Key]를 눌러 키를 만듭니다.', '키를 복사해 위 칸에 붙여 넣고 [키 저장]을 누릅니다. 쓴 만큼 요금이 듭니다.'],
+  gemini: ['aistudio.google.com에 구글 계정으로 들어갑니다.', '「Get API key」에서 키를 만듭니다.', '키를 복사해 위 칸에 붙여 넣고 [키 저장]을 누릅니다.'],
+  grok: ['console.x.ai에 로그인합니다.', '「API Keys」에서 키를 만듭니다.', '키를 복사해 위 칸에 붙여 넣고 [키 저장]을 누릅니다. 쓴 만큼 요금이 듭니다.'],
+  custom: ['LM Studio 같은 프로그램에서 「OpenAI 호환 서버」를 켭니다.', '그 프로그램이 알려 주는 주소(예: http://127.0.0.1:1234/v1)를 위 주소 칸에 넣습니다.', '키가 필요한 곳이면 키도 넣습니다. 이 PC 주소면 영상 자료가 밖으로 나가지 않습니다.'],
+};
+const LOGIN_HINTS = {
+  'codex-cli': '명령 창에서 codex login 으로 그 프로그램에 로그인합니다.',
+  'claude-cli': '명령 창에서 claude auth login 으로 그 프로그램에 로그인합니다.',
+};
+
+let providers = null; // GET /api/llm/providers 응답
+let viewing = null; // 오른쪽에 보이는 AI 이름
+let pendingActive = null; // [이 AI 쓰기]로 고른 이름(저장 전)
+let confirmFor = null; // 바깥 전송 확인을 기다리는 이름
+const aiKeyEditing = {};
+const aiNotes = {}; // 이름 → { text, tone } (연결 확인 · 키 저장 결과)
+const aiModelLists = {}; // 이름 → 받아 온 모델 이름들
+
+function findProvider(name) {
+  return providers ? providers.items.find((p) => p.name === name) || null : null;
+}
+
+function externalText(p) {
+  return `외부 · 영상 제목·설명·자막·댓글이 ${p.sends_to || p.label}(으)로 전송됩니다. 요금이 들 수 있습니다`;
+}
+
+function itemState(p) {
+  if (p.kind === 'program') {
+    if (!p.verified) return { tone: 'is-off', text: '아직 연결 안 함' };
+    if (!p.installed) return { tone: 'is-off', text: '설치 안 됨' };
+    return { tone: 'is-ok', text: '설치됨' };
+  }
+  if (p.kind === 'local') return { tone: 'is-ok', text: '이 PC' };
+  const reason = p.unavailable_reason || '';
+  if (reason.includes('주소')) return { tone: 'is-off', text: '주소 없음' };
+  if (reason.includes('API 키')) return { tone: 'is-off', text: '키 없음' };
+  if (reason.includes('모델')) return { tone: 'is-wait', text: '모델 고르기' };
+  return { tone: 'is-ok', text: '준비됨' };
+}
+
+function aiItem(p) {
+  const st = itemState(p);
+  const using = data && p.name === data.llm.active;
+  const dim = p.kind === 'program' && (!p.installed || !p.verified);
+  let mark = null;
+  if (pendingActive === p.name) mark = el('span', { class: 'tag', text: '저장하면 사용' });
+  else if (using) mark = el('span', { class: 'tag is-ok', text: '사용 중' });
+  return el('button', {
+    type: 'button', class: `ai-item${p.name === viewing ? ' is-viewing' : ''}${dim ? ' is-dim' : ''}`,
+    id: `ai-item-${p.name}`, 'data-ai-view': p.name, 'aria-pressed': String(p.name === viewing),
+  }, [
+    el('span', { class: 'ai-name', text: p.label }),
+    mark,
+    el('span', { class: 'ai-state' }, [el('i', { class: `dot ${st.tone}`, 'aria-hidden': 'true' }), st.text]),
+  ]);
+}
+
+function aiList() {
+  const out = [];
+  for (const kind of providers.kinds) {
+    const items = providers.items.filter((p) => p.kind === kind.value);
+    if (!items.length) continue;
+    out.push(el('p', { class: 'ai-kind', text: kind.label }));
+    for (const p of items) out.push(aiItem(p));
+  }
+  return el('div', { class: 'ai-list', id: 'ai-list', 'aria-label': '글 쓰는 AI 목록' }, out);
+}
+
+function noteLine(name) {
+  const note = aiNotes[name];
+  return el('p', { class: `caption${note && note.tone ? ` ${note.tone}` : ''}`, id: `ai-note-${name}`, role: 'status', 'aria-live': 'polite', text: note ? note.text : '' });
+}
+
+function inputValue(id) {
+  const node = $(id);
+  return node ? node.value.trim() : null;
+}
+
+function savedModel(p) {
+  const chosen = (data.edit.values['llm.models'] || {})[p.name];
+  return chosen || p.model || '';
+}
+
+function savedUrl(p) {
+  return (data.edit.values['llm.base_urls'] || {})[p.name] || '';
+}
+
+// [이 AI 쓰기]를 막는 이유(칸에 적은 모델·주소는 저장 전이라도 친다). 없으면 null
+function useReason(p) {
+  const reason = p.unavailable_reason;
+  if (!reason) return null;
+  const model = inputValue(`ai-model-${p.name}`) ?? savedModel(p);
+  const url = inputValue(`ai-url-${p.name}`) ?? savedUrl(p);
+  if (reason.includes('주소') && url) {
+    if (p.needs_key && !p.key_configured) return 'API 키를 먼저 넣어 주세요.';
+    return model ? null : '쓸 모델을 먼저 골라 주세요.';
+  }
+  if (reason.includes('모델') && model) return null;
+  return reason;
+}
+
+function useRow(p) {
+  const using = p.name === data.llm.active;
+  const children = [];
+  if (pendingActive === p.name) {
+    children.push(el('span', { class: 'flag-line is-wait', text: '[저장]을 누르면 이 AI로 바뀝니다' }));
+    children.push(el('button', { type: 'button', class: 'btn btn-text btn-small', 'data-ai-action': 'use-cancel', 'data-name': p.name, text: '취소' }));
+  } else if (using && !pendingActive) {
+    children.push(flag(true, '지금 이 AI로 글을 씁니다', ''));
+  } else {
+    const reason = useReason(p);
+    children.push(el('button', { type: 'button', class: 'btn btn-small', id: `ai-use-${p.name}`, 'data-ai-action': 'use', 'data-name': p.name, disabled: Boolean(reason), text: '이 AI 쓰기' }));
+    if (reason) children.push(el('span', { class: 'caption', text: reason }));
+    if (confirmFor === p.name) {
+      children.push(el('div', { class: 'ai-confirm', id: `ai-confirm-${p.name}`, role: 'group', 'aria-label': '바깥 전송 확인' }, [
+        el('span', { text: externalText(p) }),
+        el('button', { type: 'button', class: 'btn btn-small is-primary', id: `ai-confirm-yes-${p.name}`, 'data-ai-action': 'use-yes', 'data-name': p.name, text: '쓰기' }),
+        el('button', { type: 'button', class: 'btn btn-small', 'data-ai-action': 'use-no', 'data-name': p.name, text: '취소' }),
+      ]));
+    }
+  }
+  return el('div', { class: 'ai-use', id: `ai-use-row-${p.name}` }, children);
+}
+
+function keyRow(p) {
+  if (p.key_configured && !aiKeyEditing[p.name]) {
+    const source = p.key_source === 'dev_file' ? '개발용 설정 파일에서 읽음' : '프로그램에 저장';
+    return [el('dt', { text: 'API 키' }), el('dd', { class: 'set-field' }, [
+      flag(true, '저장됨', ''),
+      el('span', { class: 'caption', text: `${source} · 값은 보이지 않습니다` }),
+      el('button', { type: 'button', class: 'btn btn-small', 'data-ai-action': 'key-change', 'data-name': p.name, disabled: !p.can_store_key, text: '바꾸기' }),
+      p.key_source === 'program' ? el('button', { type: 'button', class: 'btn btn-small', id: `ai-key-delete-${p.name}`, 'data-ai-action': 'key-delete', 'data-name': p.name, text: '지우기' }) : null,
+    ])];
+  }
+  const id = `ai-key-${p.name}`;
+  return [el('dt', {}, [el('label', { for: id, text: 'API 키' })]), el('dd', { class: 'set-field' }, [
+    el('input', { class: 'field field-text is-wide ai-key-input', type: 'password', id, 'data-name': p.name, autocomplete: 'off', spellcheck: 'false', maxlength: '400', disabled: !p.can_store_key, placeholder: p.can_store_key ? (p.needs_key ? '키를 붙여 넣으세요' : '필요한 곳만 넣습니다') : '' }),
+    el('button', { type: 'button', class: 'btn btn-small', id: `ai-key-save-${p.name}`, 'data-ai-action': 'key-save', 'data-name': p.name, disabled: !p.can_store_key, text: '키 저장' }),
+    aiKeyEditing[p.name] ? el('button', { type: 'button', class: 'btn btn-text btn-small', 'data-ai-action': 'key-cancel', 'data-name': p.name, text: '취소' }) : null,
+    p.can_store_key ? null : el('span', { class: 'caption', text: '이 PC에서는 키를 암호화해 저장할 수 없습니다(Windows에서만 됩니다). 개발용 설정 파일에 넣어 주세요.' }),
+  ])];
+}
+
+function modelRow(p, { optional = false } = {}) {
+  const id = `ai-model-${p.name}`;
+  const list = aiModelLists[p.name] || [];
+  const input = el('input', {
+    class: 'field field-text ai-model-input', type: 'text', id, 'data-ai-model': p.name, list: `ai-models-${p.name}`,
+    maxlength: '200', autocomplete: 'off', spellcheck: 'false', value: savedModel(p),
+    placeholder: optional ? '비우면 그 프로그램의 기본 모델' : '목록에서 고르거나 직접 적기',
+  });
+  return [el('dt', {}, [el('label', { for: id, text: '모델' })]), el('dd', { class: 'set-field' }, [
+    input,
+    el('datalist', { id: `ai-models-${p.name}` }, list.map((name) => el('option', { value: name }))),
+    p.models_listable ? el('button', { type: 'button', class: 'btn btn-small', 'data-ai-action': 'models', 'data-name': p.name, text: '모델 불러오기' }) : null,
+    el('span', { class: 'caption', id: `ai-models-note-${p.name}`, text: list.length ? `받아 온 모델 ${list.length}개` : '' }),
+  ])];
+}
+
+function urlRow(p) {
+  const id = `ai-url-${p.name}`;
+  return [el('dt', {}, [el('label', { for: id, text: '주소' })]), el('dd', { class: 'set-field' }, [
+    el('input', { class: 'field field-text is-wide ai-url-input', type: 'text', id, 'data-ai-url': p.name, maxlength: '300', autocomplete: 'off', spellcheck: 'false', value: savedUrl(p), placeholder: 'http://127.0.0.1:1234/v1' }),
+  ])];
+}
+
+function apiBody(p) {
+  const rows = [];
+  if (p.url_editable) rows.push(urlRow(p));
+  rows.push(keyRow(p), modelRow(p));
+  const steps = KEY_GUIDES[p.name] || ['그 회사의 개발자 화면에서 API 키를 만듭니다.', '키를 복사해 위 칸에 붙여 넣고 [키 저장]을 누릅니다.'];
+  return [
+    el('dl', { class: 'set-list set-form' }, rows.flat()),
+    el('div', { class: 'set-actions' }, [
+      el('button', { type: 'button', class: 'btn btn-small', id: `ai-test-${p.name}`, 'data-ai-action': 'test', 'data-name': p.name, text: '연결 확인' }),
+      noteLine(p.name),
+      el('details', { class: 'key-guide' }, [
+        el('summary', { text: p.url_editable ? '주소 넣는 법' : 'API 키 받는 법' }),
+        el('ol', {}, steps.map((t) => el('li', { text: t }))),
+      ]),
+    ]),
+  ];
+}
+
+function programBody(p) {
+  let installText = '설치되지 않음 · 그 프로그램을 설치하고 로그인한 뒤 [연결 확인]을 누르세요';
+  if (!p.verified) installText = '이 PC에서 안전하게 실행하는 방법을 확인하지 못해 아직 연결하지 않았습니다';
+  const rows = [
+    readRow('설치', flag(p.installed, '설치됨', installText)),
+    readRow('로그인', LOGIN_HINTS[p.name] || '그 프로그램에서 로그인합니다.'),
+  ];
+  if (p.verified) rows.push(modelRow(p, { optional: true }));
+  return [
+    el('p', { class: 'caption', text: '이 프로그램이 저장한 로그인 정보는 읽지 않고, 프로그램을 대신 실행합니다. 파일을 읽거나 명령을 실행하는 기능은 끄고 돌립니다.' }),
+    el('dl', { class: 'set-list set-form' }, rows.flat()),
+    el('div', { class: 'set-actions' }, [
+      el('button', { type: 'button', class: 'btn btn-small', id: `ai-test-${p.name}`, 'data-ai-action': 'test', 'data-name': p.name, disabled: !p.verified, text: '연결 확인' }),
+      noteLine(p.name),
+    ]),
+  ];
+}
+
+function ollamaActions() {
+  return [
+    el('button', { type: 'button', class: 'btn btn-small', id: 'models-refresh', text: '모델 확인' }),
+    el('button', { type: 'button', class: 'btn btn-small', id: 'warmup-btn', text: '미리 불러오기' }),
+    el('p', { class: 'caption', id: 'warmup-note', text: '모델을 미리 메모리에 올려 두면 첫 초안이 빨리 나옵니다.' }),
+  ];
+}
+
+function ollamaBody(s) {
+  return [
+    el('dl', { class: 'set-list set-form' }, modelRows(s).flat()),
+    el('div', { class: 'set-actions' }, ollamaActions()),
+  ];
+}
+
+function aiPane(p, s) {
+  const where = p.local
+    ? el('p', { class: 'ai-where is-local' }, [el('i', { class: 'dot is-ok', 'aria-hidden': 'true' }), '이 PC · 영상 자료가 이 PC 밖으로 나가지 않습니다'])
+    : el('p', { class: 'ai-where is-external', id: `ai-external-${p.name}` }, [el('i', { class: 'dot is-wait', 'aria-hidden': 'true' }), externalText(p)]);
+  let body;
+  if (p.type === 'ollama') body = ollamaBody(s);
+  else if (p.kind === 'program') body = programBody(p);
+  else body = apiBody(p);
+  return el('div', { class: 'ai-pane', id: `ai-pane-${p.name}`, 'data-ai-pane': p.name, hidden: p.name !== viewing }, [
+    el('h4', { id: `ai-pane-${p.name}-title`, tabindex: '-1', text: `${p.label} · ${KIND_WORD[p.kind] || ''}` }),
+    where,
+    ...body,
+    useRow(p),
+  ]);
+}
+
+function aiGroup(s) {
+  if (!providers || !providers.items.length) {
+    // 목록을 읽지 못하면 전처럼 Ollama 칸만
+    return group('AI 모델', 'set-ai', modelRows(s), ollamaActions());
+  }
+  if (!findProvider(viewing)) viewing = pendingActive || s.llm.active;
+  if (!findProvider(viewing)) viewing = providers.items[0].name;
+  return el('section', { class: 'set-group is-ai', id: 'set-ai', 'aria-labelledby': 'set-ai-title' }, [
+    el('h3', { id: 'set-ai-title', tabindex: '-1', text: 'AI 모델' }),
+    el('div', { class: 'ai-layout' }, [
+      aiList(),
+      el('div', { class: 'ai-panes' }, providers.items.map((p) => aiPane(p, s))),
+    ]),
+    errSpan('ai-active'), errSpan('ai-models'), errSpan('ai-urls'),
+  ]);
+}
+
+function repaintAiList() {
+  const list = $('ai-list');
+  if (list && providers) list.replaceWith(aiList());
+}
+
+function repaintUse(name) {
+  const p = findProvider(name);
+  const row = $(`ai-use-row-${name}`);
+  if (p && row) row.replaceWith(useRow(p));
+}
+
+function showPane(name) {
+  if (!findProvider(name)) return;
+  viewing = name;
+  for (const pane of document.querySelectorAll('#settings-body [data-ai-pane]')) pane.hidden = pane.dataset.aiPane !== name;
+  repaintAiList();
+  const item = $(`ai-item-${name}`);
+  if (item) item.focus({ preventScroll: true });
+}
+
+function setNote(name, text, tone = '') {
+  aiNotes[name] = { text, tone };
+  const node = $(`ai-note-${name}`);
+  if (node) {
+    node.textContent = text;
+    node.className = `caption${tone ? ` ${tone}` : ''}`;
+  }
+}
+
+async function loadProviders() {
+  try {
+    providers = await api.llmProviders();
+  } catch {
+    providers = null;
+  }
+}
+
+async function aiSaveKey(name) {
+  const input = $(`ai-key-${name}`);
+  if (!input) return;
+  const key = input.value.trim();
+  input.value = ''; // 보낸 값은 화면에 남기지 않는다
+  if (!key) {
+    setNote(name, '키를 붙여 넣은 뒤 [키 저장]을 누르세요.', 'is-bad');
+    return;
+  }
+  const button = $(`ai-key-save-${name}`);
+  if (button) button.disabled = true;
+  try {
+    await api.saveLlmKey(name, key);
+    aiKeyEditing[name] = false;
+    aiNotes[name] = { text: '저장했습니다. 값은 다시 보이지 않습니다. [연결 확인]으로 키가 통하는지 볼 수 있습니다.', tone: 'is-ok' };
+    await load({ keepMessage: true });
+    refreshStatus();
+  } catch (error) {
+    if (button) button.disabled = false;
+    setNote(name, `${error.message || ''} ${error.action || ''}`.trim(), 'is-bad');
+  }
+}
+
+const aiDeleteArmed = {};
+async function aiDeleteKey(name, button) {
+  if (!aiDeleteArmed[name]) {
+    button.textContent = '한 번 더 누르면 지웁니다';
+    aiDeleteArmed[name] = setTimeout(() => {
+      aiDeleteArmed[name] = null;
+      if ($(`ai-key-delete-${name}`)) $(`ai-key-delete-${name}`).textContent = '지우기';
+    }, RESET_WAIT_MS);
+    return;
+  }
+  clearTimeout(aiDeleteArmed[name]);
+  aiDeleteArmed[name] = null;
+  button.disabled = true;
+  try {
+    const res = await api.deleteLlmKey(name);
+    aiNotes[name] = { text: res.key_configured ? '프로그램에 저장한 키를 지웠습니다. 개발용 설정 파일의 키를 씁니다.' : '키를 지웠습니다.', tone: '' };
+    await load({ keepMessage: true });
+    refreshStatus();
+  } catch (error) {
+    button.disabled = false;
+    setNote(name, `${error.message || ''} ${error.action || ''}`.trim(), 'is-bad');
+  }
+}
+
+async function aiTest(name, button) {
+  button.disabled = true;
+  setNote(name, '확인하는 중…');
+  try {
+    const res = await api.llmTest(name);
+    setNote(name, `${res.message} ${res.action || ''}`.trim(), res.ok ? 'is-ok' : 'is-bad');
+  } catch (error) {
+    setNote(name, `${error.message || ''} ${error.action || ''}`.trim(), 'is-bad');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function aiLoadModels(name, button) {
+  const note = () => $(`ai-models-note-${name}`);
+  button.disabled = true;
+  if (note()) note().textContent = '모델 목록을 받아 오는 중…';
+  try {
+    const res = await api.llmModelsOf(name);
+    if (!res.reachable) {
+      if (note()) note().textContent = res.error ? `${res.error.message} ${res.error.action}`.trim() : '목록을 받아 오지 못했습니다';
+      return;
+    }
+    aiModelLists[name] = res.items.map((i) => i.name);
+    const list = $(`ai-models-${name}`);
+    if (list) list.replaceChildren(...res.items.map((i) => el('option', { value: i.name, text: i.label || '' })));
+    if (note()) note().textContent = res.items.length ? `받아 온 모델 ${res.items.length}개 · 칸을 눌러 고르세요` : '받아 온 모델이 없습니다 · 직접 적어 주세요';
+  } catch (error) {
+    if (note()) note().textContent = `${error.message || ''} ${error.action || ''}`.trim();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function aiChoose(name) {
+  const p = findProvider(name);
+  if (!p) return;
+  if (!p.local && confirmFor !== name) {
+    confirmFor = name; // 이 PC 밖이면 같은 글로 한 번 확인한다
+    repaintUse(name);
+    const yes = $(`ai-confirm-yes-${name}`);
+    if (yes) yes.focus();
+    return;
+  }
+  confirmFor = null;
+  pendingActive = name === data.llm.active ? null : name;
+  repaintAiList();
+  for (const item of providers.items) repaintUse(item.name);
+  markDirty();
+}
+
+function onAiClick(event) {
+  const view = event.target.closest('[data-ai-view]');
+  if (view) {
+    showPane(view.dataset.aiView);
+    return;
+  }
+  const button = event.target.closest('[data-ai-action]');
+  if (!button || button.disabled) return;
+  const name = button.dataset.name;
+  const action = button.dataset.aiAction;
+  if (action === 'use') aiChoose(name);
+  else if (action === 'use-yes') { confirmFor = name; aiChoose(name); }
+  else if (action === 'use-no') { confirmFor = null; repaintUse(name); }
+  else if (action === 'use-cancel') { pendingActive = null; repaintAiList(); for (const p of providers.items) repaintUse(p.name); markDirty(); }
+  else if (action === 'key-save') aiSaveKey(name);
+  else if (action === 'key-change') { aiKeyEditing[name] = true; render(data); if ($(`ai-key-${name}`)) $(`ai-key-${name}`).focus(); }
+  else if (action === 'key-cancel') { aiKeyEditing[name] = false; render(data); }
+  else if (action === 'key-delete') aiDeleteKey(name, button);
+  else if (action === 'test') aiTest(name, button);
+  else if (action === 'models') aiLoadModels(name, button);
+}
+
+function onAiInput(event) {
+  const node = event.target;
+  const name = node.dataset ? node.dataset.aiModel || node.dataset.aiUrl : null;
+  if (name) repaintUse(name);
+  if (node.classList && node.classList.contains('ai-key-input') && event.type === 'keydown' && event.key === 'Enter') {
+    event.preventDefault();
+    aiSaveKey(node.dataset.name);
+  }
+}
+
+// 바꾼 AI 칸(서버에 보낼 모양): llm.active, llm.models·llm.base_urls는 바꾼 이름만
+function aiChanges() {
+  const out = {};
+  if (!data || !providers) return out;
+  if (pendingActive && pendingActive !== data.llm.active) out['llm.active'] = pendingActive;
+  const models = {};
+  for (const node of document.querySelectorAll('#settings-body .ai-model-input')) {
+    if (node.value.trim() !== node.defaultValue) models[node.dataset.aiModel] = node.value.trim();
+  }
+  if (Object.keys(models).length) out['llm.models'] = models;
+  const urls = {};
+  for (const node of document.querySelectorAll('#settings-body .ai-url-input')) {
+    if (node.value.trim() !== node.defaultValue) urls[node.dataset.aiUrl] = node.value.trim();
+  }
+  if (Object.keys(urls).length) out['llm.base_urls'] = urls;
+  return out;
 }
 
 // ---------------------------------------------------------------- 댓글 규칙: 써도 되는 사실(줄 더하기 · 빼기)
@@ -500,11 +950,7 @@ export function settingsView(s) {
   const b = s.browser;
   return [
     group('유튜브 연결', 'set-youtube', keyRows(s), keyActions(s)),
-    group('AI 모델', 'set-ai', modelRows(s), [
-      el('button', { type: 'button', class: 'btn btn-small', id: 'models-refresh', text: '모델 확인' }),
-      el('button', { type: 'button', class: 'btn btn-small', id: 'warmup-btn', text: '미리 불러오기' }),
-      el('p', { class: 'caption', id: 'warmup-note', text: '모델을 미리 메모리에 올려 두면 첫 초안이 빨리 나옵니다.' }),
-    ]),
+    aiGroup(s),
     group('댓글 규칙', 'set-comment', [
       numberField('comment.min_chars', '최소 글자 수', { unit: '자' }),
       numberField('comment.max_chars', '최대 글자 수', { unit: '자 (광고 표기 포함)' }),
@@ -565,7 +1011,7 @@ export function changedValues() {
     if (key === 'browser.window_screen' && !value) continue;
     if (!same(value, initial[key])) out[key] = value;
   }
-  return out;
+  return { ...out, ...aiChanges() };
 }
 
 function markDirty() {
@@ -613,8 +1059,8 @@ function render(s) {
   data = s;
   const body = $('settings-body');
   body.replaceChildren(...settingsView(s));
-  $('warmup-btn').addEventListener('click', warmup);
-  $('models-refresh').addEventListener('click', loadModels);
+  if ($('warmup-btn')) $('warmup-btn').addEventListener('click', warmup);
+  if ($('models-refresh')) $('models-refresh').addEventListener('click', loadModels);
   if ($('key-save')) $('key-save').addEventListener('click', saveKey);
   if ($('key-cancel')) $('key-cancel').addEventListener('click', () => { keyEditing = false; render(data); });
   if ($('key-change')) $('key-change').addEventListener('click', () => { keyEditing = true; render(data); $('set-key').focus(); });
@@ -631,7 +1077,10 @@ const FOCUS_GROUP = { 'set-key': 'set-youtube-title', 'set-model': 'set-ai-title
 
 function applyFocus() {
   if (!pendingFocus) return;
-  const node = $(pendingFocus) || $(FOCUS_GROUP[pendingFocus] || '');
+  let node = $(pendingFocus);
+  // 그 칸이 숨은 칸(다른 AI를 쓰는 중이라 Ollama 칸이 접힘)이면 지금 쓰는 AI의 칸 제목으로
+  if (node && node.closest('[hidden]') && data) node = $(`ai-pane-${data.llm.active}-title`);
+  node = node || $(FOCUS_GROUP[pendingFocus] || '');
   if (!node) return;
   pendingFocus = null;
   const target = node.disabled ? node.closest('.set-group').querySelector('h3') : node;
@@ -642,6 +1091,9 @@ function applyFocus() {
 // 시작 준비 상자에서: 설정 화면을 열고 그 칸으로
 export function focusSetting(id) {
   pendingFocus = id;
+  viewing = null; // 지금 쓰는 AI의 칸부터
+  pendingActive = null;
+  confirmFor = null;
   showScreen('settings');
 }
 
@@ -650,7 +1102,8 @@ async function load({ keepMessage = false } = {}) {
   body.setAttribute('aria-busy', 'true');
   if (!keepMessage) setMessage('', '');
   try {
-    render(await api.settings());
+    const [settings] = await Promise.all([api.settings(), loadProviders()]);
+    render(settings);
     loadModels();
     loadScreens();
   } catch (error) {
@@ -675,6 +1128,9 @@ async function save() {
   setMessage('저장하는 중…', '', 'busy');
   try {
     const res = await api.saveSettings(changes);
+    pendingActive = null;
+    confirmFor = null;
+    await loadProviders();
     render(res);
     applyWorkDefaults(res);
     setMessage('저장했습니다 · 바로 적용됐습니다', 'is-ok', 'done');
@@ -709,6 +1165,9 @@ async function reset() {
   clearErrors();
   try {
     const res = await api.resetSettings();
+    pendingActive = null;
+    confirmFor = null;
+    await loadProviders();
     render(res);
     applyWorkDefaults(res);
     setMessage('기본값으로 돌렸습니다 · 저장한 API 키는 그대로입니다', 'is-ok', 'done');
@@ -771,6 +1230,9 @@ export function applyWorkDefaults(s) {
 
 export function initSettings() {
   const body = $('settings-body');
+  body.addEventListener('input', onAiInput);
+  body.addEventListener('keydown', onAiInput);
+  body.addEventListener('click', onAiClick);
   body.addEventListener('input', markDirty);
   body.addEventListener('change', markDirty);
   $('settings-save').addEventListener('click', save);
@@ -778,6 +1240,8 @@ export function initSettings() {
   document.addEventListener('screen:show', (event) => {
     if (event.detail === 'settings') {
       keyEditing = false;
+      confirmFor = null;
+      for (const name of Object.keys(aiKeyEditing)) aiKeyEditing[name] = false;
       load();
     }
   });

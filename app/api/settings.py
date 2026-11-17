@@ -90,7 +90,9 @@ def llm_settings(services: Services) -> SettingsLLMOut:
     return SettingsLLMOut(
         active=cfg.active,
         type=provider.type if provider else "",
-        model=llm.model if llm is not None else "",
+        model=(llm.model if llm is not None else "")
+        if provider is None or provider.type == "ollama"
+        else cfg.model_for(provider.name),
         local=bool(llm.local) if llm is not None else True,
         timeout_seconds=cfg.timeout_seconds,
         keep_alive=cfg.keep_alive,

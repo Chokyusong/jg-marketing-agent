@@ -47,7 +47,7 @@ def ai_status(services: Services) -> AIStatusOut:
     R5: 모델이 메모리에 있는지·추천 모델은 Ollama일 때만 본다. API 키 AI와 로그인된 프로그램은
     그 공급자가 아는 준비 문제(`problem()` — 키 없음·주소 없음·모델 안 고름·설치 안 됨)를 알린다.
     """
-    from app.api.ai_choice import kind_of, label_of, sends_to
+    from app.api.ai_choice import is_local, kind_of, label_of, sends_to
 
     health = services.llm_health()
     provider = services.settings.llm.active_provider
@@ -77,8 +77,14 @@ def ai_status(services: Services) -> AIStatusOut:
         lister = getattr(llm, "list_models", None)
         found = lister() if callable(lister) else None
         rec_installed = any(same_model(m["name"], DEFAULT_OLLAMA_MODEL) for m in found or [])
+    view = health.to_dict()
+    if provider is not None:  # 이름 · 이 PC/외부 · (Ollama 밖의) 모델은 설정으로 정한다
+        view["provider"] = provider.name
+        view["local"] = is_local(services.settings, provider)
+        if not is_ollama:
+            view["model"] = services.settings.llm.model_for(provider.name)
     return AIStatusOut(
-        **health.to_dict(),
+        **view,
         error=_problem(error) if error else None,
         loaded=loaded,
         recommended_model=DEFAULT_OLLAMA_MODEL if is_ollama or provider is None else "",

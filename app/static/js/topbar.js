@@ -96,15 +96,37 @@ export function browserStatusText(browser, job) {
   return { tone: 'is-wait', text: '로그인 확인 전', title };
 }
 
-// AI 상태 한 줄: 정상이면 「모델 · 이 PC/외부」, 문제면 짧은 이유. 자세한 안내는 마우스를 올리면.
+// AI 상태 한 줄: 정상이면 「AI 이름 · 모델 · 이 PC/외부」, 문제면 짧은 이유. 자세한 안내는 마우스를 올리면.
+// R5: 고른 AI가 Ollama가 아니면 그 AI가 알린 준비 문제(키 없음 · 로그인 · 설치)를 짧게.
+const AI_SHORT = {
+  llm_auth: '키·로그인 확인', llm_rate_limited: '한도 걸림', llm_settings_invalid: '설정 확인 필요',
+};
 export function aiStatusText(ai) {
   if (!ai) return { tone: 'is-wait', text: '확인 못 함', title: '' };
   const where = ai.local ? '이 PC' : '외부';
+  const name = ai.label || ai.provider || 'AI';
+  const model = ai.model || '기본 모델';
   const title = ai.error ? `${ai.error.message} ${ai.error.action}`.trim() : '';
   if (ai.error && ai.error.kind === 'llm_provider_unknown') return { tone: 'is-bad', text: '설정 확인 필요', title };
-  if (!ai.reachable) return { tone: 'is-bad', text: '꺼져 있음', title };
+  if (ai.error && AI_SHORT[ai.error.kind]) return { tone: 'is-bad', text: `${name} · ${AI_SHORT[ai.error.kind]}`, title };
+  if (ai.kind && ai.kind !== 'local' && ai.error) {
+    const short = ai.error.kind === 'llm_model_missing' ? '모델 없음' : '준비 안 됨';
+    return { tone: 'is-bad', text: `${name} · ${short}`, title };
+  }
+  if (!ai.reachable) return { tone: 'is-bad', text: ai.kind === 'program' ? `${name} · 설치 안 됨` : '꺼져 있음', title };
   if (!ai.installed) return { tone: 'is-bad', text: `${ai.model} · 모델 없음`, title };
-  return { tone: 'is-ok', text: `${ai.model} · ${where}`, title: '' };
+  return { tone: 'is-ok', text: `${name} · ${model} · ${where}`, title: ai.local ? '' : `영상 자료가 ${ai.sends_to || name}(으)로 전송됩니다` };
+}
+
+// 위 줄 오른쪽 작은 표시: 「AI · 이름 · 모델 · 이 PC/외부」(아래 줄과 같은 글)
+function paintTopAi(view) {
+  const node = $('top-ai-text');
+  if (!node) return;
+  node.textContent = `AI · ${view.text}`;
+  const dot = $('top-ai-dot');
+  dot.classList.remove('is-ok', 'is-bad', 'is-wait');
+  dot.classList.add(view.tone);
+  $('top-ai').title = view.title || '글 쓰는 AI · 누르면 설정 화면으로';
 }
 
 export function youtubeStatusText(key) {
@@ -128,6 +150,7 @@ function renderStatus(state) {
   const youtube = youtubeStatusText(state.youtubeKey);
   const browser = browserStatusText(state.browser, state.job);
   paintItem('ai', ai);
+  paintTopAi(ai);
   paintItem('youtube', youtube);
   paintItem('browser', browser);
   // 준비가 안 된 화면: 프로필(크롬·폴더), 설정(AI·유튜브 키)

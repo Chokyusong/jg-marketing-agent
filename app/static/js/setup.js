@@ -76,7 +76,9 @@ function paintLine(name, line) {
   const btn = $(`setup-${name}-btn`);
   btn.hidden = line.done;
   if (name === 'ai') {
-    btn.textContent = line.recommend ? '바꾸기' : '모델 확인';
+    const ai = getState().ai;
+    const local = !ai || !ai.kind || ai.kind === 'local';
+    btn.textContent = line.recommend ? '바꾸기' : local ? '모델 확인' : 'AI 확인'; // R5: 고른 AI를 본다
     btn.dataset.recommend = line.recommend || '';
   }
 }
