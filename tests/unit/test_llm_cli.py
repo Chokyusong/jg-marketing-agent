@@ -265,3 +265,82 @@ def test_model_starting_with_dash_cannot_be_an_option():
     from app.user_settings import MODEL_NAME
 
     assert MODEL_NAME.match("gpt-x") and not MODEL_NAME.match("--sandbox")
+
+
+# ------------------------------------------ 모델 목록(2026-11-17, codex debug models)
+
+CATALOG = {"models": [
+    {"slug": "gpt-reserve", "display_name": "GPT-Reserve", "visibility": "hide", "priority": 0},
+    {"slug": "m-terra", "display_name": "M-Terra", "visibility": "list", "priority": 3},
+    {"slug": "m-sol", "display_name": "M-Sol", "visibility": "list", "priority": 1},
+    {"slug": "m-luna", "visibility": "list"},  # 화면 이름·순서가 없어도 넣는다(맨 뒤)
+    {"slug": "auto-review", "display_name": "Auto Review", "visibility": "hide"},
+    {"display_name": "이름 없음", "visibility": "list"},
+    "글자 항목",
+    {"slug": "--sandbox", "visibility": "list"},  # 옵션처럼 보이는 이름은 뺀다
+    {"slug": "m-sol", "visibility": "list"},  # 같은 이름은 한 번
+]}
+
+
+def test_codex_model_list_keeps_only_listed_models(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-" + "y" * 30)
+    runner = FakeRunner([RunResult(0, json.dumps(CATALOG), "")])
+    items = make("codex", runner, temp_root=str(tmp_path)).list_models()
+    assert [i["name"] for i in items] == ["m-sol", "m-terra", "m-luna"]
+    assert [i["label"] for i in items] == ["M-Sol", "M-Terra", None]
+    (req,) = runner.calls
+    assert req.args == ["C:/fake/bin/codex.exe", "debug", "models"]  # 모델을 부르지 않는 명령
+    assert req.input_text == "" and req.timeout == cli.MODELS_TIMEOUT_SECONDS
+    assert req.creationflags == cli.NO_WINDOW
+    assert "OPENAI_API_KEY" not in req.env  # 이 앱의 비밀값은 넘기지 않는다
+    cwd, existed, contents = runner.workdirs_seen[0]
+    assert existed and contents == [] and not Path(cwd).exists()  # 빈 임시 폴더, 끝나면 지움
+
+
+@pytest.mark.parametrize("text", ["{not json", "", json.dumps({"models": "x"}), json.dumps(7)])
+def test_broken_model_catalog_is_bad_output(text):
+    runner = FakeRunner([RunResult(0, text, "")])
+    with pytest.raises(AppError) as info:
+        make("codex", runner).list_models()
+    assert info.value.kind == "llm_bad_output"
+    assert "기본값" in info.value.action
+
+
+def test_model_catalog_shapes():
+    assert cli.parse_model_catalog(json.dumps([{"slug": "a", "visibility": "list"}])) == [
+        {"name": "a", "label": None, "size": None}]
+    assert cli.parse_model_catalog(json.dumps({"models": []})) == []
+    assert cli.parse_model_catalog(json.dumps({"models": [{"slug": "a"}]})) == []  # 공개 표시 없음
+    assert cli.parse_model_catalog(json.dumps({"models": [{"id": "b", "visibility": "list"}]})) == [
+        {"name": "b", "label": None, "size": None}]
+
+
+def test_model_list_failures():
+    runner = FakeRunner([RunResult(1, "", "Error: not logged in. Run codex login")])
+    with pytest.raises(AppError) as info:
+        make("codex", runner).list_models()
+    assert info.value.kind == "llm_auth"
+    runner = FakeRunner([RunTimeout("30")])
+    with pytest.raises(AppError) as info:
+        make("codex", runner).list_models()
+    assert info.value.kind == "llm_timeout"
+
+
+def test_model_list_not_installed_or_no_command_runs_nothing():
+    runner = FakeRunner([RunResult(0, "{}", "")])
+    with pytest.raises(AppError):
+        make("codex", runner, which=lambda p: None).list_models()
+    assert make("claude", runner).list_models() is None  # Claude Code: 목록 명령이 없다
+    assert runner.calls == []
+
+
+def test_model_not_supported_on_this_account_is_plain_words():
+    text = ("ERROR: unexpected status 400 Bad Request: {\"detail\":\"The 'gpt-6-luna' model is not "
+            "supported when using Codex with a ChatGPT account.\",\"code\":\"model_not_found\"}")
+    for model in ("gpt-6-luna", ""):
+        runner = FakeRunner([RunResult(1, "", text)])
+        with pytest.raises(AppError) as info:
+            make("codex", runner, model=model).generate_json(system="s", user="u", schema=SCHEMA)
+        assert info.value.kind == "llm_model_missing"  # 로그인 문제(llm_auth)가 아니다
+        assert info.value.message == "이 계정에서는 gpt-6-luna 모델을 쓸 수 없습니다."
+        assert info.value.action == "설정에서 다른 모델을 골라 주세요."

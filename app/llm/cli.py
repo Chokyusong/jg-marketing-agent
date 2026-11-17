@@ -30,6 +30,16 @@
   - `codex login status`: 로그인 상태를 보인다(이 PC: "Logged in using ChatGPT", 종료 코드 0).
     종료 코드의 뜻은 문서에 없어 0이면 로그인됨으로만 본다.
   - `--output-schema`는 쓰지 않는다(엄격 스키마 조건을 이 앱 스키마로 확인하지 않음 → 공통 확인).
+  - 모델 목록(2026-11-17 추가): `codex debug models --help`
+    — "Render the raw model catalog as JSON".
+    이 PC 출력 모양은 `{"models": [{"slug", "display_name", "visibility", "priority", …}]}`이고
+    `visibility`가 `list`인 것이 그 계정에서 고를 수 있는 모델(이 PC: gpt-5.6-sol·terra·luna,
+    `hide`인 것은 뺀다). 모델을 부르지 않는 명령이라 요금·사용량이 들지 않는다. 다른 실행과 같은
+    조건(셸 없음·콘솔 창 없음·시간 제한·빈 임시 폴더·비밀값 환경 변수 뺌)으로 돌리고, 모양이 달라도
+    죽지 않게 `slug`(없으면 `id`·`name`)가 있는 항목만 쓴다. 이 명령에는 `--ignore-user-config`가
+    없다(그 프로그램이 자기 설정을 읽는다 — 이 앱은 그 파일을 읽지 않는다).
+  - 그 계정에서 쓸 수 없는 모델: 「The '…' model is not supported when using Codex with a ChatGPT
+    account」(`model_not_found`) → `llm_model_missing`으로 나누어 쉬운 말로 알린다.
 - Claude Code(2.1.312) — `claude --help`, `claude auth status --help`,
   https://code.claude.com/docs/en/headless , https://code.claude.com/docs/en/cli-reference
   - `-p, --print`: 비대화. 표준 입력을 읽는다("cat file | claude -p "query"").
@@ -40,6 +50,7 @@
     `--no-chrome`, `--system-prompt <글>`(기본 시스템 프롬프트를 바꾼다), `--model <모델>`.
   - `--bare`는 쓰지 않는다(구독 로그인을 쓰지 않고 API 키만 쓴다고 문서에 적혀 있다).
   - `claude auth status`: 로그인돼 있으면 종료 코드 0, 아니면 1(문서).
+  - 모델 목록을 주는 명령은 `claude --help`에 없다(2026-11-17) → config.yaml의 별칭·이름 목록.
 - Gemini CLI: 이 PC에 설치돼 있지 않아 `--help`로 위 조건을 확인하지 못했다 → **물리지 않는다**.
   목록에는 「설치되지 않음」으로만 보인다(설치돼 있어도 「아직 연결하지 않음」, 고를 수 없음).
 """
@@ -48,6 +59,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -64,6 +76,7 @@ log = logging.getLogger(__name__)
 
 VERSION_TIMEOUT_SECONDS = 10.0
 LOGIN_TIMEOUT_SECONDS = 20.0
+MODELS_TIMEOUT_SECONDS = 30.0
 VERSION_CACHE_SECONDS = 300.0
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
 
@@ -170,6 +183,7 @@ class CLISpec:
     version_args: tuple[str, ...] = ("--version",)
     login_args: tuple[str, ...] = ()
     login_hint: str = ""  # 로그인 방법 한 줄(화면)
+    models_args: tuple[str, ...] = ()  # 모델 목록 명령(없으면 목록을 받아 오지 않는다)
 
 
 SPECS: dict[str, CLISpec] = {
@@ -180,6 +194,7 @@ SPECS: dict[str, CLISpec] = {
         login_hint=(
             "명령 창에서 `codex login`을 실행해 로그인합니다(이 앱은 로그인 정보를 읽지 않습니다)."
         ),
+        models_args=("debug", "models"),
     ),
     "claude": CLISpec(
         "claude",
@@ -252,9 +267,17 @@ def stdin_text(system: str, user: str, schema: JSONSchema) -> str:
     )
 
 
+MODEL_NOT_FOUND = re.compile(r"model_not_found|model\b.{0,80}\bnot supported", re.I | re.S)
+MODEL_NAME_IN_TEXT = re.compile(r"['\"`]([A-Za-z0-9][A-Za-z0-9._:/-]{0,79})['\"`]\s+model", re.I)
+
+
 def _classify(text: str) -> ErrorKind:
     """실패 글로 종류를 짐작한다(프로그램마다 문구가 달라 낱말로만 본다)."""
     low = text.lower()
+    # 그 계정에서 쓸 수 없는 모델(Codex: "The 'x' model is not supported when using Codex with a
+    # ChatGPT account", model_not_found). 「account」가 들어 있어도 로그인 문제가 아니다
+    if MODEL_NOT_FOUND.search(text):
+        return ErrorKind.LLM_MODEL_MISSING
     if any(
         w in low
         for w in (
@@ -441,6 +464,15 @@ class CLIClient(TextJSONLLM):
     def _fail(self, text: str) -> AppError:
         kind = _classify(text)
         tail = redact(" ".join(text.split())[-300:], self._secrets)
+        if kind is ErrorKind.LLM_MODEL_MISSING:
+            found = MODEL_NAME_IN_TEXT.search(text)
+            name = self.model or (found.group(1) if found else "") or "고른"
+            return AppError(
+                kind,
+                detail=self._detail(tail),
+                message=f"이 계정에서는 {name} 모델을 쓸 수 없습니다.",
+                action="설정에서 다른 모델을 골라 주세요.",
+            )
         if kind is ErrorKind.LLM_AUTH:
             return AppError(
                 kind,
@@ -485,14 +517,92 @@ class CLIClient(TextJSONLLM):
             self.version()
         return LLMHealth(self.provider, self.model, installed, installed, False)
 
+    @property
+    def models_listable(self) -> bool:
+        return bool(self.spec.models_args)
+
     def list_models(self) -> list[dict[str, Any]] | None:
-        return None  # 모델 목록을 주는 명령이 없다 → 직접 적는다(비우면 그 프로그램의 기본 모델)
+        """그 프로그램이 알려 주는 모델 목록(Codex `debug models`). 명령이 없으면 None.
+
+        모델을 부르지 않는다. 그 계정에서 고를 수 있는 것(`visibility: list`)만.
+        실패하면 AppError."""
+        if not self.spec.models_args:
+            return None  # Claude Code: 목록 명령이 없다 → config.yaml 별칭 · 직접 입력
+        problem = self.problem()
+        if problem is not None:
+            raise problem
+        exe = self.executable() or self.program
+        workdir = tempfile.mkdtemp(prefix="jg-ai-", dir=self._temp_root)  # 빈 임시 폴더
+        try:
+            res = self._run(
+                [exe, *self.spec.models_args],
+                input_text="",
+                timeout=MODELS_TIMEOUT_SECONDS,
+                cwd=workdir,
+            )
+        except RunTimeout as exc:
+            raise AppError(
+                ErrorKind.LLM_TIMEOUT,
+                detail=self._detail("모델 목록 시간 초과"),
+                message=f"{self.label}의 모델 목록이 시간 안에 오지 않았습니다.",
+                action="잠시 뒤 [목록 다시 받기]를 눌러 주세요.",
+            ) from exc
+        except RunFailed as exc:
+            raise AppError(
+                ErrorKind.LLM_DOWN,
+                detail=self._detail(str(exc)),
+                message=f"{self.label}을(를) 실행하지 못했습니다.",
+                action=f"{self.label}이(가) 설치돼 있는지 확인해 주세요.",
+            ) from exc
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
+        if res.returncode != 0:
+            raise self._fail(res.stderr + " " + res.stdout)
+        items = parse_model_catalog(res.stdout)
+        if items is None:
+            raise AppError(
+                ErrorKind.LLM_BAD_OUTPUT,
+                detail=self._detail("모델 목록이 JSON이 아님"),
+                message=f"{self.label}의 모델 목록을 읽지 못했습니다.",
+                action="「기본값」이나 「직접 입력…」으로 고를 수 있습니다.",
+            )
+        return items
 
     def warmup(self) -> float:
         return 0.0
 
     def close(self) -> None:
         return None
+
+
+def parse_model_catalog(text: str) -> list[dict[str, Any]] | None:
+    """`codex debug models` 출력 → [{name, label, size}]. JSON이 아니면 None.
+
+    `{"models": [...]}` 또는 목록 그대로를 받는다. `visibility`가 `list`인 것만(없거나 다르면 뺀다),
+    `priority`(숫자) 순서, 같은 이름은 한 번. 모양이 달라도 죽지 않는다."""
+    data = _json_or_none(text)
+    if isinstance(data, dict):
+        data = data.get("models")
+    if not isinstance(data, list):
+        return None
+    rows: list[tuple[float, int, dict[str, Any]]] = []
+    seen: set[str] = set()
+    for i, item in enumerate(data):
+        if not isinstance(item, dict) or item.get("visibility") != "list":
+            continue
+        name = next((str(item[k]).strip() for k in ("slug", "id", "name")
+                     if isinstance(item.get(k), str) and item[k].strip()), "")
+        if not name or name in seen or len(name) > 120 or name.startswith("-"):
+            continue
+        seen.add(name)
+        label = item.get("display_name")
+        label = str(label).strip()[:80] if isinstance(label, str) and label.strip() else None
+        priority = item.get("priority")
+        order = float(priority) if isinstance(priority, (int, float)) and not isinstance(
+            priority, bool) else float("inf")
+        rows.append((order, i, {"name": name, "label": label, "size": None}))
+    rows.sort(key=lambda r: (r[0], r[1]))
+    return [r[2] for r in rows]
 
 
 def _json_or_none(text: str) -> Any:

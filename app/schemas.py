@@ -843,6 +843,8 @@ class LLMProviderOut(BaseModel):
     # 프로그램의 맨 위 칸 이름(「기본값 (그 프로그램이 정한 모델)」, 값은 빈 글)
     recommended_models: list[str] = []
     default_label: str = ""
+    # 2026-11-17 로그인된 프로그램이 모델 목록 명령을 주는지(Codex `debug models`, 필드 추가)
+    models_from_program: bool = False
 
 
 class LLMProvidersOut(BaseModel):

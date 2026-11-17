@@ -80,17 +80,52 @@ def test_provider(name: str, services: Annotated[Services, Depends(get_services)
     return ai_choice.check_provider(services, name)
 
 
-NOTE_FALLBACK = "목록을 받아 오지 못해 추천 목록을 보입니다"
+# 추천 목록은 문서로 확인한 이름이지만 계정에 따라 못 쓰는 것이 있다(Codex 실측, 2026-11-17)
+NOTE_ACCOUNT = "계정에 따라 쓸 수 없는 모델이 있을 수 있습니다"
+NOTE_FALLBACK = f"목록을 받아 오지 못해 추천 목록을 보입니다 · {NOTE_ACCOUNT}"
 NOTE_NO_LIST = "목록을 받아 오지 못했습니다 · 「직접 입력…」으로 적을 수 있습니다"
-NOTE_NO_KEY = "API 키를 넣으면 목록을 받아 옵니다 · 지금은 추천 목록을 보입니다"
+NOTE_NO_KEY = f"{NOTE_ACCOUNT}. 키를 넣으면 쓸 수 있는 목록을 받아 옵니다"
+NOTE_PROGRAM_FAILED = (
+    "그 프로그램에서 모델 목록을 받아 오지 못했습니다 · "
+    "「기본값」이나 「직접 입력…」을 고를 수 있습니다"
+)
 
 
-def _fallback(recommended: list[str], *, no_key: bool = False) -> dict:
+def _fallback(recommended: list[str], *, no_key: bool = False, program: bool = False) -> dict:
     """받아 오지 못했을 때: 추천 목록이 있으면 그것, 없으면 「직접 입력…」만(2026-11-17)."""
     if not recommended:
-        return {"recommended": [], "source": "none", "note": NOTE_NO_LIST}
+        return {"recommended": [], "source": "none",
+                "note": NOTE_PROGRAM_FAILED if program else NOTE_NO_LIST}
     return {"recommended": recommended, "source": "recommended",
             "note": NOTE_NO_KEY if no_key else NOTE_FALLBACK}
+
+
+def _program_models(services: Services, name: str, current: str,
+                    recommended: list[str]) -> LLMModelsOut:
+    """로그인된 프로그램: 목록 명령이 있으면(Codex `debug models`) 받아 오고, 없으면 추천 목록."""
+    base = {"provider": name, "manual_only": True, "current": current}
+    client = ai_choice.client_for(services, name)
+    try:
+        try:
+            found = client.list_models()  # type: ignore[attr-defined]
+        except AppError as exc:
+            return LLMModelsOut(reachable=False, current_installed=False, items=[],
+                                error=_problem(exc), **base, **_fallback(recommended, program=True))
+    finally:
+        if client is not services.llm:
+            client.close()
+    if found is None:  # 목록 명령이 없다(Claude Code) → 추천 목록 · 직접 입력
+        return LLMModelsOut(
+            reachable=True, current_installed=bool(current), items=[], recommended=recommended,
+            source="recommended" if recommended else "none", **base,
+        )
+    items = [LLMModelOut(name=m["name"], kind="general", label=m.get("label"),
+                         current=m["name"] == current) for m in found]  # 그 프로그램이 준 순서
+    if not items:
+        return LLMModelsOut(reachable=True, current_installed=False, items=[], **base,
+                            **_fallback(recommended, program=True))
+    return LLMModelsOut(reachable=True, current_installed=any(i.current for i in items),
+                        items=items, recommended=recommended, **base)
 
 
 def _provider_models(services: Services, name: str) -> LLMModelsOut:
@@ -100,12 +135,8 @@ def _provider_models(services: Services, name: str) -> LLMModelsOut:
         raise AppError(ErrorKind.LLM_PROVIDER_UNKNOWN, detail=f"'{name}'은(는) 목록에 없습니다.")
     current = llm_cfg.model_for(name)
     recommended = ai_choice.recommended_models(provider)
-    if provider.type == "cli":  # 목록 명령이 없다 → 추천 목록 · 직접 입력
-        return LLMModelsOut(
-            reachable=True, current=current, current_installed=bool(current), items=[],
-            provider=name, manual_only=True, recommended=recommended,
-            source="recommended" if recommended else "none",
-        )
+    if provider.type == "cli":
+        return _program_models(services, name, current, recommended)
     client = ai_choice.client_for(services, name)
     try:
         if provider.type == "ollama":

@@ -199,7 +199,9 @@ def test_model_field_is_a_list_refilled_after_key_save(app):
         assert "keep-me · 저장된 모델" in options and len(options) > 3  # 추천 목록 + 저장된 값
         assert page.input_value("#ai-model-sel-openai") == "keep-me"
         assert not page.is_visible("#ai-model-openai")  # 빈 글 칸만 두지 않는다
-        assert "API 키를 넣으면" in page.text_content("#ai-models-note-openai")
+        note = page.text_content("#ai-models-note-openai")
+        assert "계정에 따라 쓸 수 없는 모델이 있을 수 있습니다" in note
+        assert "키를 넣으면 쓸 수 있는 목록을 받아 옵니다" in note
 
         page.fill("#ai-key-openai", key)
         page.click("#ai-key-save-openai")

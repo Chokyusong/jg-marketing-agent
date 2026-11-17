@@ -242,6 +242,8 @@ analyzer / drafter
   - 공통: 빈 임시 폴더(끝나면 지움), 셸 없이 인자 목록(`shell=False`), Windows 콘솔 창 없음(`CREATE_NO_WINDOW`), 시간 제한(`llm.timeout_seconds`), 이 앱의 키 환경 변수는 자식에게 넘기지 않음. 그 프로그램의 로그인·설정 파일은 읽거나 복사하지 않는다. 로그인 여부는 [연결 확인]에서 그 프로그램의 `codex login status`·`claude auth status`로 묻는다.
   - Gemini CLI: 이 PC에 설치돼 있지 않아 `--help`로 조건을 확인하지 못했다 → 물리지 않는다(목록에 「설치 안 됨」/「아직 연결 안 함」, 고를 수 없음).
   - 모델 이름은 `-`로 시작할 수 없다(명령 인자로 들어가므로 `--sandbox` 같은 값을 막는다).
+  - 모델 목록(2026-11-17): Codex는 그 프로그램에게 받아 온다 — `codex debug models`("Render the raw model catalog as JSON", 모델을 부르지 않아 사용량이 들지 않음). 위와 같은 조건(셸 없음·콘솔 창 없음·시간 제한 30초·빈 임시 폴더·이 앱의 키 환경 변수 뺌, 로그인·설정 파일은 읽지 않음). 출력 `{"models": [{slug, display_name, visibility, priority, …}]}`에서 `visibility: list`만, `priority` 순서, 화면에는 `display_name · slug`. 모양이 달라도 죽지 않고(JSON이 아니면 `llm_bad_output`), 실패하면 「기본값 (그 프로그램이 정한 모델)」과 「직접 입력…」만 남기고 한 줄 안내. 이 명령에는 `--ignore-user-config`가 없다. 문서의 `codex -m` 예시 이름(gpt-6-*)은 ChatGPT 계정에서 `model_not_found`가 나 `config.yaml`에서 뺐다. Claude Code는 `claude --help`에 목록 명령이 없어 `config.yaml`의 별칭(fable·opus·sonnet)과 전체 이름.
+  - 그 계정에서 쓸 수 없는 모델(`model_not_found`, 「… model is not supported …」) → `llm_model_missing`, 「이 계정에서는 ○○ 모델을 쓸 수 없습니다. 설정에서 다른 모델을 골라 주세요.」(글에 「account」가 있어도 로그인 문제로 보지 않는다).
 
 설정 모양(`config.yaml`, 비밀값 없음):
 
@@ -439,7 +441,7 @@ llm:
   - 칸: `llm.active`(고른 AI 이름), `llm.models`(AI 이름 → 모델), `llm.base_urls`(「직접 입력」 주소). `llm.models`·`llm.base_urls`는 보낸 이름만 바꾸고 빈 글이면 그 이름을 지운다.
   - `llm.active`는 준비된 AI만 받는다: 목록에 있음 · 지원하는 종류 · (API 키 AI) 키 있음 · (「직접 입력」) 주소 있음 · 모델 있음 · (프로그램) 확인한 프로그램이고 설치됨. 아니면 422와 이유(「API 키를 먼저 넣어 주세요」 등).
   - 저장하면 바로 적용(다음 분석·초안이 새 AI로). 게시 중이면 409.
-  - API: `GET /api/llm/providers`(목록·준비 상태, 바깥에 묻지 않음), `POST /api/llm/providers/{이름}/test`([연결 확인]: API 키 AI는 모델 목록 — 글을 만들지 않아 요금이 들지 않는 호출, 프로그램은 그 프로그램의 로그인 상태 명령), `GET /api/llm/models?provider=<이름>`(인자가 없으면 전과 같이 Ollama. 2026-11-17: 받아 오지 못하거나 목록 명령이 없으면 `config.yaml` `llm.providers.<이름>.models`의 추천 목록 — 공식 문서로 확인한 이름만 — 을 `recommended`로, 출처를 `source`(api · recommended · none)로, 한 줄을 `note`로 함께 준다. 화면의 「모델」은 고르는 목록 + 맨 아래 「직접 입력…」).
+  - API: `GET /api/llm/providers`(목록·준비 상태, 바깥에 묻지 않음), `POST /api/llm/providers/{이름}/test`([연결 확인]: API 키 AI는 모델 목록 — 글을 만들지 않아 요금이 들지 않는 호출, 프로그램은 그 프로그램의 로그인 상태 명령), `GET /api/llm/models?provider=<이름>`(인자가 없으면 전과 같이 Ollama. 2026-11-17: 받아 오지 못하거나 목록 명령이 없으면 `config.yaml` `llm.providers.<이름>.models`의 추천 목록 — 공식 문서로 확인한 이름만 — 을 `recommended`로, 출처를 `source`(api · recommended · none)로, 한 줄을 `note`로 함께 준다. 화면의 「모델」은 고르는 목록 + 맨 아래 「직접 입력…」. 추천 목록에는 「계정에 따라 쓸 수 없는 모델이 있을 수 있습니다」를 붙이고, 키가 없으면 「… 키를 넣으면 쓸 수 있는 목록을 받아 옵니다」. 로그인된 프로그램은 Codex만 그 프로그램의 `codex debug models`로 받아 오고(`source: api`, `display_name`은 `label`), `GET /api/llm/providers`의 `models_from_program`이 참이다).
   - **AI API 키**: `PUT`·`DELETE /api/settings/llm-key/{이름}`. AI마다 따로 DPAPI로 암호화해 `llm_keys/<이름>.bin`에 둔다(유튜브 키 파일과 그 동작은 그대로). 읽는 순서는 프로그램에 저장한 키 > `.env`(`api_key_env`) > 없음. 응답에는 있는지와 출처만. 저장한 키는 비밀값 목록에 들어가 오류 문구에서 가리고, 로그는 모든 줄에서 가린다(`app/errors.remember_log_secrets`).
 - **모델(Ollama)**: 프로그램에서 고른 모델(`llm.model`) > `.env`의 `OLLAMA_MODEL` > 코드 기본값. 다른 AI의 모델은 `llm.models`.
   모델 목록은 `GET /api/llm/models`(Ollama `/api/tags`). 일반 모델이 위, 코드용·임베딩용은 아래에 표시만 다르게.

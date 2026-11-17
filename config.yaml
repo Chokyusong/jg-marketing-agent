@@ -104,16 +104,18 @@ llm:
       json_mode: false
       max_tokens_field: max_tokens
       models: []              # 사람이 넣는 주소라 추천할 이름이 없다
-    # 로그인된 프로그램은 목록을 주는 명령이 없다. 맨 위 「기본값 (그 프로그램이 정한 모델)」이 기본이고
-    # 아래는 문서로 확인한 이름. Codex: 2026-11-17 developers.openai.com/codex/models(→ learn.chatgpt.com
-    # /docs/models)의 `codex -m` 예시(gpt-6.1-terra는 Codex 0.159.0 이상). Claude Code: 2026-11-17
-    # `claude --help`의 --model 별칭(fable·opus·sonnet)과 claude-api 스킬의 전체 이름
+    # 로그인된 프로그램: 맨 위 「기본값 (그 프로그램이 정한 모델)」이 기본.
+    # Codex는 그 프로그램에게 목록을 받아 온다(`codex debug models`의 visibility: list, 2026-11-17).
+    # 문서의 `codex -m` 예시 이름(gpt-6-*)은 ChatGPT 계정에서 model_not_found가 나서 뺐다 — 추천
+    # 목록은 비워 두고, 받아 오지 못하면 「기본값」·「직접 입력…」만 보인다.
+    # Claude Code는 목록 명령이 없어(`claude --help`, 2026-11-17) --model 별칭(fable·opus·sonnet)과
+    # claude-api 스킬의 전체 이름
     codex-cli:
       type: cli
       label: Codex
       program: codex
       sends_to: "OpenAI(Codex)"
-      models: [gpt-6-astra, gpt-6.1-sol, gpt-6.1-terra, gpt-6-luna]
+      models: []
     claude-cli:
       type: cli
       label: Claude Code

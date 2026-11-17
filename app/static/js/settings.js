@@ -440,6 +440,7 @@ const aiKeyEditing = {};
 const aiNotes = {}; // 이름 → { text, tone } (연결 확인 · 키 저장 결과)
 const aiModelLists = {}; // 이름 → 받아 온 모델 이름들(받아 오지 못하면 추천 목록)
 const aiModelNotes = {}; // 이름 → 목록 아래 한 줄
+const aiModelLabels = {}; // 이름 → { 모델 이름: 화면 이름 }(그 회사·프로그램이 붙인 이름이 있을 때)
 const aiModelCustom = {}; // 이름 → 「직접 입력…」을 고른 상태인지
 const aiModelTried = {}; // 이름 → 이번에 목록을 받아 와 봤는지(칸을 열 때 한 번만 저절로)
 
@@ -580,7 +581,8 @@ function modelOptions(p, optional, value) {
   const names = modelNames(p);
   const saved = savedModel(p);
   const options = [el('option', { value: '', text: optional ? (p.default_label || '기본값 (그 프로그램이 정한 모델)') : '모델을 고르세요' })];
-  for (const name of names) options.push(el('option', { value: name, text: name }));
+  const labels = aiModelLabels[p.name] || {};
+  for (const name of names) options.push(el('option', { value: name, text: labels[name] && labels[name] !== name ? `${labels[name]} · ${name}` : name }));
   for (const extra of [saved, value]) {
     // 저장된 값이 목록에 없어도 사라지지 않게 목록에 넣어 고른 상태로 보인다
     if (extra && !names.includes(extra) && !options.some((o) => o.value === extra)) {
@@ -595,7 +597,7 @@ function modelNote(p) {
   if (aiModelNotes[p.name]) return aiModelNotes[p.name];
   const fetched = aiModelLists[p.name];
   if (fetched && fetched.length) return `받아 온 모델 ${fetched.length}개`;
-  if (p.needs_key && !p.key_configured && (p.recommended_models || []).length) return 'API 키를 넣으면 목록을 받아 옵니다 · 지금은 추천 목록을 보입니다';
+  if (p.needs_key && !p.key_configured && (p.recommended_models || []).length) return '계정에 따라 쓸 수 없는 모델이 있을 수 있습니다. 키를 넣으면 쓸 수 있는 목록을 받아 옵니다';
   return '';
 }
 
@@ -613,7 +615,7 @@ function modelRow(p, { optional = false } = {}) {
   return [el('dt', {}, [el('label', { for: `ai-model-sel-${p.name}`, text: '모델' })]), el('dd', { class: 'set-field' }, [
     select,
     input,
-    p.models_listable ? el('button', { type: 'button', class: 'btn btn-small', id: `ai-models-btn-${p.name}`, 'data-ai-action': 'models', 'data-name': p.name, text: '목록 다시 받기' }) : null,
+    canList(p) ? el('button', { type: 'button', class: 'btn btn-small', id: `ai-models-btn-${p.name}`, 'data-ai-action': 'models', 'data-name': p.name, text: '목록 다시 받기' }) : null,
     el('span', { class: 'caption', id: `ai-models-note-${p.name}`, role: 'status', text: modelNote(p) }),
   ])];
 }
@@ -650,11 +652,19 @@ function onModelSelect(event) {
   markDirty();
 }
 
-// 칸을 열 때 한 번: 키가 있으면(또는 키가 필요 없고 주소가 있으면) 목록을 받아 온다
+// 목록을 받아 올 수 있는 AI: API 키 AI(모델 목록 API), 목록 명령이 있는 프로그램(Codex)
+function canList(p) {
+  return Boolean(p.models_listable || p.models_from_program);
+}
+
+// 칸을 열 때 한 번: 키가 있으면(또는 키가 필요 없고 주소가 있으면) 목록을 받아 온다.
+// 프로그램은 설치돼 있으면 그 프로그램에게 묻는다(모델을 부르지 않는 명령)
 function autoLoadModels(name) {
   const p = findProvider(name);
-  if (!p || !p.models_listable || p.type === 'ollama' || aiModelTried[name]) return;
-  if (!(p.key_configured || (!p.needs_key && (savedUrl(p) || !p.url_editable)))) return;
+  if (!p || !canList(p) || p.type === 'ollama' || aiModelTried[name]) return;
+  if (p.kind === 'program') {
+    if (!p.installed || !p.verified) return;
+  } else if (!(p.key_configured || (!p.needs_key && (savedUrl(p) || !p.url_editable)))) return;
   aiLoadModels(name);
 }
 
@@ -841,7 +851,7 @@ async function aiTest(name, button) {
   try {
     const res = await api.llmTest(name);
     setNote(name, `${res.message} ${res.action || ''}`.trim(), res.ok ? 'is-ok' : 'is-bad');
-    if (res.ok && findProvider(name) && findProvider(name).models_listable) aiLoadModels(name);
+    if (res.ok && findProvider(name) && canList(findProvider(name))) aiLoadModels(name);
   } catch (error) {
     setNote(name, `${error.message || ''} ${error.action || ''}`.trim(), 'is-bad');
   } finally {
@@ -861,6 +871,7 @@ async function aiLoadModels(name) {
     const res = await api.llmModelsOf(name);
     if (res.source === 'api' && res.items.length) {
       aiModelLists[name] = res.items.map((i) => i.name);
+      aiModelLabels[name] = Object.fromEntries(res.items.filter((i) => i.label).map((i) => [i.name, i.label]));
       aiModelNotes[name] = `받아 온 모델 ${res.items.length}개`;
     } else {
       aiModelLists[name] = res.recommended || [];

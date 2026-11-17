@@ -62,6 +62,14 @@ def _cli_state(services: Services, name: str) -> tuple[bool, bool]:
             client.close()
 
 
+def _program_lists_models(provider: ProviderSettings) -> bool:
+    """그 프로그램에 모델 목록 명령이 있는지(Codex `debug models`). 실행하지 않는다."""
+    from app.llm.cli import SPECS
+
+    spec = SPECS.get(str(provider.options.get("program") or provider.name))
+    return bool(spec and spec.verified and spec.models_args)
+
+
 def readiness(
     settings: Settings,
     provider: ProviderSettings,
@@ -152,6 +160,7 @@ def provider_view(services: Services, provider: ProviderSettings) -> LLMProvider
         unavailable_reason=readiness(settings, provider, installed=installed, verified=verified),
         recommended_models=recommended_models(provider),
         default_label=DEFAULT_MODEL_LABEL if provider.type == "cli" else "",
+        models_from_program=provider.type == "cli" and _program_lists_models(provider),
     )
 
 

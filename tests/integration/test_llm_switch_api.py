@@ -364,14 +364,15 @@ def test_model_list_failure_falls_back_to_recommended(client, ai, base_config, s
     assert data["reachable"] is False and data["items"] == []
     assert data["source"] == "recommended"
     assert data["recommended"] == recommended(base_config, "openai")
-    assert data["note"] == "목록을 받아 오지 못해 추천 목록을 보입니다"
+    assert data["note"].startswith("목록을 받아 오지 못해 추천 목록을 보입니다")
+    assert "계정에 따라 쓸 수 없는 모델이 있을 수 있습니다" in data["note"]  # 2026-11-17
 
 
 def test_model_list_without_key_shows_recommended_without_calling(client, ai, base_config):
     data = client.get("/api/llm/models", params={"provider": "claude"}).json()
     assert data["error"]["kind"] == "llm_auth" and data["source"] == "recommended"
     assert data["recommended"] == recommended(base_config, "claude")
-    assert "API 키를 넣으면" in data["note"]
+    assert "키를 넣으면 쓸 수 있는 목록을 받아 옵니다" in data["note"]
     assert not [r for r in ai.requests if r.url.host == "api.anthropic.com"]  # 바깥에 묻지 않았다
 
 
@@ -416,3 +417,45 @@ def test_bad_recommended_entries_are_ignored():
     assert recommended_models(p) == ["a", "7", "c"]
     assert recommended_models(ProviderSettings("y", "openai_compatible",
                                                options={"models": "a,b"})) == []
+
+
+def codex_runner(calls, catalog):
+    def runner(req):
+        calls.append(req)
+        if req.args[1:] == ["--version"]:
+            return cli.RunResult(0, "codex-cli 9.9.9", "")
+        if req.args[1:] == ["debug", "models"]:
+            return catalog if isinstance(catalog, cli.RunResult) else cli.RunResult(
+                0, json.dumps(catalog), "")
+        raise AssertionError(f"모델 목록 말고는 실행하지 않는다: {req.args[1:3]}")
+
+    return runner
+
+
+def test_codex_models_come_from_the_program(client, monkeypatch):
+    """2026-11-17: Codex 목록은 그 프로그램에서(`codex debug models`, visibility: list만)."""
+    calls = []
+    catalog = {"models": [{"slug": "x-hidden", "visibility": "hide"},
+                          {"slug": "x-sol", "display_name": "X-Sol", "visibility": "list"},
+                          {"slug": "x-luna", "display_name": "X-Luna", "visibility": "list"}]}
+    monkeypatch.setattr(cli, "default_which", lambda p: f"C:/fake/{p}.exe")
+    monkeypatch.setattr(cli, "default_runner", codex_runner(calls, catalog))
+    items = {p["name"]: p for p in client.get("/api/llm/providers").json()["items"]}
+    assert items["codex-cli"]["models_from_program"] is True
+    assert items["claude-cli"]["models_from_program"] is False
+    assert items["codex-cli"]["recommended_models"] == []  # 틀린 추천 이름은 뺐다
+    data = client.get("/api/llm/models", params={"provider": "codex-cli"}).json()
+    assert data["source"] == "api" and data["reachable"] is True
+    assert [(i["name"], i["label"]) for i in data["items"]] == [("x-sol", "X-Sol"),
+                                                                ("x-luna", "X-Luna")]
+    assert [c.args[1:] for c in calls if "debug" in c.args] == [["debug", "models"]]
+
+
+@pytest.mark.parametrize("bad", ["{깨진", cli.RunResult(1, "", "boom")])
+def test_codex_model_list_failure_leaves_default_and_typing(client, monkeypatch, bad):
+    monkeypatch.setattr(cli, "default_which", lambda p: f"C:/fake/{p}.exe")
+    catalog = cli.RunResult(0, bad, "") if isinstance(bad, str) else bad
+    monkeypatch.setattr(cli, "default_runner", codex_runner([], catalog))
+    data = client.get("/api/llm/models", params={"provider": "codex-cli"}).json()
+    assert data["reachable"] is False and data["items"] == [] and data["source"] == "none"
+    assert data["recommended"] == [] and "「기본값」이나 「직접 입력…」" in data["note"]
