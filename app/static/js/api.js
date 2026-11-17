@@ -65,7 +65,7 @@ export const api = {
     request(`/api/videos/${encodeURIComponent(videoId)}/transcript`, { method: 'PUT', body: JSON.stringify({ text }) }),
   clearTranscript: (videoId) =>
     request(`/api/videos/${encodeURIComponent(videoId)}/transcript`, { method: 'DELETE' }),
-  // 6단계: 규칙 검사 V1~V12
+  // 6단계: 규칙 검사 V1~V14(C1에서 V13·V14를 더했다)
   validate: (videoId, text, disclose = true) =>
     request('/api/validate', { method: 'POST', body: JSON.stringify({ video_id: videoId, text, disclose }) }),
   // 5단계: 분석과 초안

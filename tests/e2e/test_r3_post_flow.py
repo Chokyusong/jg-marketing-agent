@@ -15,7 +15,6 @@ from r1_support import (
     DRAFT_TAG,
     JOB_STATE,
     PICK,
-    QUOTE,
     WATCH,
     draft_for,
     headless_page,
@@ -98,7 +97,7 @@ def test_real_post_by_default_label_off_on_another_video_then_practice_once(live
         page.uncheck("#disclose", force=True)
         page.wait_for_function(
             "() => !document.getElementById('draft-text').value.startsWith('[광고]')")
-        bare = (f"'{QUOTE}'라는 말에 오래 고개가 끄덕여지네요. "
+        bare = ("'하루에 한 번 연락'으로 싸웠다는 말에 오래 고개가 끄덕여지네요. "
                 "요즘 운명원 얘기 많이 보이던데 연애 사주 한번 보고 싶어요.")
         page.fill("#draft-text", bare)  # 표기 끔 저장을 기다리지 않고 바로 고쳐 써도 글이 남는다
         page.wait_for_function(
@@ -122,8 +121,9 @@ def test_real_post_by_default_label_off_on_another_video_then_practice_once(live
             "(t) => document.getElementById('draft-text').value === t", arg=draft_for(5),
             timeout=30000)
         assert page.is_checked("#disclose")  # 새 영상은 다시 설정 기본값(켬)
-        practice = (f"[광고] 영상 속 '{QUOTE}'라는 고백을 들으니 서로 연락 기대치가 다를 때가 "
-                    "많다는 생각이 드네요. 운명원 연애 사주가 궁금해져요.")
+        practice = ("[광고] 영상 속 '하루에 한 번 연락'으로 싸웠다는 고백을 들으니 "
+                    "서로 연락 기대치가 다를 때가 많다는 생각이 드네요. "
+                    "주변에서 운명원 얘기 종종 하던데 연애 사주가 궁금해져요.")
         page.fill("#draft-text", practice)
         page.wait_for_function(DRAFT_TAG.format("검사 통과"), timeout=15000)
         page.click("#job-primary")

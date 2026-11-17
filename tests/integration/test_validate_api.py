@@ -14,7 +14,7 @@ VID = "BBBBBBBBBB2"  # videos.json·comment_threads.json에 있는 영상
 # 인기 댓글 "저도 하루에 한 번 연락으로 싸운 적 있어요"를 근거로 쓴 글
 GOOD = (
     "[광고] 하루에 한 번 연락으로 싸운다는 이야기가 와닿았어요. "
-    "운명원에서 연애 사주 상담을 받아 보셔도 좋겠어요."
+    "운명원 연애 사주 잘 본다던데 저도 한번 상담받아 보고 싶어요."
 )
 
 
@@ -55,8 +55,8 @@ def test_good_text_passes_and_builds_context_when_missing(client_and_mock):
     assert data["passed"] is True
     assert data["char_count"] == len(GOOD)
     assert (data["min_chars"], data["max_chars"], data["disclosure"]) == (40, 120, "[광고]")
-    assert (data["passed_count"], data["total"]) == (12, 12)
-    assert [c["code"] for c in data["checks"]] == [f"V{i}" for i in range(1, 13)]
+    assert (data["passed_count"], data["total"]) == (14, 14)  # C1: V14
+    assert [c["code"] for c in data["checks"]] == [f"V{i}" for i in range(1, 15)]
     assert set(data["checks"][0]) == {"code", "name", "passed", "message"}
     assert data["evidence_quote"] == "하루에 한 번 연락으로 싸운"
     # 맥락이 없어서 만들었다: 영상 상세 1 + 인기 댓글 1
@@ -88,7 +88,7 @@ def test_link_fails_v2_and_removing_it_passes(client_and_mock):
     client, _ = client_and_mock
     data = post(client, GOOD + " www.example.com").json()
     assert data["passed"] is False
-    assert data["passed_count"] == 11
+    assert data["passed_count"] == 13
     v2 = by_code(data)["V2"]
     assert v2["passed"] is False and "링크를 지우세요" in v2["message"]
     assert post(client, GOOD).json()["passed"] is True
@@ -127,13 +127,17 @@ def test_comments_disabled_video_is_checked_against_title_and_description(
         comments=fixture_json("youtube/error_comments_disabled.json"),
     )
     client = make_client(mock, key=fake_key)
+    # C1: 설명란 글을 길게 옮기면 V13에 걸리므로 짧게 짚는다
     text = (
-        "[광고] 연락 빈도 때문에 다투는 장거리 커플 이야기에 "
-        "공감했어요. 운명원에서 상담받아 보세요."
+        "[광고] 연락 빈도 때문에 다투는 커플 얘기 남 일 같지 않네요. "
+        "요즘 운명원 얘기 자주 보이던데 연애 사주 한번 보고 싶어요."
     )
     data = post(client, text).json()
-    assert data["passed"] is True
-    assert data["evidence_quote"] == "연락 빈도 때문에 다투는 장거리 커플 이야기"
+    assert data["passed"] is True, data
+    assert data["evidence_quote"] == "연락 빈도 때문에 다투는"
+    long_copy = post(client, "[광고] 연락 빈도 때문에 다투는 장거리 커플 이야기에 공감했어요. "
+                             "운명원 잘 본다던데 한번 보고 싶어요.").json()
+    assert [c["code"] for c in long_copy["checks"] if not c["passed"]] == ["V13"]
 
 
 def test_previous_texts_are_empty_until_stage5(client_and_mock):
@@ -152,7 +156,7 @@ def test_brand_facts_and_extra_patterns_come_from_config(
     }
     client = make_client(add_video_and_comments(mock_http(), fixture_json), key=fake_key,
                          overrides=overrides)
-    fact_text = GOOD.replace("운명원에서", "제일 오래된 상담소인 운명원에서")
+    fact_text = GOOD.replace("운명원 연애", "제일 오래된 상담소인 운명원 연애")
     assert by_code(post(client, fact_text).json())["V10"]["passed"] is True
     assert by_code(post(client, GOOD + " 궁금해서요").json())["V9"]["passed"] is False
 

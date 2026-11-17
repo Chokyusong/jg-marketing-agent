@@ -43,8 +43,8 @@ ANALYSIS = {
     "evidence": [{"quote": QUOTE, "source": "comment"}],
 }
 DRAFT = {
-    "body": f"'{QUOTE}'라는 댓글이 마음에 남네요. "
-    "운명원에서 연애 사주 상담을 받아 보셔도 좋겠어요.",
+    "body": "'하루에 한 번 연락'으로 싸웠다는 댓글이 마음에 남네요. "
+    "운명원 연애 사주 잘 본다던데 저도 한번 상담받아 보고 싶어요.",
     "used_quote": QUOTE,
     "tone_label": "공감형",
 }

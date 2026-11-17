@@ -356,6 +356,7 @@ class AnalysisOut(BaseModel):
     # 응답으로 온 분석은 늘 참이다. love_reason은 모델이 적은 판단 까닭(저장된 분석에는 없다)
     has_love_concern: bool = True
     love_reason: str = ""
+    key_phrases: list[str] = []  # C1: 그 영상의 핵심 말(예전 분석은 제목·해시태그에서 뽑은 것)
 
     @classmethod
     def from_analysis(cls, a: Analysis) -> AnalysisOut:
@@ -375,6 +376,7 @@ class AnalysisOut(BaseModel):
             created_at=a.created_at,
             has_love_concern=a.has_love_concern,
             love_reason=a.love_reason,
+            key_phrases=list(a.key_phrases),
         )
 
 

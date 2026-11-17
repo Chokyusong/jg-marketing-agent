@@ -22,7 +22,7 @@ const state = {
   validationLoading: false,
   validationError: null, // { kind, message, action }
   // 5단계: 분석과 AI 초안. R1: 영상을 고르면 자동으로 돈다(저장된 초안이 있으면 모델을 부르지 않고 그것을 보인다)
-  analysis: null,        // POST/GET /api/analysis/{id} 응답 { video_id, topic, concern, tone, viewer_needs, evidence: [...] }
+  analysis: null,        // POST/GET /api/analysis/{id} 응답 { video_id, topic, concern, tone, viewer_needs, evidence: [...], key_phrases: [...] }
   draft: null,           // 지금 글 상자에 넣은 초안(POST /api/drafts 응답) { id, video_id, body, status, validation, ... }
   run: null,             // { videoId, phase: 'context'|'analysis'|'draft'|'check'|'done'|'error', startedAt, endedAt, note }
   runError: null,        // { kind, message, action }

@@ -54,7 +54,8 @@ class LiveApp:
     def add_approved_draft(self, video_id: str, body: str | None = None) -> tuple[int, str]:
         """영상과 승인한 초안 한 개(LLM 없이 표에 바로 넣는다)."""
         now = "2026-11-16T03:00:00+00:00"
-        body = body or f"[광고] {video_id} 영상 첫 장면 이야기에 공감해요. 운명원에 상담해 보세요."
+        body = body or (f"[광고] {video_id} 영상 첫 장면 이야기에 공감해요. "
+                        "운명원 잘 본다던데 한번 보고 싶어요.")
         with db.session(self.db_path) as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO videos(video_id, title, fetched_at, source) "

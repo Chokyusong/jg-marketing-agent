@@ -399,6 +399,9 @@ def test_report_box_runs_by_itself_with_three_steps(page):
     terms = (("주제", "an-topic"), ("분위기", "an-tone"), ("보는 사람이 바라는 것", "an-needs"))
     for dt, dd in terms:
         assert f'<dt>{dt}</dt><dd id="{dd}">' in report
+    # C1: 핵심 말 줄(주제 위)
+    assert '<dt>핵심 말</dt><dd id="an-keys">' in report
+    assert report.index('id="an-keys"') < report.index('id="an-topic"')
     assert 'id="draft-tone"' in page  # 말투 분류(본문에는 넣지 않는다)
 
 

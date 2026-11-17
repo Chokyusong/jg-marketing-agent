@@ -19,6 +19,16 @@
 
 LLM은 `LLMClient` 규격만 쓴다(`llm` 인자는 그때그때 공급자를 돌려주는 함수).
 
+C1(2026-11-17, 과제 예시처럼 자연스럽게)
+- 분석의 핵심 말을 저장하고(`analyses.key_phrases_json`) 초안 프롬프트와 검사(V7)에 넘긴다. 고민
+  한 줄도 검사(V13: 길게 베끼지 않음)에 넘긴다. 과제 PDF의 예시 댓글은 말투 기준으로만 넣는다.
+- 예전에 저장된 분석(핵심 말 없음, `legacy`)은 화면·검사에서는 제목·해시태그에서 뽑은 핵심 말로
+  쓰고, 초안을 만들 때는 먼저 다시 분석한다(요약 꼴 고민 한 줄을 그대로 쓰지 않게).
+- 말투 유형은 직전에 승인한 다른 영상 초안과 같은 영상의 앞 초안의 유형을 빼고 고르게 한다.
+- 사람이 고친 글도 초안의 근거 구절(V6)·영상의 핵심 말(V7)·고민 한 줄(V13)로 검사한다. 예전에는
+  근거를 글에서 찾았는데, 이제 초안이 근거를 글자 그대로 옮기지 않으므로 글자 하나만 고쳐도 V6이
+  걸렸다.
+
 7단계: 분석·초안 생성·승인을 작업 기록(`runs`)에 남긴다(`ledger`를 넣었을 때). 해낸 것은 info,
 오류로 멈춘 것은 failure와 사유. V11의 이전 글에는 게시한 댓글(다른 영상)도 들어간다.
 """
@@ -37,7 +47,7 @@ from app.analysis import analyzer
 from app.analysis.analyzer import Analysis, Evidence
 from app.analysis.checking import CheckService
 from app.analysis.context import ContextService
-from app.analysis.validator import Validation, normalize
+from app.analysis.validator import ASSIGNMENT_SAMPLE, Validation, normalize
 from app.errors import AppError, ErrorKind
 from app.llm import prompts
 from app.llm.base import LLMClient
@@ -172,11 +182,14 @@ class DraftService:
         with db.session(self.db_path) as conn:
             conn.execute(
                 "INSERT INTO analyses(video_id, topic, concern, tone, viewer_needs, evidence_json, "
-                "dropped_json, fallback, model, created_at) VALUES (?,?,?,?,?,?,?,?,?,?) "
+                "dropped_json, fallback, model, created_at, key_phrases_json, key_phrases_source) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(video_id) DO UPDATE SET topic=excluded.topic, "
                 "concern=excluded.concern, tone=excluded.tone, viewer_needs=excluded.viewer_needs, "
                 "evidence_json=excluded.evidence_json, dropped_json=excluded.dropped_json, "
-                "fallback=excluded.fallback, model=excluded.model, created_at=excluded.created_at",
+                "fallback=excluded.fallback, model=excluded.model, created_at=excluded.created_at, "
+                "key_phrases_json=excluded.key_phrases_json, "
+                "key_phrases_source=excluded.key_phrases_source",
                 (
                     video_id,
                     result.topic,
@@ -188,6 +201,8 @@ class DraftService:
                     int(result.fallback),
                     result.model,
                     result.created_at,
+                    json.dumps(list(result.key_phrases), ensure_ascii=False),
+                    "derived" if result.key_phrases_derived else "model",
                 ),
             )
         return result
@@ -202,6 +217,15 @@ class DraftService:
             row = conn.execute("SELECT * FROM analyses WHERE video_id = ?", (video_id,)).fetchone()
         if row is None:
             return None
+        phrases = tuple(json.loads(row["key_phrases_json"] or "[]"))
+        source = row["key_phrases_source"]
+        legacy = source == ""
+        if legacy:
+            # C1 전에 저장된 분석: 제목·해시태그에서 핵심 말을 뽑아 화면·검사가 깨지지 않게 한다
+            context = self.context.current(video_id)
+            phrases = tuple(
+                analyzer.fallback_key_phrases(context, self.context.search_text(context))
+            )
         return Analysis(
             video_id=row["video_id"],
             topic=row["topic"],
@@ -213,6 +237,9 @@ class DraftService:
             model=row["model"],
             created_at=row["created_at"],
             fallback=bool(row["fallback"]),
+            key_phrases=phrases,
+            key_phrases_derived=source != "model",
+            legacy=legacy,
         )
 
     # ------------------------------------------------------------ 초안
@@ -242,7 +269,9 @@ class DraftService:
         return draft
 
     def _generate(self, video_id: str, avoid_quotes: Sequence[str], disclose: bool) -> Draft:
-        analysis = self.stored_analysis(video_id) or self.analyze(video_id)
+        analysis = self.stored_analysis(video_id)
+        if analysis is None or analysis.legacy:
+            analysis = self.analyze(video_id)  # C1: 예전 분석은 다시 한다(핵심 말·고민의 꼴)
         evidence = analyzer.pick_evidence(analysis.evidence, avoid_quotes)
         llm = self._llm()
         rules = self.rules
@@ -251,15 +280,25 @@ class DraftService:
             min_chars=rules.min_chars, max_chars=rules.max_chars, disclosure=mark
         )
         system = prompts.draft_system(
-            brand=rules.brand, disclosure=rules.disclosure, facts=self.brand_facts
+            brand=rules.brand, disclosure=rules.disclosure, facts=self.brand_facts,
+            sample=ASSIGNMENT_SAMPLE,
         )
         previous = self.previous_texts(video_id)
-        avoid_bodies = [d.body for d in self.list(video_id)][:3]
+        mine = self.list(video_id)
+        avoid_bodies = [d.body for d in mine][:3]
+        # C1: 말투 유형이 영상마다 이어서 같지 않게(직전 승인 초안), 같은 영상 초안끼리도 다르게
+        avoid_tones = [self.last_tone(video_id)] + [d.tone_label for d in mine[:2]]
+        tones = prompts.allowed_tones(avoid_tones)
+        schema = prompts.draft_schema(tones)
         # 다른 영상에서 승인한 초안의 권유 문장: 되풀이하지 말라고 프롬프트에 넣는다(5단계 점검)
         used_closings = [
             prompts.closing_sentence(t, brand=rules.brand, disclosure=rules.disclosure)
             for t in previous
         ]
+        # C1 손질 2회차: 운명원 꺼내는 말·끝말·첫 반응이 한 틀로 굳지 않게 덜 쓴 것을 권한다
+        hearsay = prompts.hearsay_choices(rules.brand, previous)
+        endings = prompts.ending_choices(previous)
+        used_openings = [prompts.opening_sentence(t, disclosure=rules.disclosure) for t in previous]
 
         best: tuple[int, str, str, Validation, int] | None = None  # (실패 수, 글, 말투, 검사, 차례)
         failure_lines: list[str] = []
@@ -273,6 +312,14 @@ class DraftService:
                 source=evidence.source,
                 min_body=min_body,
                 max_body=max_body,
+                key_phrases=analysis.key_phrases,
+                tones=tones,
+                avoid_tones=[t for t in avoid_tones if t and t not in tones],
+                max_chars=rules.max_chars,
+                brand=rules.brand,
+                hearsay=hearsay,
+                endings=endings,
+                used_openings=used_openings,
                 failure_lines=failure_lines,
                 previous_body=previous_body,
                 avoid_bodies=avoid_bodies,
@@ -282,7 +329,7 @@ class DraftService:
                 data = llm.generate_json(
                     system=system,
                     user=user,
-                    schema=prompts.DRAFT_SCHEMA,
+                    schema=schema,
                     temperature=prompts.DRAFT_TEMPERATURE,
                     max_tokens=prompts.DRAFT_MAX_TOKENS,
                 )
@@ -298,7 +345,7 @@ class DraftService:
                 tone = ""
             validation = self.checks.check(
                 video_id, text, previous_texts=previous, evidence_quote=evidence.quote,
-                disclose=disclose,
+                disclose=disclose, key_phrases=analysis.checked_phrases, concern=analysis.concern,
             )
             fails = len(validation.failures)
             if best is None or fails < best[0]:
@@ -359,12 +406,18 @@ class DraftService:
         return self._row(row)
 
     def update_text(self, draft_id: int, text: str) -> Draft:
-        """사람이 고친 글. 같은 검사를 다시 거친다(근거는 글에서 찾는다 — 화면의 검사와 같다)."""
+        """사람이 고친 글. 같은 검사를 다시 거친다(화면의 검사 `check_basis`와 같은 기준).
+
+        C1: 근거(V6)는 초안의 근거 구절, 핵심 말(V7)·고민 한 줄(V13)은 그 영상의 분석으로 본다.
+        초안에 근거 구절이 없으면(예전 초안) 예전처럼 글에서 찾는다.
+        """
         draft = self.get(draft_id)
         if draft.status == "superseded":
             raise AppError(ErrorKind.DRAFT_SUPERSEDED, detail=f"초안 {draft_id}")
         clean = unicodedata.normalize("NFC", text or "").strip()
-        validation = self._recheck(draft.video_id, clean, None, disclose=draft.disclosed)
+        validation = self._recheck(
+            draft.video_id, clean, draft.evidence_quote or None, disclose=draft.disclosed
+        )
         quote = validation.evidence_quote or draft.evidence_quote
         source = self._source_of(draft.video_id, quote) or draft.evidence_source
         changed = clean != draft.body
@@ -403,8 +456,7 @@ class DraftService:
         text = toggle_disclosure(draft.body, self.rules.disclosure, on)
         if on == draft.disclosed and text == draft.body:
             return draft
-        quote = None if draft.edited_by_human else draft.evidence_quote
-        validation = self._recheck(draft.video_id, text, quote, disclose=on)
+        validation = self._recheck(draft.video_id, text, draft.evidence_quote or None, disclose=on)
         changed = text != draft.body
         now = self._now()
         with db.session(self.db_path) as conn:
@@ -449,8 +501,9 @@ class DraftService:
         draft_id = draft.id
         if draft.status == "superseded":
             raise AppError(ErrorKind.DRAFT_SUPERSEDED, detail=f"초안 {draft_id}")
-        quote = None if draft.edited_by_human else draft.evidence_quote
-        validation = self._recheck(draft.video_id, draft.body, quote, disclose=draft.disclosed)
+        validation = self._recheck(
+            draft.video_id, draft.body, draft.evidence_quote or None, disclose=draft.disclosed
+        )
         now = self._now()
         with db.session(self.db_path) as conn:
             conn.execute(
@@ -473,6 +526,30 @@ class DraftService:
                 "UPDATE drafts SET status='approved', approved_at=? WHERE id=?", (now, draft_id)
             )
         return self.get(draft_id)
+
+    def last_tone(self, video_id: str | None = None) -> str:
+        """직전에 승인한 다른 영상 초안의 말투 유형(없으면 빈 글)."""
+        with db.session(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT tone_label FROM drafts WHERE status='approved' AND video_id IS NOT ? "
+                "AND tone_label <> '' ORDER BY approved_at DESC, id DESC LIMIT 1",
+                (video_id,),
+            ).fetchone()
+        return row["tone_label"] if row else ""
+
+    def check_basis(self, video_id: str) -> tuple[str | None, tuple[str, ...], str]:
+        """사람이 쓴 글을 검사할 기준(화면의 실시간 검사, C1): (근거 구절, 핵심 말, 고민 한 줄).
+
+        근거 구절은 그 영상의 지금 초안(밀려나지 않은 것 중 최신)의 것. 분석이 없으면 빈 값 —
+        그러면 V6은 글에서 근거를 찾고 V7은 제목·해시태그에서 핵심 말을 뽑는다.
+        """
+        self._check_id(video_id)
+        current = next((d for d in self.list(video_id) if d.status != "superseded"), None)
+        quote = current.evidence_quote if current and current.evidence_quote else None
+        analysis = self.stored_analysis(video_id)
+        if analysis is None:
+            return quote, (), ""
+        return quote, analysis.checked_phrases or (), analysis.concern
 
     def previous_texts(self, video_id: str | None = None) -> list[str]:
         """V11 비교 대상: 승인한 초안과 게시한 댓글(다른 영상 것). 최근 50개씩, 겹치면 하나."""
@@ -499,12 +576,15 @@ class DraftService:
     def _recheck(
         self, video_id: str, text: str, quote: str | None, *, disclose: bool = True
     ) -> Validation:
+        analysis = self.stored_analysis(video_id)
         return self.checks.check(
             video_id,
             text,
             previous_texts=self.previous_texts(video_id),
             evidence_quote=quote,
             disclose=disclose,
+            key_phrases=analysis.checked_phrases if analysis else None,
+            concern=analysis.concern if analysis else "",
         )
 
     def _source_of(self, video_id: str, quote: str) -> str | None:
