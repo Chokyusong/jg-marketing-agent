@@ -1,4 +1,4 @@
-"""댓글 규칙 검사 V1~V13 (DESIGN 5.4, PLAYBOOK 6단계·C1).
+"""댓글 규칙 검사 V1~V14 (DESIGN 5.4, PLAYBOOK 6단계·C1).
 
 네트워크·DB·LLM 없이 도는 순수 함수다. AI가 쓴 초안과 사람이 고친 글이 **같은 함수**를 거친다.
 
@@ -13,7 +13,9 @@
 C1(2026-11-17, 과제 예시처럼 자연스럽게): V7은 「근거 구절을 4자 이상 이어서 담음」에서 「그 영상의
 핵심 말을 하나 이상 담음」으로 바뀌었다(흔한 낱말만으로는 통과하지 못한다). 새 V13은 영상 자료나
 고민 한 줄을 길게 그대로 베낀 글을 잡는다. V11은 과제 PDF의 예시 댓글(`ASSIGNMENT_SAMPLE`)과도
-비교한다. V12는 댓글 표기(ㅠㅠ·ㅋㅋ·...·^^)를 받는다.
+비교한다. V12는 댓글 표기(ㅠㅠ·ㅋㅋ·...·^^)를 받는다. 새 V14는 브랜드가 뜬금없이 나오지 않게
+들은 얘기(「~다던데」)로 꺼내고 내 바람(「~보고 싶다」「가 봐야겠다」)으로 맺었는지 본다(대표가 본
+초안: 고민 뒤에 곧바로 「운명원에서 연애 사주를 한번 보고 싶어요」).
 
 실패 문구는 "무엇이 걸렸고 → 어떻게 고치면 되는지"를 한 줄로 쓴다. 화면과 5단계 재생성 프롬프트가
 같은 문구를 쓴다.
@@ -42,6 +44,7 @@ MAX_KEY_PHRASE_CHARS = 10
 # 영상 8개)을 보고 정했다 — C1 전 초안은 자막을 20~30자씩 옮겼고, 자연스러운 초안은 핵심 말과
 # 앞뒤 몇 글자(10자 안쪽)만 겹쳤다.
 COPY_LIMIT = 13
+TITLE_QUOTE_LIMIT = 8  # V13: 제목을 따옴표로 이만큼(정리 후) 이상 옮기면 실패("'…'라는 제목부터")
 SAMPLE_SENTENCE_SIMILARITY = 0.8  # V11: 과제 예시 댓글의 한 문장과 이만큼 비슷한 문장이 있으면 실패
 QUOTE_SIMILARITY = 0.85  # V6: 근거 구절이 그대로 없으면 이만큼 비슷한 구간이 있어야 한다
 PREVIOUS_SIMILARITY = 0.6  # V11: 이전 글과 이만큼 비슷하면 실패
@@ -63,6 +66,7 @@ CHECK_NAMES: dict[str, str] = {
     "V11": "이전 글과 다름",
     "V12": "한글·영문·숫자·문장부호만(ㅠㅠ·ㅋㅋ 됨)",
     "V13": "영상 글을 길게 베끼지 않음",
+    "V14": "브랜드는 들은 얘기로 꺼내고 바람으로 맺음",
 }
 PATTERN_CODES = ("V8", "V9", "V10")
 
@@ -124,7 +128,7 @@ CLAIM_PATTERNS: tuple[str, ...] = (
     r"무조건",
     r"반드시",
     r"보장",
-    r"제일",
+    r"(?<!언)제일",  # "언제일지"는 최상급이 아니다(C1에서 찾음)
     r"최고",
     r"최상",
     r"유일",
@@ -146,6 +150,10 @@ CLAIM_PATTERNS: tuple[str, ...] = (
     r"(?<![가-힣])용하",
     r"잘\s?맞(?:는다|는대|아요|아서|더|대)",
     r"(?:맞는|맞힌|맞춘)\s?(?:대요|대서|대더라|다네요|다니까|다던데|다더라)",
+    # C1: 들은 얘기 꼴("잘 본다던데", "그렇게 잘 본다고 하던데")은 되고 내 단정("잘 봐요", "잘 보는
+    # 곳이에요")은 막는다. brand.facts의 "잘 봐주는 곳으로 알려져"는 걸리지 않는다
+    r"잘\s?(?:봐요|봐서|봅니다|보더라|보시더라|보네요|봐\s?주(?:어요|더라|십니다|네요))",
+    r"잘\s?(?:보는|봐\s?주는)\s?(?:곳|데)(?:이에요|예요|입니다|이야|야|이죠)",
 )
 
 BUILTIN_PATTERNS: dict[str, tuple[str, ...]] = {
@@ -160,7 +168,7 @@ BUILTIN_PATTERNS: dict[str, tuple[str, ...]] = {
 
 @dataclass(frozen=True)
 class CheckResult:
-    code: str  # V1 ~ V13
+    code: str  # V1 ~ V14
     name: str
     passed: bool
     message: str  # 한 줄: 통과면 확인한 내용, 실패면 걸린 것 — 고치는 법
@@ -670,6 +678,16 @@ def _v13_copy(text: str, context_text: str, rules: ValidatorRules, concern: str)
         if size > worst[0]:
             worst = (size, label, span)
     size, label, span = worst
+    title = (context_text or "").split("\n", 1)[0]
+    title_n = normalize(_strip_markers(title, rules))
+    for m in _QUOTED.finditer(text):
+        inner_n = normalize(next(g for g in m.groups() if g is not None))
+        if len(inner_n) >= TITLE_QUOTE_LIMIT and inner_n in title_n:
+            return _check(
+                "V13", False,
+                f"영상 제목을 따옴표로 그대로 옮겼습니다({_clip(m.group(0), 20)}) — "
+                "제목은 옮기지 말고 영상 속 말이나 장면을 내 말로 짚으세요",
+            )
     if size >= COPY_LIMIT:
         return _check(
             "V13", False,
@@ -856,6 +874,91 @@ def _v11_previous(text: str, previous_texts: Sequence[str], rules: ValidatorRule
     )
 
 
+# V14: 브랜드를 꺼내는 말(들은 얘기·평판)과 맺는 말(내 바람·의향). 과제 PDF 예시가 「운명원
+# 연애사주가 그렇게 잘 본다던데 나도 언제 짝 만나는지 한번 보고 싶다」다. 넓게 받는다 — 뜬금없는
+# 「운명원에서 연애 사주 보고 싶어요」만 막으면 된다.
+HEARSAY_PATTERNS: tuple[str, ...] = (
+    r"던데",
+    r"[다라]더라",
+    r"[다라]고\s?(?:하|들)",
+    r"(?:본|한|좋|있|는|된|많)대(?:요|서|니|더)",
+    r"소문",
+    r"유명",
+    r"평판",
+    r"평이\s?좋",
+    r"추천",
+    r"인기",
+    r"많이들",
+    r"자주\s?(?:보이|보여|들|나오)",
+    r"눈에\s?(?:띄|들어)",
+    r"들었",
+    r"들어서",
+    r"들은",
+    r"길래",  # "친구가 운명원 얘기를 하길래"
+    r"(?:요즘|요새)[^.!?…]{0,14}(?:많이|자주|핫|뜨|난리)",
+    r"(?:얘기|이야기)\s?(?:가|를|도)?\s?(?:자주|많이|종종|들)",
+)
+WISH_PATTERNS: tuple[str, ...] = (
+    r"싶",
+    r"봐야(?:겠|지|할)",
+    r"볼까",
+    r"가\s?볼",
+    r"가\s?봐야",
+    r"궁금",
+    r"물어보",
+    r"여쭤",
+    r"알아보",
+    r"보려고",
+    r"볼래",
+    r"해\s?볼",
+    r"받아\s?보(?:고|려|면|까|자)",
+    r"할까",
+    r"봐야겠",
+    r"보자",
+    r"좋겠",  # "오래 갈지 알면 좋겠어요"
+)
+_HEARSAY = tuple(re.compile(p) for p in HEARSAY_PATTERNS)
+_WISH = tuple(re.compile(p) for p in WISH_PATTERNS)
+# 문장 끝: 마침표류, 또는 ㅠㅠ·ㅋㅋ 뒤의 띄어쓰기(댓글은 마침표 없이 이어 쓴다)
+_V14_SPLIT = re.compile(r"[.!?…\n]+|(?<=[ㄱ-ㅎㅏ-ㅣ])\s+")
+
+
+def _v14_brand_intro(text: str, rules: ValidatorRules) -> CheckResult:
+    brand = rules.brand
+    body = text.replace(rules.disclosure, " ") if rules.disclosure else text
+    parts = [p.strip() for p in _V14_SPLIT.split(body) if p and p.strip()]
+    spots = [i for i, p in enumerate(parts) if brand and brand in p]
+    if not spots:
+        return _check("V14", True, f"'{brand}' 없음(V5에서 봄)")
+
+    def has(patterns: tuple[re.Pattern[str], ...], chunk: str) -> bool:
+        return any(p.search(chunk) for p in patterns)
+
+    no_hearsay = no_wish = False
+    for i in spots:
+        here = parts[i]
+        before = parts[i - 1] if i > 0 else ""
+        after = parts[i + 1] if i + 1 < len(parts) else ""
+        heard = has(_HEARSAY, here) or has(_HEARSAY, before)
+        wished = has(_WISH, here) or has(_WISH, after)
+        if heard and wished:
+            return _check("V14", True, f"'{brand}'을 들은 얘기로 꺼내고 바람으로 맺음")
+        no_hearsay = no_hearsay or not heard
+        no_wish = no_wish or (heard and not wished)
+    if no_hearsay:
+        return _check(
+            "V14", False,
+            f"'{brand}'이(가) 뜬금없이 나옵니다 — 그 문장이나 바로 앞 문장에서 "
+            f"'요새 {brand} 연애 사주 그렇게 잘 본다던데', '주변에서 {brand} 얘기 자주 하던데'처럼 "
+            "들은 얘기로 꺼내세요",
+        )
+    return _check(
+        "V14", False,
+        f"'{brand}'을 꺼낸 뒤 바람이 없습니다 — '다음에 연애 문제로 한번 가 봐야겠네요', "
+        "'나도 언제 짝 만나는지 한번 보고 싶다'처럼 내 고민에 맞춘 바람으로 맺으세요",
+    )
+
+
 # ---------------------------------------------------------------- 전체 검사
 
 
@@ -871,7 +974,7 @@ def validate(
     key_phrases: Sequence[str] | None = None,
     concern: str = "",
 ) -> Validation:
-    """V1~V13을 모두 돌린다. 하나라도 실패하면 `passed=False`.
+    """V1~V14를 모두 돌린다. 하나라도 실패하면 `passed=False`.
 
     - `disclosure_required`: 거짓이면 V4가 표기 없는 글도 「표기 끔」으로 통과시킨다(R3: 초안의
       「광고 표기 붙이기」를 끈 경우. 어떤 영상이든)
@@ -915,6 +1018,7 @@ def validate(
         _v11_previous(clean, previous_texts, rules),
         _v12_charset(clean, rules),
         _v13_copy(clean, context_text or "", rules, concern),
+        _v14_brand_intro(clean, rules),
     )
     return Validation(
         passed=all(c.passed for c in checks),
