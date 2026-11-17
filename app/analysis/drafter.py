@@ -73,6 +73,10 @@ MAX_ATTEMPTS = 3
 # 고치지 못했다. 대신 어색한 꼴을 다듬기 검사(`style.py`)로 잡아 다시 쓰게 한다.
 # 자세한 것은 docs/MODEL_EVAL.md 「C1 다듬기」.
 POLISH_DRAFTS = False
+# 다듬기 검사 S11(잇는 문장·까닭 둘 다 없음, 2026-11-18)을 모델 초안에 쓸지. 자동 테스트는
+# `tests/conftest.py`가 끈다 — 그 전에 짠 가짜 초안들은 잇는 문장 없이 썼고 응답을 하나씩만
+# 준비해서, 켜 두면 다시 쓰기 차례가 하나씩 밀린다. S11 자체의 시험은 켜고 본다.
+BRIDGE_CHECK = True
 # 꺼내는 말·끝말을 돌려 쓸 때 보는 「보인 초안」 수(최근 것부터, 2026-11-17)
 SHOWN_TEXTS = 30
 DraftStatus = str  # 'draft' | 'approved' | 'superseded'
@@ -178,6 +182,7 @@ class DraftService:
         self._context_text = ""  # 지금 초안을 만드는 영상의 자료 글(다듬기 검사 S5)
         self._last_shown = ""  # 바로 앞에 보인 초안(다듬기 검사 S8)
         self._used_reasons: list[str] = []  # 앞서 보인 초안들의 ⑤ 까닭(다듬기 검사 S10)
+        self._used_bridges: list[str] = []  # 앞서 보인 초안들의 잇는 문장(다듬기 검사 S12)
 
     @property
     def rules(self):
@@ -358,6 +363,11 @@ class DraftService:
         self._used_reasons = list(dict.fromkeys(
             r for r in (prompts.intent_reason(t, rules.brand) for t in [*avoid_bodies, *shown]) if r
         ))
+        # ② 잇는 문장(2026-11-18): 앞서 보인 초안(다른 영상 포함)에 쓴 잇는 문장은 피한다
+        self._used_bridges = list(dict.fromkeys(
+            b for b in (prompts.bridge_sentence(t, rules.brand) for t in [*avoid_bodies, *shown])
+            if b
+        ))
         # S8: 바로 앞에 보인 초안과 같은 본보기를 그대로 옮기지 않게
         self._last_shown = shown[0] if shown else ""
 
@@ -392,6 +402,8 @@ class DraftService:
                 last_model=prompts.copied_model(self._last_shown) if self._last_shown else -1,
                 reason=want_reason,
                 used_reasons=self._used_reasons,
+                bridge=True,
+                used_bridges=self._used_bridges,
             )
             try:
                 data = llm.generate_json(
@@ -476,6 +488,8 @@ class DraftService:
             text, brand=self.rules.brand, disclosure=mark, key_phrases=key_phrases,
             earlier=earlier, context=self._context_text,
             last_shown=self._last_shown, used_reasons=self._used_reasons,
+            need_bridge=BRIDGE_CHECK,
+            used_bridges=[*self._used_bridges, *prompts.EXAMPLE_BRIDGES],
         )
 
     def _polish(

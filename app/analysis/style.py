@@ -21,6 +21,12 @@
 - S9 끝난 말에 조사: 영상 속 말을 따옴표 없이 그대로 옮기고 끝난 말(~거예요·~거야·~잖아·
   ~어요)에 조사를 바로 붙임(「말하는 거예요가 답인가 봐」「헤어지자는 거야부터」 → 「말하는 게」
   「헤어지자는 말부터」, 2026-11-18 기획 담당이 초안 28개에서 찾음)
+- S11 잇는 문장·까닭 없음: 영상 반응 바로 뒤에 운명원이 나오고 ⑤의 까닭도 없음 — 공식처럼
+  읽힌다(2026-11-18 기획 담당, 대표 승인). 반응과 운명원 사이에 인연·타이밍·때·궁합·맞는 사람
+  쪽으로 넘어가는 잇는 한 문장(`prompts.bridge_sentence`)이나 ⑤의 까닭 가운데 하나는 있어야 한다.
+  **모델이 쓴 초안에만** 본다(`need_bridge`) — 사람이 고친 글과 대표 본보기 10개는 그대로 둔다.
+- S12 잇는 문장 되풀이: 잇는 문장이 앞서 보인 초안(다른 영상 포함)이나 프롬프트의 좋은 예의 잇는
+  문장과 같거나 거의 같음(맞춤법을 지우고 70% 넘게 같음)
 - S5 영상 사연을 내 것으로: 영상 속 **숫자**(「3년 사귄」「2년째」「석 달」)를 영상 얘기라는
   표지(「~대요」「~라니」「~다는 말에」) 없이 내 일처럼 옮긴 문장. 비슷한 처지라고 말하는 것
   (「완전 제 얘기네요」「저도 비슷해서」「우리 사이」)은 시청자 말투로 둔다(기획 담당 2026-11-17:
@@ -41,12 +47,15 @@ from collections.abc import Sequence
 from difflib import SequenceMatcher
 
 from app.analysis.validator import V14_REPUTE, contains_key_phrase, normalize
-from app.llm.prompts import copied_model, fold, intent_reason
+from app.llm.prompts import bridge_sentence, copied_model, fold, intent_reason, with_i
 
 SOFT_MAX_TOTAL = 110
 # 1~5회차 실제 초안: 다른 영상 초안끼리 가장 닮은 것이 0.55, 같은 영상 두 초안은 0.18~0.67,
 # 대표가 본 영상의 두 초안은 0.94였다. 다른 영상 글만큼도 다르지 않으면 다시 쓰게 한다.
 SAME_VIDEO_SIMILARITY = 0.55
+# S12: 잇는 문장끼리 이만큼 같으면 되풀이로 본다(「결국 타이밍 문제인가 싶네요」·「결국 타이밍
+# 문제인가 싶어요」)
+SAME_BRIDGE_SIMILARITY = 0.7
 
 _SPLIT = re.compile(r"[.!?…\n]+|(?<=[ㄱ-ㅎㅏ-ㅣ])\s+")
 _WISH = re.compile(
@@ -174,12 +183,16 @@ def style_issues(
     max_total: int = SOFT_MAX_TOTAL,
     last_shown: str = "",
     used_reasons: Sequence[str] = (),
+    need_bridge: bool = False,
+    used_bridges: Sequence[str] = (),
 ) -> list[str]:
     """다시 쓰게 할 까닭들(없으면 빈 목록).
 
     `earlier`: 같은 영상에 앞서 쓴 초안 글. `context`: 영상 자료 글(S5 숫자 대조, 없으면 S5를
     보지 않는다). `last_shown`: 바로 앞에 사람에게 보인 초안(S8, 없으면 보지 않는다).
     `used_reasons`: 앞서 보인 초안들의 ⑤ 까닭(S10, 없으면 보지 않는다).
+    `need_bridge`: 참이면 잇는 문장·까닭이 둘 다 없는 글을 S11로 잡는다(모델이 쓴 초안만).
+    `used_bridges`: 앞서 보인 초안·좋은 예의 잇는 문장(S12, 없으면 보지 않는다).
     """
     issues: list[str] = []
     body = _body(text, disclosure)
@@ -250,6 +263,20 @@ def style_issues(
             f"S10 까닭 되풀이: '{reason}'은 앞 초안의 까닭('{old_reason}')과 같습니다 — 이 영상의 "
             "고민에서 다른 까닭을 내 말로 쓰거나, 까닭 없이 맺으세요"
         )
+    bridge = bridge_sentence(body, brand) if brand else ""
+    if need_bridge and brand and brand in body and not bridge and not reason:
+        issues.append(
+            f"S11 잇는 문장 없음: 영상 반응 바로 뒤에 {with_i(brand)} 나와 공식처럼 "
+            "읽힙니다 — 사이에 이 고민이 결국 인연·타이밍·때·궁합·맞는 사람의 문제일지도 "
+            "모른다는 짧은 혼잣말 한 문장을 넣거나, 끝말의 '저도' 뒤에 이 영상 고민에서 온 짧은 "
+            "까닭을 넣으세요(영상 반응은 짧게)"
+        )
+    old_bridge = repeated_bridge(bridge, used_bridges)
+    if old_bridge:
+        issues.append(
+            f"S12 잇는 문장 되풀이: '{bridge}'은 앞서 쓴 잇는 문장('{old_bridge}')과 거의 같습니다 "
+            "— 이 영상 고민에 맞는 다른 말로 쓰세요"
+        )
     ended = _ENDED_PARTICLE.search(body)
     if ended:
         start = max(body.rfind(" ", 0, ended.start()) + 1, 0)
@@ -293,6 +320,20 @@ def repeated_reason(reason: str, used: Sequence[str]) -> str:
         if not old:
             continue
         if fold(old) == mine or len(stems & _reason_stems(old)) >= 2:
+            return old
+    return ""
+
+
+def repeated_bridge(bridge: str, used: Sequence[str]) -> str:
+    """S12: `bridge`와 같거나 거의 같은 앞 잇는 문장(없으면 빈 글)."""
+    if not bridge:
+        return ""
+    mine = fold(bridge)
+    for old in used:
+        if not old:
+            continue
+        theirs = fold(old)
+        if theirs == mine or SequenceMatcher(None, mine, theirs).ratio() > SAME_BRIDGE_SIMILARITY:
             return old
     return ""
 

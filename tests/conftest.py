@@ -61,6 +61,25 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 @pytest.fixture(autouse=True)
+def _bridge_check_off(monkeypatch):
+    """다듬기 검사 S11(잇는 문장·까닭 없음)을 끈다(2026-11-18).
+
+    그 전에 짠 가짜 초안들은 잇는 문장 없이 썼고 가짜 AI 응답을 하나씩만 준비했다. 켜 두면 다시
+    쓰기 차례가 하나씩 밀린다. S11을 보는 시험은 `bridge_check_on`을 쓴다."""
+    from app.analysis import drafter
+
+    monkeypatch.setattr(drafter, "BRIDGE_CHECK", False)
+
+
+@pytest.fixture
+def bridge_check_on(monkeypatch):
+    """S11을 켠다(실제 프로그램과 같게)."""
+    from app.analysis import drafter
+
+    monkeypatch.setattr(drafter, "BRIDGE_CHECK", True)
+
+
+@pytest.fixture(autouse=True)
 def _never_real_youtube(monkeypatch):
     """자동 테스트는 실제 유튜브에 접속하지 않는다(R3: 실제 게시가 기본이 되어 더 조심한다).
 
