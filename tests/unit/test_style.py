@@ -105,3 +105,50 @@ def test_wish_part_and_hearsay_mark():
     assert S.wish_part(text, "운명원") == " 연애 사주 잘 본다던데 나도 한번 보고 싶다"
     assert S.hearsay_mark(text, "운명원") == "잘 본다던데"
     assert S.wish_part("브랜드 없음.", "운명원") == "" and S.hearsay_mark("", "운명원") == ""
+
+
+# ---------------------------------------------------------------- 6회차에서 찾은 꼴(7회차부터 잡음)
+
+R1_KEYS = ["권태기", "휴대폰만 봐요", "설레지가 않아", "말을 꺼내면"]
+
+
+@pytest.mark.parametrize("text", [
+    "[광고] 그 말 공감. 운명원 잘 본다던데 내 인연이 있는지 한번 가 봐야겠어요",
+    "[광고] 그 말 공감. 운명원 잘 본다던데 내 마음이 움직이는 때가 언제인지 한번 가 봐야겠네요",
+    "[광고] 그 말 공감. 운명원 얘기 종종 하던데 내 마음 정리되는지 다음에 한번 가 봐야겠네요",
+])
+def test_s3_a_question_cannot_take_ga_bwayagetda(text):
+    assert codes(text) == ["S3"] and "앞뒤가 안 맞습니다" in issues(text)[0]
+
+
+def test_s3_ga_bwayagetda_alone_or_after_gunggeumhaeseo_is_fine():
+    assert codes("[광고] 그 말 공감. 운명원 많이들 본다던데 다음에 한번 가 봐야겠어요.") == []
+    assert codes("[광고] 그 말 공감. 운명원 얘기 많이 보이던데 언제 오는지 궁금해서 다음에 한번 "
+                 "가 봐야겠어요.") == []
+    assert codes("[광고] 그 말 공감. 운명원 잘 본다던데 언제 오는지 한번 보고 싶다.") == []
+
+
+@pytest.mark.parametrize(("text", "shown"), [
+    ("[광고] 같은 이유로 싸울까 봐 연락 못 하는 거 완전 내 얘기네... "
+     "운명원 얘기 자주 보이던데 한번 보고 싶다.",
+     "완전 내 얘기"),
+    ("[광고] 설레지가 않아서 고민이래요 ㅠㅠ 딱 제 얘기. 운명원 얘기 자주 보이던데 한번 보고 싶다.",
+     "딱 제 얘기"),
+    ("[광고] 5년이 아깝대요. 요즘 운명원 얘기 자주 보이던데 "
+     "우리도 이어질 수 있는지 보고 싶다.", "우리도"),
+    ("[광고] 5년이 아깝대요. 요즘 운명원 잘 본다던데 우리 "
+     "인연이 이어질지 한번 보고 싶다.", "우리 인연"),
+])
+def test_s5_someone_elses_story_written_as_mine(text, shown):
+    got = issues(text, R1_KEYS + ["5년", "같은 이유로 싸울"])
+    assert [i[:2] for i in got] == ["S5"] and f"'{shown}'" in got[0]
+    assert "보는 사람 자리에서" in got[0]
+
+
+def test_s5_keeps_a_vague_my_story_as_the_viewer_voice():
+    # 핵심 말이 든 장면이 아니면(막연한 공감) 시청자 말투로 둔다(2026-11-17 결정)
+    text = (
+        "[광고] 연애가 원래 이렇게 어려운 건가 싶네요. 완전 제 "
+        "얘기. 운명원 잘 본다던데 한번 보고 싶다."
+    )
+    assert codes(text, R1_KEYS) == []

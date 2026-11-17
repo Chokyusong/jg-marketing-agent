@@ -36,7 +36,7 @@ ANALYSIS = {
 KEYS = ["장거리", "하루에 한 번 연락", "기대치 차이"]
 # C1 새 기준(시청자 말투, 핵심 말을 담고 자료를 13자 이상 이어서 옮기지 않음)으로 다시 씀
 GOOD_BODY = (
-    "하루에 한 번 연락 갖고 싸웠다는 댓글 완전 제 얘기네요ㅠㅠ "
+    "하루에 한 번 연락 갖고 싸웠다는 댓글 보니 남 일 같지 않네요ㅠㅠ "
     "운명원 연애 사주 잘 본다던데 이번 인연은 오래 갈지 알면 좋겠어요."
 )
 GOOD_CLOSING = "운명원 연애 사주 잘 본다던데 이번 인연은 오래 갈지 알면 좋겠어요."
@@ -488,7 +488,7 @@ def test_responses_do_not_contain_the_api_key(setup, fake_key):
 # ---------------------------------------------------------------- 5단계 점검: V12와 권유 문장
 
 
-HANJA_BODY = GOOD_BODY.replace("제 얘기네요", "제 얘기揪네요")
+HANJA_BODY = GOOD_BODY.replace("같지 않네요", "같지 않揪네요")
 
 
 def test_hanja_in_draft_fails_v12_and_is_rewritten(setup):

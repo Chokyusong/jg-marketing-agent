@@ -49,7 +49,7 @@ GLUED = (  # S3: 「이유여쭤보고」
     "싶네요."
 )
 LONG = (  # S1: 표기까지 110자 넘음(120자 한도 안)
-    "하루에 한 번 연락 갖고 싸웠다는 댓글 완전 제 얘기네요ㅠㅠ 저도 연락 문제로 늘 마음 졸이는 "
+    "하루에 한 번 연락 갖고 싸웠다는 댓글 보니 남 일 같지 않네요ㅠㅠ 저도 연락 문제로 늘 마음 졸이는 "  # noqa: E501
     "편이라 남 일 같지가 않아요. 운명원 연애 사주 잘 본다던데 이번 인연은 오래 갈지 알면 좋겠어요."
 )
 
@@ -96,7 +96,10 @@ def test_awkward_draft_on_the_last_attempt_is_kept_because_it_passed(setup):
 def test_rule_failure_is_still_fixed_before_style(setup):
     # 규칙 검사에 걸린 글(V5: 브랜드 없음)보다는 어색해도 통과한 글을 남긴다
     _, services, use = setup
-    no_brand = "하루에 한 번 연락 갖고 싸웠다는 댓글 완전 제 얘기네요ㅠㅠ 연애 사주 한번 보고 싶다."
+    no_brand = (
+        "하루에 한 번 연락 갖고 싸웠다는 댓글 보니 남 일 같지 "
+        "않네요ㅠㅠ 연애 사주 한번 보고 싶다."
+    )
     use([ANALYSIS, draft(no_brand), draft(LONG), draft(no_brand)])
     d = services.drafts.generate(VID)
     assert d.passed and d.body == f"[광고] {LONG}"
@@ -165,7 +168,10 @@ def test_polish_fixes_the_awkward_part_and_is_checked_again(setup):
 def test_polish_that_breaks_a_rule_keeps_the_original(setup):
     _, services, use = setup
     services.drafts.polish = True
-    broken = "하루에 한 번 연락 갖고 싸웠다는 댓글 완전 제 얘기네요ㅠㅠ 연애 사주 한번 보고 싶다."
+    broken = (
+        "하루에 한 번 연락 갖고 싸웠다는 댓글 보니 남 일 같지 "
+        "않네요ㅠㅠ 연애 사주 한번 보고 싶다."
+    )
     use([ANALYSIS, draft(GOOD_BODY), polished(broken)])
     d = services.drafts.generate(VID)
     assert d.passed and d.body == f"[광고] {GOOD_BODY}"
@@ -195,7 +201,10 @@ def test_polish_with_nothing_to_fix_or_a_model_error_keeps_the_draft(setup):
 def test_failed_draft_is_not_polished(setup):
     _, services, use = setup
     services.drafts.polish = True
-    no_brand = "하루에 한 번 연락 갖고 싸웠다는 댓글 완전 제 얘기네요ㅠㅠ 연애 사주 한번 보고 싶다."
+    no_brand = (
+        "하루에 한 번 연락 갖고 싸웠다는 댓글 보니 남 일 같지 "
+        "않네요ㅠㅠ 연애 사주 한번 보고 싶다."
+    )
     llm = use([ANALYSIS, draft(no_brand), draft(no_brand), draft(no_brand)])
     d = services.drafts.generate(VID)
     assert not d.passed and len(llm.calls) == 4 and services.drafts.last_run["polish"] == {}

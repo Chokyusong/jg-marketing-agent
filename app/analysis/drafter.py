@@ -66,7 +66,10 @@ from app.youtube.quota import Clock
 from app.youtube.url_parser import is_video_id
 
 MAX_ATTEMPTS = 3
-# 다듬기 단계를 쓸지(실제 모델로 잰 결과는 docs/MODEL_EVAL.md 「C1 다듬기」)
+# 다듬기 단계를 쓸지. 끈다: 6회차(qwen3.8:27b, 초안 16개)에서 다듬기는 초안 1개에 5.8초(약 24%)를
+# 더 쓰고 16개 중 2개만 바꿨는데 둘 다 끝말 하나(「들었어」→「들었어요」)였고, 어색한 문장은 하나도
+# 고치지 못했다. 대신 어색한 꼴을 다듬기 검사(`style.py`)로 잡아 다시 쓰게 한다.
+# 자세한 것은 docs/MODEL_EVAL.md 「C1 다듬기」.
 POLISH_DRAFTS = False
 DraftStatus = str  # 'draft' | 'approved' | 'superseded'
 

@@ -9,6 +9,13 @@
   (「내짝 찾기 언제 되는지 궁금해지네요」)
 - S3 띄어쓰기·말꼴: 「이유여쭤보고」처럼 붙여 씀, 「없었네라는 말에」처럼 말끝에 바로 「라는」
 - S4 같은 영상 앞 초안과 비슷함: [다른 댓글 만들기]가 거의 같은 글을 내지 않게
+- S5 남의 일을 내 일로: 영상의 핵심 말이 든 장면을 「완전 내 얘기」라고 하거나(그 문장이나 바로
+  앞 문장), 없는 애인과의 「우리 관계·사이·인연」. 6회차 사연 영상 초안 5개가 사연 속 일을 내 일처럼
+  썼다. 막연한 「완전 제 얘기네요」 자체는 시청자 말투로 둔다(2026-11-17 결정, V9).
+
+S3는 6회차에서 「~인지 한번 가 봐야겠어요」(「언제인지 한번 가 봐야겠네요」)도 잡는다 —
+「가 봐야겠다」는 물음을 받지 못한다(「~인지 한번 보고 싶다」, 「궁금해서 다음에 한번 가
+봐야겠네요」로).
 
 문구는 규칙 검사처럼 「무엇이 걸렸고 — 어떻게 고치면 되는지」 한 줄이다.
 """
@@ -34,6 +41,13 @@ _WISH = re.compile(
 _GLUED = re.compile(r"(?<=[가-힣])(?<![되캐])(여쭤보|물어보|알아보)")
 # 말끝(~네)에 바로 붙은 「라는 말」: 「없었네라는 말에」 → 「없었다는 말에」
 _NE_RANEUN = re.compile(r"[가-힣]*네라는\s?말")
+# 「~인지/~는지/~ㄹ지 (한번) 가 봐야겠다」: 물음 뒤에 「가 봐야」(사이에 「궁금해서」 등이 있으면
+# 괜찮다)
+_ASK_GO = re.compile(r"[가-힣]+지\s+((?:[가-힣]+\s+){0,3}?)가\s?봐야")
+_ASK_GO_OK = re.compile(r"궁금|싶어서|알고\s?싶|물어보러|보러|여쭈러")
+# 남의 일을 내 일로: 영상 속 사연·말을 내 얘기라고 하거나, 없는 애인과의 관계를 「우리」로
+_MY_STORY = re.compile(r"(?:완전|딱|진짜)?\s?(?:내|제)\s?얘기|(?:나|저)잖아")
+_OUR = re.compile(r"우리\s?(?:관계|사이|인연|둘|커플|연애)|우리도")
 # 운명원 꺼내는 말의 표지(앞 초안과 같은 틀인지 볼 때)
 HEARSAY_MARKS = (
     "잘 본다던데", "잘 본다고", "보이던데", "많이들 본다", "하던데", "눈에 띄던데", "들었", "소문",
@@ -115,9 +129,35 @@ def style_issues(
         issues.append(
             f"S3 띄어쓰기·말꼴: '{ne.group(0)}'은 어색합니다 — '~했다는 말에'처럼 고치세요"
         )
+    ask = next((m for m in _ASK_GO.finditer(body) if not _ASK_GO_OK.search(m.group(1))), None)
+    if ask:
+        issues.append(
+            f"S3 띄어쓰기·말꼴: '{ask.group(0)}'은 앞뒤가 안 맞습니다 — '~인지 한번 보고 싶다'로 "
+            "쓰거나, 물음 없이 '다음에 한번 가 봐야겠네요'로 쓰세요"
+        )
+    mine = _OUR.search(body) or _claimed_scene(body, key_phrases)
+    if mine:
+        issues.append(
+            f"S5 남의 일을 내 일로: '{mine.group(0).strip()}' — 나는 영상을 본 사람입니다. 영상 속 "
+            "사람의 일을 내 일로 만들지 말고 '보는 제가 다 답답하네', '남 일 같지 않네'처럼 보는 "
+            "사람 자리에서 반응하세요(없는 애인과의 '우리 관계'도 쓰지 않습니다)"
+        )
     issues += _same_video(body, brand=brand, disclosure=disclosure, key_phrases=key_phrases,
                           earlier=earlier)
     return issues
+
+
+def _claimed_scene(body: str, key_phrases: Sequence[str]) -> re.Match[str] | None:
+    """핵심 말이 든 장면(그 문장이나 바로 앞 문장)을 「내 얘기」라고 한 곳."""
+    sentences = _sentences(body)
+    for i, s in enumerate(sentences):
+        m = _MY_STORY.search(s)
+        if not m:
+            continue
+        near = " ".join(sentences[max(0, i - 1) : i + 1])
+        if any(k and contains_key_phrase(near, k) for k in key_phrases):
+            return m
+    return None
 
 
 def _same_video(
