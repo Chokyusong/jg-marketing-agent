@@ -1,4 +1,4 @@
-"""댓글 규칙 검사 V1~V12 (DESIGN 5.4, PLAYBOOK 6단계).
+"""댓글 규칙 검사 V1~V13 (DESIGN 5.4, PLAYBOOK 6단계·C1).
 
 네트워크·DB·LLM 없이 도는 순수 함수다. AI가 쓴 초안과 사람이 고친 글이 **같은 함수**를 거친다.
 
@@ -6,6 +6,14 @@
 - `find_evidence(text, context_text)` → 글과 영상 자료에 함께 나오는 가장 긴 구절
   (영상 자료 원문 그대로)
 - `normalize(s)` → 대조용 글: NFC, 소문자, 글자·숫자만 남김(공백·문장부호·이모지·기호 제거)
+- `usable_key_phrases(phrases, context_text)` → 핵심 말 중 영상 자료에 실제로 있고 흔한 낱말이 아닌
+것
+- `derive_key_phrases(texts, context_text)` → 핵심 말 목록이 없을 때(예전 분석) 제목·근거에서 뽑는다
+
+C1(2026-11-17, 과제 예시처럼 자연스럽게): V7은 「근거 구절을 4자 이상 이어서 담음」에서 「그 영상의
+핵심 말을 하나 이상 담음」으로 바뀌었다(흔한 낱말만으로는 통과하지 못한다). 새 V13은 영상 자료나
+고민 한 줄을 길게 그대로 베낀 글을 잡는다. V11은 과제 PDF의 예시 댓글(`ASSIGNMENT_SAMPLE`)과도
+비교한다. V12는 댓글 표기(ㅠㅠ·ㅋㅋ·...·^^)를 받는다.
 
 실패 문구는 "무엇이 걸렸고 → 어떻게 고치면 되는지"를 한 줄로 쓴다. 화면과 5단계 재생성 프롬프트가
 같은 문구를 쓴다.
@@ -26,7 +34,15 @@ from typing import Any
 # ---------------------------------------------------------------- 기준값
 
 MIN_EVIDENCE_CHARS = 6  # V6: 근거 구절은 정리 후 6자 이상
-MIN_OVERLAP_CHARS = 4  # V7: 글과 근거 구절이 정리 후 4자 이상 연속으로 겹친다
+MIN_OVERLAP_CHARS = 4  # (예전 V7 기준. C1부터 V7은 핵심 말로 본다)
+MIN_KEY_PHRASE_CHARS = 2  # 핵심 말: 정리 후 2자 이상
+# 핵심 말: 정리 후 10자 이하(V13 기준보다 짧아야 핵심 말만 넣은 글이 걸리지 않는다)
+MAX_KEY_PHRASE_CHARS = 10
+# V13: 영상 자료·고민 한 줄과 정리 후 이만큼 이어서 같으면 「길게 베낌」. 실제 초안(qwen3.8:27b,
+# 영상 8개)을 보고 정했다 — C1 전 초안은 자막을 20~30자씩 옮겼고, 자연스러운 초안은 핵심 말과
+# 앞뒤 몇 글자(10자 안쪽)만 겹쳤다.
+COPY_LIMIT = 13
+SAMPLE_SENTENCE_SIMILARITY = 0.8  # V11: 과제 예시 댓글의 한 문장과 이만큼 비슷한 문장이 있으면 실패
 QUOTE_SIMILARITY = 0.85  # V6: 근거 구절이 그대로 없으면 이만큼 비슷한 구간이 있어야 한다
 PREVIOUS_SIMILARITY = 0.6  # V11: 이전 글과 이만큼 비슷하면 실패
 BRAND_GAP = 8  # 따옴표로 옮긴 영상 속 말: 앞뒤 이만큼 안에 브랜드가 있으면 V8~V10 면제 없음
@@ -40,12 +56,13 @@ CHECK_NAMES: dict[str, str] = {
     "V4": "홍보 표기 맨 앞",
     "V5": "브랜드 이름 1~2번",
     "V6": "근거가 영상 자료에 있음",
-    "V7": "글이 근거를 담음",
+    "V7": "영상의 핵심 말을 담음",
     "V8": "이용 후기 표현 없음",
     "V9": "지어낸 연애 사연 없음",
     "V10": "효능·최상급 표현 없음",
     "V11": "이전 글과 다름",
-    "V12": "한글·영문·숫자·기본 문장부호만",
+    "V12": "한글·영문·숫자·문장부호만(ㅠㅠ·ㅋㅋ 됨)",
+    "V13": "영상 글을 길게 베끼지 않음",
 }
 PATTERN_CODES = ("V8", "V9", "V10")
 
@@ -143,7 +160,7 @@ BUILTIN_PATTERNS: dict[str, tuple[str, ...]] = {
 
 @dataclass(frozen=True)
 class CheckResult:
-    code: str  # V1 ~ V11
+    code: str  # V1 ~ V13
     name: str
     passed: bool
     message: str  # 한 줄: 통과면 확인한 내용, 실패면 걸린 것 — 고치는 법
@@ -354,6 +371,121 @@ def _found(matches: list[str]) -> str:
     return ", ".join(f"'{_clip(m, 16)}'" for m in uniq[:3])
 
 
+# ---------------------------------------------------------------- 핵심 말(C1)
+
+# 어느 연애 영상에나 나오는 흔한 낱말. 이것 하나만으로는 「그 영상의 핵심 말」이 아니다(V7).
+# 낱말 그대로만 본다 — '남자심리'처럼 붙여 쓴 말은 그 영상의 주제일 수 있어 막지 않는다(과제 예시).
+COMMON_WORDS = frozenset(
+    """
+    연애 사랑 남자 여자 영상 마음 사람 고민 관계 연락 이별 썸 결혼 인연
+    사주 운세 궁합 애인 남친 여친 남자친구 여자친구 커플 연인 친구 오늘
+    진짜 정말 이야기 얘기 생각 심리 상대 상대방 우리 저 나 너 그 이
+    저도 나도 매일 그냥 너무 완전 근데 그런데 그래서 사연 상담 구독 댓글
+    채널 시청 시청자 유튜브 방송 라이브 감정 행복 이유 시간 때문 정도
+    하루 지금 요즘 사이 데이트 만남 남녀 연애심리 연애상담 연애고민 연애운 문제 자주
+    여러분 우리들 모두 하나 일상 인생 오늘의 이번 다음 처음 마지막 방법
+    특징 분석 정리 내용 것 것들 거 수 때 곳 분 누구 무엇 뭐 어디 언제
+    어떻게 왜 이런 그런 저런 아주 많이 조금 여러 가지 여러가지 이것 그것
+    저것 우리가 제가 내가 사실 계속 항상 자꾸 다시 먼저 혼자 같이 함께
+    서로
+    """.split()
+)
+# 낱말 끝의 조사(긴 것부터). 떼고 남은 말이 2자 이상일 때만 뗀다.
+_PARTICLES = (
+    "에서는", "에게는", "이라고", "으로", "에서", "에게", "한테", "까지", "부터", "처럼", "보다",
+    "라고",
+    "은", "는", "이", "가", "을", "를", "의", "에", "도", "와", "과", "랑", "로", "만",
+)
+# 말끝이 이렇게 끝나면 낱말이 아니라 풀이말(서술어)로 본다(뽑을 때만 쓴다)
+_VERBISH = (
+    "다", "요", "죠", "까", "데", "고", "면", "서", "지", "게", "네", "니", "며", "던", "는", "은",
+    "을",
+)
+_TOKEN = re.compile(r"[0-9A-Za-z가-힣]+")
+_HASHTAG = re.compile(r"[#＃]([0-9A-Za-z가-힣_]{2,20})")
+
+
+def _strip_particle(word: str) -> str:
+    for p in _PARTICLES:
+        if word.endswith(p) and len(word) - len(p) >= 2:
+            return word[: -len(p)]
+    return word
+
+
+def is_common_word(phrase: str) -> bool:
+    """흔한 낱말 하나인가(조사를 떼고 본다). 정리한 글로 비교한다."""
+    n = normalize(phrase)
+    return not n or n in COMMON_WORDS or _strip_particle(n) in COMMON_WORDS
+
+
+def key_phrase_ok(phrase: str, context_n: str, rules: ValidatorRules | None = None) -> bool:
+    """핵심 말로 쓸 수 있는가: 정리 후 2~10자, 흔한 낱말 하나가 아님, 표기·브랜드가 아님,
+    영상 자료(정리한 글)에 그대로 있음."""
+    n = normalize(phrase)
+    if not (MIN_KEY_PHRASE_CHARS <= len(n) <= MAX_KEY_PHRASE_CHARS):
+        return False
+    if is_common_word(phrase):
+        return False
+    if rules is not None:
+        for marker in (rules.brand, rules.disclosure):
+            if marker and normalize(marker) and normalize(marker) in n:
+                return False
+    return n in context_n
+
+
+def usable_key_phrases(
+    phrases: Iterable[str], context_text: str, rules: ValidatorRules | None = None
+) -> list[str]:
+    """핵심 말 중 쓸 수 있는 것(원래 모양 그대로, 같은 말은 하나). V7과 분석이 같은 기준을 쓴다."""
+    context_n = normalize(context_text)
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in phrases:
+        phrase = " ".join(str(raw or "").split()).strip("'\"‘’“”「」#")
+        key = normalize(phrase)
+        if key in seen or not key_phrase_ok(phrase, context_n, rules):
+            continue
+        seen.add(key)
+        out.append(phrase)
+    return out
+
+
+def hashtags(text: str, limit: int = 12) -> list[str]:
+    """글 속 해시태그 낱말(# 뺀 것, 앞에서부터)."""
+    return list(dict.fromkeys(_HASHTAG.findall(unicodedata.normalize("NFC", text or ""))))[:limit]
+
+
+def derive_key_phrases(
+    texts: Iterable[str], context_text: str, rules: ValidatorRules | None = None, limit: int = 6
+) -> list[str]:
+    """핵심 말 목록이 없을 때(예전 분석, 모델이 고른 핵심 말이 모두 버려졌을 때) 코드로 뽑는다.
+
+    `texts`(제목·해시태그 순)를 낱말로 나눠 조사를 떼고, 흔한 낱말·풀이말·영상 자료에 없는 말을
+    뺀다. 말하다 만 자막 문장은 넣지 않는다(풀이말 조각이 핵심 말로 뽑힌다).
+    """
+    words: list[str] = []
+    for text in texts:
+        for token in _TOKEN.findall(unicodedata.normalize("NFC", text or "")):
+            word = _strip_particle(token)
+            if word.endswith(_VERBISH) and not token.isascii():
+                continue
+            words.append(word)
+    return usable_key_phrases(words, context_text, rules)[:limit]
+
+
+def contains_key_phrase(body: str, phrase: str) -> bool:
+    """글에 핵심 말이 들어 있는가(정리한 글로). 4자 이상인 말은 끝 한 글자가 달라도 된다
+    ('연락하면' → '연락하는'). 그때 남은 말이 흔한 낱말이면 안 된다."""
+    body_n = normalize(body)
+    n = normalize(phrase)
+    if not n:
+        return False
+    if n in body_n:
+        return True
+    stem = n[:-1]
+    return len(n) >= 4 and stem in body_n and stem not in COMMON_WORDS
+
+
 # ---------------------------------------------------------------- 규칙별 검사
 
 
@@ -420,11 +552,10 @@ def _v5_brand(text: str, rules: ValidatorRules) -> CheckResult:
     return _check("V5", True, f"'{brand}' {count}번")
 
 
-def _v6_v7_evidence(
+def _v6_evidence(
     text: str, context_text: str, rules: ValidatorRules, evidence_quote: str | None
-) -> tuple[CheckResult, CheckResult, str | None]:
+) -> tuple[CheckResult, str | None]:
     body = _strip_markers(text, rules)
-    body_n = normalize(body)
     ctx_n = normalize(context_text)
 
     if evidence_quote is not None and evidence_quote.strip():
@@ -469,20 +600,83 @@ def _v6_v7_evidence(
                 "그대로 넣으세요",
             )
 
-    if not quote or (evidence_quote is None and not v6.passed):
-        # 근거를 글에서 찾는 경우 V6이 실패하면 V7도 확인할 근거가 없다. 원인은 V6 하나다.
-        v7 = _check("V7", False, "확인할 근거 구절이 없습니다 — V6을 고치면 함께 풀립니다")
-    else:
-        _, _, overlap = _longest_common(body_n, quote_n)
-        if overlap >= MIN_OVERLAP_CHARS:
-            v7 = _check("V7", True, f"근거와 {overlap}자 연속으로 겹침")
-        else:
-            v7 = _check(
-                "V7", False,
-                f"글에 근거 '{_clip(quote)}'의 말이 없습니다 — 근거의 낱말을 "
-                f"{MIN_OVERLAP_CHARS}자 이상 이어서 넣으세요",
-            )
-    return v6, v7, quote or None
+    return v6, quote or None
+
+
+def _v7_key_phrases(
+    text: str,
+    context_text: str,
+    rules: ValidatorRules,
+    key_phrases: Sequence[str] | None,
+) -> CheckResult:
+    """C1: 글이 그 영상의 핵심 말을 하나 이상 담았는가.
+
+    핵심 말은 영상 자료에 그대로 있고 흔한 낱말이 아니어야 한다(`usable_key_phrases`). 분석의 핵심
+    말이 주어지면 그것만 본다. 목록이 없거나 쓸 수 있는 것이 없으면(예전 분석·분석 전에
+    사람이 쓴 글) 제목과 해시태그에서 코드로 뽑은 핵심 말을 보고, 그것도 없으면 영상 자료와 정리 후
+    `MIN_EVIDENCE_CHARS`(6)자 이상 겹치는 말(V6과 같은 기준)이 있으면 통과로 본다.
+    """
+    body = _strip_markers(text, rules)
+    phrases = usable_key_phrases(key_phrases or (), context_text, rules)
+    if phrases:
+        hits = [p for p in phrases if contains_key_phrase(body, p)]
+        if hits:
+            return _check("V7", True, f"핵심 말 {_found(hits)} 담음")
+        shown = ", ".join(f"'{_clip(p, 12)}'" for p in phrases[:4])
+        return _check(
+            "V7", False,
+            f"이 영상의 핵심 말({shown})이 글에 없습니다 — 이 중 하나 이상을 그대로 넣으세요",
+        )
+    title = (context_text or "").split("\n", 1)[0]
+    tags = hashtags((context_text or "")[:3000])
+    derived = derive_key_phrases([title, *tags], context_text, rules)
+    hits = [p for p in derived if contains_key_phrase(body, p)]
+    if hits:
+        return _check("V7", True, f"핵심 말 {_found(hits)} 담음 · 제목·해시태그에서 뽑은 핵심 말")
+    shared = find_evidence(body, context_text) or ""
+    if len(normalize(shared)) >= MIN_EVIDENCE_CHARS and not is_common_word(shared):
+        return _check(
+            "V7", True, f"영상 자료와 겹치는 말 '{_clip(shared)}' 담음(분석의 핵심 말 없음)"
+        )
+    shown = ", ".join(f"'{_clip(p, 12)}'" for p in derived[:4])
+    hint = f"이 영상의 핵심 말({shown})" if derived else "이 영상의 사람 이름·용어·표현"
+    return _check(
+        "V7", False, f"영상 속 말이 글에 없습니다 — {hint}을 하나 이상 그대로 넣으세요"
+    )
+
+
+def _longest_shared(body_n: str, source: str) -> tuple[int, str]:
+    """(정리 후 이어서 같은 글자 수, 원문 구간). `body_n`은 정리한 글."""
+    raw = unicodedata.normalize("NFC", source or "")
+    src_n, index = _normalize_map(raw)
+    _, start, size = _longest_common(body_n, src_n)
+    if size == 0:
+        return 0, ""
+    return size, raw[index[start] : index[start + size - 1] + 1].strip()
+
+
+def _v13_copy(text: str, context_text: str, rules: ValidatorRules, concern: str) -> CheckResult:
+    """C1: 영상 자료(제목·설명·자막·댓글)나 고민 한 줄을 길게 그대로 옮기지 않았는가.
+
+    자동 자막은 말하다 만 문장이라 그대로 옮기면 말이 안 된다(대표가 본 초안). 정리 후
+    `COPY_LIMIT`자 이상 이어서 같으면 실패. 핵심 말(10자 이하)만 넣은 글은 걸리지 않는다.
+    """
+    body_n = normalize(_strip_markers(text, rules))
+    worst = (0, "", "")
+    for label, source in (("영상 자료", context_text), ("고민 한 줄", concern)):
+        if not source:
+            continue
+        size, span = _longest_shared(body_n, _strip_markers(source, rules))
+        if size > worst[0]:
+            worst = (size, label, span)
+    size, label, span = worst
+    if size >= COPY_LIMIT:
+        return _check(
+            "V13", False,
+            f"{label}의 '{_clip(span, 20)}'를 {size}자 이어서 그대로 옮겼습니다 — 핵심 말만 남기고 "
+            "나머지는 내 말로 바꾸세요",
+        )
+    return _check("V13", True, f"영상 글과 가장 길게 겹친 곳 {size}자({COPY_LIMIT}자 미만)")
 
 
 def _fact_allows(text: str, start: int, end: int, facts_n: list[str]) -> bool:
@@ -553,7 +747,8 @@ def _pattern_check(
 
 
 # V12: 허용 글자(PLAYBOOK 6단계 표). 공백 문자는 여기서 받고 줄바꿈은 V1이 잡는다.
-ALLOWED_PUNCT = frozenset(".,!?~'\"‘’“”…·-()[]%:/")
+# C1: 댓글 표기 ^^ 와 말줄임 ‥ 를 더했다(ㅠㅠ·ㅋㅋ 같은 한글 자모는 처음부터 받았다).
+ALLOWED_PUNCT = frozenset(".,!?~'\"‘’“”…‥·-()[]%:/^")
 
 
 def _allowed_char(ch: str) -> bool:
@@ -585,7 +780,7 @@ def _v12_charset(text: str, rules: ValidatorRules) -> CheckResult:
     body = _strip_markers(text, rules)  # 설정한 표기·브랜드 이름은 그대로 둔다
     bad = list(dict.fromkeys(ch for ch in body if not _allowed_char(ch)))
     if not bad:
-        return _check("V12", True, "한글·영문·숫자·기본 문장부호만 씀")
+        return _check("V12", True, "한글·영문·숫자·문장부호만 씀")
     shown = []
     for ch in bad[:5]:
         kind = _char_kind(ch)
@@ -598,6 +793,39 @@ def _v12_charset(text: str, rules: ValidatorRules) -> CheckResult:
     )
 
 
+# 과제 PDF의 예시 댓글(남자심리 분석 영상). 초안 프롬프트에 **말투 기준으로만** 보여 주고,
+# 그것을 베낀 글은 V11이 잡는다(C1). 다른 영상 글이므로 핵심 말·근거로는 쓰지 않는다.
+ASSIGNMENT_SAMPLE = (
+    "근데 진짜 남자심리는 알다가도 모르겠다...ㅠㅠ 맨날 연애하면 차이기만 했던 1인. "
+    "결국 심리 알기는 개뿔 그냥 인연이면 만나는 것 같아요. "
+    "운명원 연애사주가 그렇게 잘 본다던데 나도 언제 짝 만나는지 한번 보고 싶다. "
+    "각자 정해진 운명이 있는 듯."
+)
+_SENT_SPLIT = re.compile(r"[.!?…\n]+")
+_SAMPLE_MIN_SENTENCE = 10  # 정리 후 이보다 짧은 문장은 문장끼리 비교하지 않는다
+
+
+def _sentences_n(text: str, rules: ValidatorRules) -> list[str]:
+    out = []
+    for part in _SENT_SPLIT.split(_strip_markers(text, rules)):
+        n = normalize(part)
+        if len(n) >= _SAMPLE_MIN_SENTENCE:
+            out.append(n)
+    return out
+
+
+def _sample_similarity(text: str, rules: ValidatorRules) -> tuple[float, float]:
+    """(과제 예시와 글 전체 유사도, 문장끼리 가장 비슷한 유사도)."""
+    body_n = normalize(_strip_markers(text, rules))
+    sample_n = normalize(_strip_markers(ASSIGNMENT_SAMPLE, rules))
+    whole = SequenceMatcher(None, body_n, sample_n, autojunk=False).ratio() if body_n else 0.0
+    best = 0.0
+    for a in _sentences_n(text, rules):
+        for b in _sentences_n(ASSIGNMENT_SAMPLE, rules):
+            best = max(best, SequenceMatcher(None, a, b, autojunk=False).ratio())
+    return whole, best
+
+
 def _v11_previous(text: str, previous_texts: Sequence[str], rules: ValidatorRules) -> CheckResult:
     body_n = normalize(_strip_markers(text, rules))
     best, best_text = 0.0, ""
@@ -608,6 +836,13 @@ def _v11_previous(text: str, previous_texts: Sequence[str], rules: ValidatorRule
         ratio = SequenceMatcher(None, body_n, prev_n, autojunk=False).ratio()
         if ratio > best:
             best, best_text = ratio, prev
+    whole, sentence = _sample_similarity(text, rules)
+    if whole >= PREVIOUS_SIMILARITY or sentence >= SAMPLE_SENTENCE_SIMILARITY:
+        return _check(
+            "V11", False,
+            f"과제 예시 댓글과 {max(whole, sentence):.0%} 비슷합니다 — 예시는 말투만 참고하고 "
+            "이 영상의 장면·말로 새로 쓰세요",
+        )
     if best >= PREVIOUS_SIMILARITY:
         shown = _clip(_strip_markers(best_text, rules).strip(), 20)
         return _check(
@@ -633,8 +868,10 @@ def validate(
     previous_texts: Sequence[str],
     evidence_quote: str | None = None,
     disclosure_required: bool = True,
+    key_phrases: Sequence[str] | None = None,
+    concern: str = "",
 ) -> Validation:
-    """V1~V12를 모두 돌린다. 하나라도 실패하면 `passed=False`.
+    """V1~V13을 모두 돌린다. 하나라도 실패하면 `passed=False`.
 
     - `disclosure_required`: 거짓이면 V4가 표기 없는 글도 「표기 끔」으로 통과시킨다(R3: 초안의
       「광고 표기 붙이기」를 끈 경우. 어떤 영상이든)
@@ -642,11 +879,14 @@ def validate(
     - `context_text`: 대조할 영상 자료 전체(3단계 `search_text`: 제목·설명·자막·댓글, 자르지 않음)
     - `previous_texts`: 이전에 승인·게시한 글들(V11). 5단계 전까지는 빈 목록
     - `evidence_quote`: AI가 고른 근거 구절(5단계). 없으면 `find_evidence`로 찾는다
+    - `key_phrases`: 분석이 뽑은 그 영상의 핵심 말(V7, C1). 없으면 제목·근거에서 코드로 뽑는다
+    - `concern`: 분석의 고민 한 줄(V13: 그대로 길게 옮겼는지 본다)
     """
     clean = unicodedata.normalize("NFC", text or "").strip()
     facts_n = [normalize(f) for f in brand_facts if f and f.strip()]
 
-    v6, v7, quote = _v6_v7_evidence(clean, context_text or "", rules, evidence_quote)
+    v6, quote = _v6_evidence(clean, context_text or "", rules, evidence_quote)
+    v7 = _v7_key_phrases(clean, context_text or "", rules, key_phrases)
     quoted = _quoted_spans(clean, context_text or "", rules)
     checks = (
         _v1_length(clean, rules),
@@ -674,6 +914,7 @@ def validate(
         ),
         _v11_previous(clean, previous_texts, rules),
         _v12_charset(clean, rules),
+        _v13_copy(clean, context_text or "", rules, concern),
     )
     return Validation(
         passed=all(c.passed for c in checks),
