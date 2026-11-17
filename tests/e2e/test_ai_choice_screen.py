@@ -251,3 +251,34 @@ def test_ollama_model_list_has_custom_entry(app):
             page.click("#settings-save")
         assert json.loads(req.value.post_data)["values"] == {"llm.model": "my-ollama:1b"}
     assert not errors, errors
+
+
+LIST_FIT = """() => {
+  const list = document.getElementById('ai-list');
+  const body = document.getElementById('settings-body').getBoundingClientRect();
+  const items = [...list.querySelectorAll('.ai-item')];
+  const last = items[items.length - 1].getBoundingClientRect();
+  const use = document.getElementById('ai-use-openai').getBoundingClientRect();
+  return {rows: items.length, listScroll: list.scrollHeight > list.clientHeight + 1,
+          lastBottom: last.bottom, bodyBottom: body.bottom, viewport: innerHeight,
+          useBottom: use.bottom};
+}"""
+
+
+@pytest.mark.parametrize("size", [(1920, 1009), (1600, 960)])
+def test_ai_list_last_row_is_visible_without_scrolling(app, size):
+    """2026-11-17: 넓은 창에서는 AI 목록 9줄이 목록 안쪽·설정 칸 스크롤 없이 다 보인다."""
+    base = app["base"]
+    with headless_page(base, size=size) as (page, errors):
+        page.goto(base + "/")
+        page.wait_for_function(STATUS_LOADED)
+        open_ai(page)
+        page.click("#ai-item-openai")
+        m = page.evaluate(LIST_FIT)
+        assert m["rows"] == 9 and not m["listScroll"], m
+        assert m["lastBottom"] <= m["bodyBottom"] <= m["viewport"], m  # 마지막 줄(Gemini 프로그램)
+        assert m["useBottom"] <= m["bodyBottom"], m  # [이 AI 쓰기]도 가려지지 않는다
+        assert page.locator("#ai-item-gemini-cli").is_visible()
+        fit = measure(page, *size)
+        assert not fit["pageScroll"] and not fit["hScroll"] and fit["minFont"] >= 12, fit
+    assert not errors, errors
