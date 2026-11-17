@@ -35,6 +35,14 @@
 - S15 정해 준 조각과 다름(2026-11-18): 코드가 초안마다 정해 준 운명원 대목 조각(때·세기 말·
   평판·들은 꼴·끝말, `prompts.assign_pieces`)이 글에 없거나, ④ 꺼내는 말이 앞서 보인 초안과
   통째로 같음. **모델이 쓴 초안에만** 본다(`pieces`) — 사람이 고친 글은 그대로 둔다
+- S18 알고 싶은 것 없음(2026-11-18 기획 담당 D-1): 코드가 이번 초안 ⑤를 「저도 + 사주로 알고 싶은
+  것(~인지·~는지·~ㄹ지) + 보러 가겠다는 말」로 정했는데(`prompts.assign_reason`) 그 꼴이 아님.
+  **모델이 쓴 초안에만** 본다(`reason_wanted`)
+- S19 같은 말 되풀이(D-3): 잇는 문장과 ⑤의 알고 싶은 것에 같은 낱말(인연·때·궁합…)을 그대로
+  되풀이(「인연은 따로 있나 봐요 … 저도 다시 만날 인연인지」) — 알고 싶은 것은 다른 말로
+  (「재회운이 있는지」). 모델이 쓴 초안에만 본다
+- S20 남의 마음 짐작(D-2): 영상 반응에서 영상 속 사람의 마음을 짐작해 평함(「~다니 미련인가
+  싶겠어요」) — 보는 내 반응으로(「그 마음 너무 알겠다ㅠㅠ」). 모델이 쓴 초안에만 본다
 - S14 잇는 문장의 새 평판(2026-11-18): 운명원 문장 바로 앞 문장(잇는 문장 자리)에 설정에 없는
   운명원 평판·사례(`validator.invented_repute` — 예약·방송·연예인·가격·위치·경력·적중률·구체 사례·
   남이 받아 본 결과). 운명원 대목 자체는 규칙 검사 V14가 막는다
@@ -66,7 +74,9 @@ from app.analysis.validator import (
     strip_hashtags,
 )
 from app.llm.prompts import (
+    BRIDGE_WORDS,
     LEAD_HOWS,
+    REASON_WISH,
     Pieces,
     _present,
     brand_part,
@@ -75,6 +85,7 @@ from app.llm.prompts import (
     fancy_bridge_word,
     fold,
     intent_reason,
+    is_wish,
     lead_part,
     with_i,
 )
@@ -199,6 +210,13 @@ def has_reputation(text: str, brand: str) -> bool:
     )
 
 
+# S20(2026-11-18 D-2): 영상 속 사람의 마음을 짐작해 평하는 꼴 「~인가/~나 싶겠다」(「미련인가
+# 싶겠어요」). 「힘들었겠어요」 같은 공감은 그대로 둔다
+_GUESS_MIND = re.compile(r"[가-힣]*(?:인가|은가|는가|한가|운가|던가|나)\s?싶(?:겠|었겠)[가-힣]*")
+# S19: 잇는 문장과 알고 싶은 것이 함께 쓰면 어색한 같은 낱말(쉬운 잇는 말 + 짝)
+_SHARED_WORDS = (*(w for w in BRIDGE_WORDS if len(w) >= 2), "짝", "때가")
+
+
 def _before_brand(text: str, brand: str) -> str:
     """운명원이 처음 나오는 문장의 바로 앞 문장(첫 문장이면 빈 글) — 잇는 문장 자리."""
     sentences = _sentences(text)
@@ -226,6 +244,7 @@ def style_issues(
     pieces: Pieces | None = None,
     used_leads: Sequence[str] = (),
     bridge_wanted: bool | None = None,
+    reason_wanted: str | None = None,
 ) -> list[str]:
     """다시 쓰게 할 까닭들(없으면 빈 목록).
 
@@ -238,6 +257,8 @@ def style_issues(
     `pieces`: 코드가 정해 준 이번 초안의 운명원 대목 조각(S15, 없으면 보지 않는다).
     `used_leads`: 앞서 보인 초안들의 ④ 꺼내는 말(`prompts.lead_part`, S15).
     `bridge_wanted`: 코드가 정한 잇는 문장 넣기(거짓이면 S16, None이 아니면 S17도 본다).
+    `reason_wanted`: 코드가 정한 ⑤의 꼴(`prompts.assign_reason`). 알고 싶은 것(wish)이면 S18,
+    None이 아니면 S19·S20도 본다(모델이 쓴 초안만, 2026-11-18 D).
     """
     issues: list[str] = []
     body = _body(text, disclosure)
@@ -351,6 +372,9 @@ def style_issues(
         )
     if pieces is not None and brand:
         issues += piece_issues(body, brand, pieces, used_leads)
+    if reason_wanted is not None and brand and brand in body:
+        issues += _story_issues(body, brand, reason, bridge, reason_wanted,
+                                pieces.ending() if pieces is not None else "")
     tag = hashtag_word(body, context)
     if tag:
         issues.append(
@@ -374,6 +398,39 @@ def style_issues(
         )
     issues += _same_video(body, brand=brand, disclosure=disclosure, key_phrases=key_phrases,
                           earlier=earlier)
+    return issues
+
+
+def _story_issues(
+    body: str, brand: str, reason: str, bridge: str, wanted: str, ending: str
+) -> list[str]:
+    """S18·S19·S20(2026-11-18 기획 담당 D): 한 사람의 얘기로 이어지는가."""
+    issues: list[str] = []
+    if wanted == REASON_WISH and not is_wish(reason):
+        tail = f" {ending}" if ending else " + 끝말"
+        issues.append(
+            "S18 알고 싶은 것 없음: '저도' 뒤에 이 영상 고민에서 나온, 사주로 알고 싶은 것을 "
+            f"넣으세요 — '저도 [알고 싶은 것]{tail}'(예: 다시 만날 인연인지 · 언제쯤 짝을 "
+            "만나는지 · 둘이 궁합이 맞는지 — 그대로 쓰지 말고 이 영상의 고민으로)"
+        )
+    if bridge and is_wish(reason):
+        flat_bridge, flat_reason = fold(bridge), fold(reason)
+        same = next((w for w in _SHARED_WORDS if fold(w) in flat_bridge and fold(w) in flat_reason),
+                    "")
+        if same:
+            issues.append(
+                f"S19 같은 말 되풀이: 잇는 문장('{bridge}')과 알고 싶은 것('{reason}')에 "
+                f"'{same}'을(를) 되풀이했습니다 — 알고 싶은 것은 다른 말로 쓰세요(예: '인연' → "
+                "'재회운이 있는지', '궁합' → '이 사람이랑 잘 맞을지')"
+            )
+    first = _sentences(body)[0] if _sentences(body) else ""
+    guess = _GUESS_MIND.search(first) if brand not in first else None
+    if guess:
+        issues.append(
+            f"S20 남의 마음 짐작: '{guess.group(0)}'은 영상 속 사람의 마음을 짐작해 평하는 "
+            "말입니다 — 보는 내 반응으로 쓰세요('그 마음 너무 알겠다ㅠㅠ', '내 얘기 같아서 "
+            "찔리네')"
+        )
     return issues
 
 

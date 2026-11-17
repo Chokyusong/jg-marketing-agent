@@ -72,6 +72,7 @@ def _bridge_check_off(monkeypatch):
     monkeypatch.setattr(drafter, "BRIDGE_CHECK", False)
     # S15(정해 준 운명원 조각과 다름, 2026-11-18)도 같은 까닭으로 끈다. 보는 시험은 `piece_check_on`
     monkeypatch.setattr(drafter, "PIECE_CHECK", False)
+    monkeypatch.setattr(drafter, "STORY_CHECK", False)  # S18~S20(2026-11-18 D)
 
 
 @pytest.fixture
@@ -88,6 +89,14 @@ def piece_check_on(monkeypatch):
     from app.analysis import drafter
 
     monkeypatch.setattr(drafter, "PIECE_CHECK", True)
+
+
+@pytest.fixture
+def story_check_on(monkeypatch):
+    """S18~S20(알고 싶은 것 없음 등, 2026-11-18 D)을 켠다(실제 프로그램과 같게)."""
+    from app.analysis import drafter
+
+    monkeypatch.setattr(drafter, "STORY_CHECK", True)
 
 
 REVIEW_OK = {"ok": True, "problems": []}

@@ -88,6 +88,9 @@ BRIDGE_CHECK = True
 # S11과 같은 까닭으로 자동 테스트는 `tests/conftest.py`가 끈다(그 전에 짠 가짜 초안은 정해 준
 # 조각을 모른다). 프롬프트의 조각 배정은 늘 켜져 있다. S15 자체의 시험은 켜고 본다.
 PIECE_CHECK = True
+# 다듬기 검사 S18~S20(알고 싶은 것 없음·잇는 문장과 같은 말·남의 마음 짐작, 2026-11-18 D)를 모델
+# 초안에 쓸지. 같은 까닭으로 자동 테스트는 `tests/conftest.py`가 끈다. ⑤ 꼴 배정은 늘 켜져 있다
+STORY_CHECK = True
 # 꺼내는 말·끝말을 돌려 쓸 때 보는 「보인 초안」 수(최근 것부터, 2026-11-17)
 SHOWN_TEXTS = 30
 DraftStatus = str  # 'draft' | 'approved' | 'superseded'
@@ -219,6 +222,7 @@ class DraftService:
         self._pieces: prompts.Pieces | None = None  # 이번 초안의 운명원 대목 조각(S15)
         self._used_leads: list[str] = []  # 앞서 보인 초안들의 ④ 꺼내는 말(S15)
         self._want_bridge: bool | None = None  # 이번 초안에 잇는 문장을 넣을지(S16·S17)
+        self._reason_kind: str | None = None  # 이번 초안 ⑤의 꼴(알고 싶은 것 등, S18)
 
     @property
     def rules(self):
@@ -524,6 +528,24 @@ class DraftService:
         if not want_bridge:
             want_reason = True
         self._want_bridge = want_bridge
+        # ⑤의 꼴(2026-11-18 기획 담당 D-1): 셋 중 둘은 「저도 + 사주로 알고 싶은 것 + 보러 가겠다는
+        # 말」, 나머지는 상태 까닭·까닭 없음(잇는 문장이 없으면 까닭은 꼭). 다시 쓸 때는 그 초안
+        # 그대로
+        # STORY_CHECK을 끈 예전 테스트는 예전 배정(까닭 넣기/빼기)만 본다
+        if not STORY_CHECK:
+            kind = None
+        elif exclude is not None:
+            kind = prompts.reason_kind(exclude.body, rules.brand)
+            kept = prompts.pieces_of(exclude.body, rules.brand)
+            if kept is not None and kept.action in prompts.WISH_ACTIONS:
+                kind = prompts.REASON_WISH
+        else:
+            kind = prompts.assign_reason(rules.brand, shown, avoid_bodies, bridge=want_bridge)
+        if kind == prompts.REASON_NONE and (not want_bridge or want_reason):
+            kind = prompts.REASON_STATE
+        if kind is not None:
+            want_reason = kind != prompts.REASON_NONE
+        self._reason_kind = kind
         # 2026-11-18: 앞서 보인 초안(다른 영상 포함, 꺼내는 말을 세는 범위와 같게)의 까닭은 피한다
         self._used_reasons = list(dict.fromkeys(
             r for r in (prompts.intent_reason(t, rules.brand) for t in [*avoid_bodies, *shown]) if r
@@ -537,7 +559,8 @@ class DraftService:
         # 덜 쓴 것부터 정해 준다. AI 검수 뒤 다시 쓸 때는 앞 초안의 조각 그대로(같은 배정)
         keep = prompts.pieces_of(exclude.body, rules.brand) if exclude is not None else None
         pieces = prompts.assign_pieces(
-            rules.brand, shown, avoid=avoid_bodies, rng=self.rng, keep=keep)
+            rules.brand, shown, avoid=avoid_bodies, rng=self.rng, keep=keep,
+            wish=kind == prompts.REASON_WISH)
         self._pieces = pieces
         self._used_leads = [x for x in (prompts.lead_part(t, rules.brand)
                                         for t in [*avoid_bodies, *shown]) if x]
@@ -548,7 +571,7 @@ class DraftService:
             previous=previous, avoid_bodies=avoid_bodies, avoid_phrases=avoid_phrases,
             avoid_tones=avoid_tones, tones=tones, schema=schema, used_closings=used_closings,
             hearsay=hearsay, endings=endings, used_openings=used_openings, want_reason=want_reason,
-            thin=thin, pieces=pieces, want_bridge=want_bridge,
+            thin=thin, pieces=pieces, want_bridge=want_bridge, reason_kind=kind,
         )
 
     def _draft_prompt(
@@ -581,6 +604,7 @@ class DraftService:
             used_bridges=self._used_bridges,
             thin=kit.thin,
             pieces=kit.pieces,
+            reason_kind=kit.reason_kind,
         )
 
     def _style(
@@ -594,6 +618,7 @@ class DraftService:
             used_bridges=[*self._used_bridges, *prompts.EXAMPLE_BRIDGES],
             pieces=self._pieces if PIECE_CHECK else None, used_leads=self._used_leads,
             bridge_wanted=self._want_bridge if BRIDGE_CHECK else None,
+            reason_wanted=self._reason_kind if STORY_CHECK else None,
         )
 
     def _polish(

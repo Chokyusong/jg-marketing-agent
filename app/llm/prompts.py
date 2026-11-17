@@ -212,6 +212,74 @@ END_ACTIONS: tuple[str, ...] = (
     "사주 봐보고 싶네요",
     "찾아가 보려고요", "들러 볼까 해요", "상담받아 볼 생각이에요",
 )
+# 2026-11-18 기획 담당 D-1: ⑤의 기본 꼴은 「저도 + [이 영상 고민에서 나온, 사주로 알고 싶은 것] +
+# 언제 + 보러 가겠다는 말」 — 과제 예시의 「나도 언제 짝 만나는지 한번 보고 싶다」처럼 영상 고민과
+# 운명원을 잇는 고리다. 알고 싶은 것(「~인지·~는지·~ㄹ지」)을 받는 끝말. 「궁금하다」로만 끝나지
+# 않고 가 보다·보러 가다·상담받다·사주 보다 쪽 의향이다(V14 ⑤가 받는다 — 테스트가 조합을 돌린다)
+WISH_ACTIONS: tuple[str, ...] = (
+    "보러 가려구요", "보러 가 보려고요", "알아보러 가려구요", "보고 싶네요",
+    "물어보러 가 볼까 해요", "보러 가 볼 생각이에요",
+)
+ALL_ACTIONS: tuple[str, ...] = (*END_ACTIONS, *WISH_ACTIONS)
+# 알고 싶은 것의 꼴 보기(프롬프트에 꼴로만 보인다 — 그대로 쓰지 않게). 영상 고민 → 알고 싶은 것
+WISH_FORMS: tuple[tuple[str, str], ...] = (
+    ("재회", "다시 만날 인연인지"), ("썸", "이 사람이 인연인지"),
+    ("짝사랑·솔로", "언제쯤 짝을 만나는지"), ("권태기", "둘이 궁합이 맞는지"),
+    ("결혼 반대", "결혼운이 언제 들어오는지"), ("이별", "재회운이 있는지"),
+)
+# 사주로 볼 법한 것(인연·짝·궁합·○○운·때·언제·맞는지·될지·만날지)
+WISH_TOPIC = re.compile(
+    r"인연|짝|궁합|[가-힣]운(?:이|은|을|도|만|이랑)?(?![가-힣])|운세|때|언제|타이밍|"
+    r"맞는지|맞을지|될지|이어질지|만날지|만나는지|올지|오는지|생길지|생기는지|들어오는지|"
+    r"풀릴지|풀리는지"
+)
+_WISH_END = re.compile(r"(?:인지|는지|건지|[을ㄹ날볼할갈될올질릴줄생]지)$")
+REASON_WISH, REASON_STATE, REASON_NONE = "wish", "state", "none"
+WISH_SHARE = 2 / 3  # 「알고 싶은 것」 꼴의 몫(셋 중 둘)
+WISH_RECENT = 12
+
+
+def is_wish(reason: str) -> bool:
+    """⑤의 까닭이 사주로 알고 싶은 것(「다시 만날 인연인지」「언제쯤 짝을 만나는지」)인가."""
+    reason = (reason or "").strip()
+    return bool(reason and _WISH_END.search(reason) and WISH_TOPIC.search(reason))
+
+
+def reason_kind(text: str, brand: str) -> str:
+    """⑤의 꼴: 알고 싶은 것(wish) · 상태 까닭(state, 「연락 문제로」) · 까닭 없음(none)."""
+    reason = intent_reason(text, brand)
+    if not reason:
+        return REASON_NONE
+    return REASON_WISH if is_wish(reason) else REASON_STATE
+
+
+def _bridge_length_line(kind: str | None) -> str:
+    """잇는 문장 요청 끝의 「길이가 넘치면」 줄(2026-11-18 기획 담당 D-3: 처지 한마디 →
+    잇는 문장 순)."""
+    if kind == REASON_WISH:
+        return ("영상 반응의 내 마음에서 나와 끝말의 알고 싶은 것으로 이어지게 쓴다. 길이가 넘치면 "
+                "내 처지 한마디 → 잇는 문장 순으로 뺀다(알고 싶은 것은 남긴다).")
+    if kind == REASON_STATE:
+        return ("영상 반응의 내 마음에서 나와 끝말의 까닭으로 이어지게 쓴다. 길이가 넘치면 내 처지 "
+                "한마디 → 잇는 문장 순으로 뺀다(까닭은 남긴다).")
+    if kind == REASON_NONE:
+        return "길이가 넘치면 내 처지 한마디를 뺀다(잇는 문장은 남긴다)."
+    return "끝말의 까닭까지 넣어 길이가 넘치면 까닭을 뺀다(잇는 문장은 남긴다)."
+
+
+def assign_reason(
+    brand: str, used_texts: Sequence[str], same_video: Sequence[str], *, bridge: bool
+) -> str:
+    """이번 초안 ⑤의 꼴을 정한다(2026-11-18 기획 담당 D-1). 앞서 보인 초안(최근 `WISH_RECENT`개,
+    최신이 앞)에서 알고 싶은 것 꼴이 `WISH_SHARE`보다 적으면 그것, 아니면 상태 까닭이나 까닭 없음을
+    덜 쓴 쪽으로 섞는다. 잇는 문장이 없거나 같은 영상 앞 초안에 까닭이 없으면 까닭 없음은 고르지
+    않는다(② 잇는 문장과 ⑤ 까닭 가운데 적어도 하나)."""
+    recent = [reason_kind(t, brand) for t in used_texts[:WISH_RECENT]]
+    if not recent or recent.count(REASON_WISH) / len(recent) < WISH_SHARE:
+        return REASON_WISH
+    if not bridge or not any(intent_reason(t, brand) for t in same_video):
+        return REASON_STATE
+    return REASON_NONE if recent.count(REASON_NONE) <= recent.count(REASON_STATE) else REASON_STATE
 
 
 def with_i(word: str) -> str:
@@ -530,14 +598,15 @@ def ending_part(text: str, brand: str) -> str:
 
 def assign_pieces(
     brand: str, used_texts: Sequence[str], *, avoid: Sequence[str] = (),
-    rng: random.Random | None = None, keep: Pieces | None = None,
+    rng: random.Random | None = None, keep: Pieces | None = None, wish: bool = False,
 ) -> Pieces:
     """이번 초안의 조각을 정한다(2026-11-18). 조각마다 앞서 보인 초안(`used_texts`, 최신이 앞)에
     덜 쓴 것 — 최근 `RECENT_TEXTS`개 글 먼저, 다음 전체 횟수, 같으면 무작위. 같은 영상 앞 초안
     (`avoid`)에 쓴 것은 뒤로. `keep`이 있으면 그대로 돌려준다(다시 쓸 때 같은 배정).
 
     잘한다는 말은 여섯 몫(동사 다섯 + 통째 꼴)으로 나눠 「잘 본다」가 쏠리지 않게 한다. 꺼내는 말이
-    앞서 보인 초안과 통째로 같아지면 다음 들은 꼴로 바꾼다."""
+    앞서 보인 초안과 통째로 같아지면 다음 들은 꼴로 바꾼다. `wish`면 끝말은 알고 싶은 것을 받는
+    `WISH_ACTIONS`에서(2026-11-18 D-1)."""
     if keep is not None:
         return keep
     rng = rng if rng is not None else random.Random()
@@ -575,7 +644,7 @@ def assign_pieces(
     hr = [seen[:RECENT_TEXTS].count(i) for i in range(len(options))]
     hears = [h for h in _least_index(hc, hr, rng) if (verb, h) not in PIECE_SKIP]
     whens = _least_used(END_WHENS, used_ends, avoid_ends, rng)
-    actions = _least_used(END_ACTIONS, used_ends, avoid_ends, rng)
+    actions = _least_used(WISH_ACTIONS if wish else END_ACTIONS, used_ends, avoid_ends, rng)
     leads = {fold(t) for t in [*used_texts, *avoid]}
     pick = None
     for hear in hears:
@@ -597,7 +666,7 @@ def pieces_of(text: str, brand: str, *, rng: random.Random | None = None) -> Pie
     hows = _present(LEAD_HOWS, lead)
     verb = _verb_of(lead)
     whens = _present(END_WHENS, end)
-    actions = _present(END_ACTIONS, end)
+    actions = _present(ALL_ACTIONS, end)
     if not times or not loves or verb < 0 or not whens or not actions:
         return None
     if verb >= len(PIECE_VERBS):
@@ -615,7 +684,7 @@ def pieces_of(text: str, brand: str, *, rng: random.Random | None = None) -> Pie
     return Pieces(
         time=longest(times, LEAD_TIMES, lead), love=longest(loves, LEAD_LOVES, lead),
         how=longest(hows, LEAD_HOWS, lead) if hows else "", verb=verb, hear=hear,
-        when=longest(whens, END_WHENS, end), action=longest(actions, END_ACTIONS, end),
+        when=longest(whens, END_WHENS, end), action=longest(actions, ALL_ACTIONS, end),
     )
 
 
@@ -625,7 +694,8 @@ def pieces_of(text: str, brand: str, *, rng: random.Random | None = None) -> Pie
 # 끝난다.
 _REASON = re.compile(
     r"(?<![가-힣])(?:저도|나도)\s+((?:[^\s.!?…,]+\s+){0,4}?[^\s.!?…,]*"
-    r"(?:서|때문에|문제로|고민으로|일로|러|고\s?싶어|[는을]지|[날볼할갈될올]지|인지|건지))(?=\s)"
+    r"(?:서|때문에|문제로|고민으로|일로|러|고\s?싶어|[는을]지|[날볼할갈될올질릴줄생]지|인지|건지))"
+    r"(?=\s)"
 )
 # 까닭이 아닌 것: 「언제 시간 내서」「궁금해서」(본보기 7번의 「궁금해서 한번」) 같은 때 말과
 # 「방문해서 사주 봐보려구요」의 「방문해서」처럼 가 보겠다는 말의 앞쪽
@@ -1077,7 +1147,9 @@ def draft_system(
         "**내 말로** 짚는다. 주어진 [핵심 말] 중 하나 "
         "이상을 글자 그대로 넣는다. '~라는 말에 ~네요' 틀만 쓰지 말고 '근데 진짜 ~', "
         "'~라니 ㅠㅠ', '아 ~는 좀 웃프다' 같은 감탄·혼잣말로도 시작한다. '뜨끔'은 너무 자주 나와 "
-        "굳은 말이니 쓰지 않는다. 영상 제목은 영상 속 말이 "
+        "굳은 말이니 쓰지 않는다. **남 얘기 평이 아니라 보는 내 반응으로** 쓴다 — 영상 속 사람의 "
+        "마음을 짐작해 평하지 않는다('~다니 미련인가 싶겠어요' ✗ → '~다니 그 마음 너무 "
+        "알겠다ㅠㅠ', '~라니 내 얘기 같아서 찔리네' ○). 영상 제목은 영상 속 말이 "
         "아니다 — 제목의 말을 '~라는 말에'로 받지 않는다(\"연애상담 상상상담 가능이라는 말에\"는 "
         "어색하다).\n"
         f"② **잇는 한 문장**({BRIDGE_CHARS[0]}~{BRIDGE_CHARS[1]}자쯤) — 요청 글이 넣으라고 할 "
@@ -1095,9 +1167,15 @@ def draft_system(
         "속 숫자와 사정을 내 것으로 옮기기는 여기서도 하지 않는다. 이미 쓴 잇는 문장이 주어지면 "
         "낱말은 겹쳐도 되지만 통째로 같은 문장은 쓰지 않는다. 과제 예시 댓글도 '…인연이면 "
         f"만나는 것 같아요'처럼 인연 쪽으로 생각이 넘어간 다음 {brand}을 꺼낸다. "
-        "잇는 문장이 들어가는 만큼 ①을 짧게 쓴다(핵심 말은 남긴다).\n"
-        "   ①에 내 처지 한마디를 붙여도 된다(쓰면 ①과 합쳐 두 문장 안) —'연애만 하면 차이는 "
-        "편', '썸만 타다 끝나는 1인'처럼 막연하게 한마디. "
+        "잇는 문장이 들어가는 만큼 ①을 짧게 쓴다(핵심 말은 남긴다). "
+        "**한 줄기로**: 잇는 문장은 ①의 내 반응에서 나와 ⑤의 알고 싶은 것으로 이어진다(재회 얘기 → "
+        "'다시 만날 인연은 따로 있나 봐요' → '저도 재회운이 있는지 …'). 잇는 문장과 알고 싶은 것에 "
+        "같은 낱말을 되풀이하지 않는다 — 잇는 문장에 '인연'을 썼으면 알고 싶은 것은 '재회운이 "
+        "있는지'처럼 다른 말로.\n"
+        "   ①에 **내 처지 한마디**를 붙이면 좋다(강제 아님, 쓰면 ①과 합쳐 두 문장 안) — 과제 "
+        "예시의 '맨날 연애하면 차이기만 했던 1인'처럼 '저도 미련 많은 편이라..', '연애만 하면 "
+        "차이는 편', '썸만 타다 끝나는 1인'처럼 막연하게 한마디. 이런 막연한 처지 한마디는 지어낸 "
+        "이용 후기가 아니다. "
         "구체적인 사람·사건을 지어내 길게 쓰지 않는다. 이 예의 말을 그대로 쓰지 말고 이 영상의 "
         "고민에 맞는 처지로 쓴다(애인·결혼 고민 영상에 '썸만 타다 끝나는 1인'은 맞지 않는다).\n"
         "   **비슷한 처지라고 말하는 건 좋다**('완전 제 얘기네요', '저도 비슷해서 남 얘기 같지 "
@@ -1124,20 +1202,29 @@ def draft_system(
         "알아보고 싶어요·가볼 생각이에요). "
         "'궁금하네요', '궁금해지네'로만 맺으면 가 보겠다는 말이 없어 걸린다. 고민 뒤에 곧바로 "
         f"'{brand}에서 연애 사주를 한번 보고 싶어요'를 붙이지 않는다(때·평판이 없다). "
-        "⑸의 '저도' 뒤, 가 보겠다는 말 앞에 **이 영상의 고민에서 온 짧은 까닭**(12자 안)을 "
-        "넣으면 앞 문장과 더 이어진다. ② 잇는 문장과 이 까닭 가운데 **적어도 하나는** 넣는다 — "
-        "요청 글이 잇는 문장을 빼라고 하면 까닭을 꼭 넣는다(길이가 넘치면 까닭보다 ①을 줄인다). "
-        "꼴만 따른다: 이 영상의 고민 한 줄을 12자 "
-        "안의 내 말로 줄이고 "
-        "'~서', '~때문에', '~문제로', '~러'로 끝낸다('저도 [까닭] + 요청 글이 정해 준 끝말'). "
-        "까닭 문구는 영상마다 새로 쓴다 — 예시나 앞 초안의 까닭을 그대로 쓰지 않는다. "
-        "까닭은 고민 한 줄·핵심 말에서 가져오고 지어내지 않는다 — 영상 속 "
+        "⑸의 '저도' 뒤, 가 보겠다는 말 앞에는 **이 영상의 고민에서 나온, 사주로 알고 싶은 것**을 "
+        "넣는 것이 기본이다 — 과제 예시의 '나도 언제 짝 만나는지 한번 보고 싶다'처럼, 이것이 영상 "
+        f"고민과 {brand}을 잇는 고리다('저도 [알고 싶은 것] + 요청 글이 정해 준 끝말'). 알고 싶은 "
+        "것은 사주로 볼 법한 것(인연인지·언제 만나는지·궁합이 맞는지·재회운·결혼운·연애운·때)을 "
+        "'~인지/~는지/~ㄹ지'로 15자 안에 쓴다. 꼴 보기(그대로 베끼지 말고 이 영상의 고민으로): "
+        + ", ".join(f"{a} → '저도 {b} …'" for a, b in WISH_FORMS)
+        + ". 끝은 가 보다·보러 가다·상담받다·사주 보다 쪽 의향이다('~인지 궁금하네요'로만 끝내지 "
+        "않는다). 요청 글이 **상태 까닭**을 넣으라고 하면 알고 싶은 것 대신 이 영상의 고민 한 "
+        "줄을 12자 안의 내 말로 줄여 '~서', '~때문에', '~문제로', '~러'로 끝낸 짧은 까닭('저도 "
+        "[까닭] + 요청 글이 정해 준 끝말'), **까닭 없이**라고 하면 본보기 꼴('저도 + 끝말')로 "
+        "쓴다. ② 잇는 문장과 이 까닭(알고 싶은 것) 가운데 **적어도 하나는** 넣는다 — 요청 글이 "
+        "잇는 문장을 빼라고 하면 까닭을 꼭 넣는다(길이가 넘치면 내 처지 한마디 → 잇는 문장 순으로 "
+        "뺀다). "
+        "알고 싶은 것·까닭 문구는 영상마다 새로 쓴다 — 예시나 앞 초안의 것을 그대로 쓰지 않는다. "
+        "고민 한 줄·핵심 말에서 가져오고 지어내지 않는다 — 영상 속 "
         "숫자·사정·애인을 내 것으로 옮기지 않는다('저도 3년 만난 남친 때문에' ✗), 써 본 척하지 "
-        "않는다('저도 가 봤는데' ✗). 까닭이 아닌 자리에 핵심 말을 바람으로 끼워 넣지 않는다 — "
-        "핵심 말은 ①과 까닭에만 쓴다('내짝 찾기 언제 되는지 궁금해지네요' ✗). "
+        "않는다('저도 가 봤는데' ✗), 결과를 미리 단정하지 않는다('가면 다 알려 준다던데' ✗). "
+        "알고 싶은 것은 ⑤ 안에서 가 보겠다는 말과 함께 쓰고, 그 밖의 자리에 핵심 말을 바람으로 "
+        "끼워 넣지 않는다('내짝 찾기 언제 되는지 궁금해지네요' ✗). "
         "'여쭤보고 싶네요'처럼 딱딱한 끝말은 피한다. '가 봐야겠네요'는 물음도, 운세·시기 같은 "
         "목적어도 받지 않는다"
-        "('언제인지 한번 가 봐야겠어요', '제 연애 운세 한번 가 봐야겠네요' ✗).\n"
+        "('언제인지 한번 가 봐야겠어요', '제 연애 운세 한번 가 봐야겠네요' ✗ — 물음은 '~인지 "
+        "한번 보러 가려구요'처럼).\n"
         "   대표가 쓴 ③ 본보기 10개 — **그대로 베끼지 말고 이 결로**, 조각을 바꿔 쓴다:\n"
         + "".join(f"   {i}. {m}\n" for i, m in enumerate(BRAND_MODELS, start=1))
         + "말투:\n"
@@ -1257,6 +1344,7 @@ def draft_user(
     used_bridges: Sequence[str] = (),
     thin: bool = False,
     pieces: Pieces | None = None,
+    reason_kind: str | None = None,
 ) -> str:
     """초안 요청. 다시 쓸 때는 앞의 본문과 실패 문구(`Validation.failure_lines()`)를 넣는다.
 
@@ -1278,6 +1366,8 @@ def draft_user(
     댓글에 나온 사연·말을 ① 영상 반응의 재료로 쓰게 한다.
     `pieces`: 코드가 정한 이번 초안의 운명원 대목 조각(`assign_pieces`, 2026-11-18). 주면
     `hearsay`·`endings` 권유 대신 이 조각을 그대로 쓰라고 한다(다시 쓸 때도 같은 조각).
+    `reason_kind`: 코드가 정한 ⑤의 꼴(`assign_reason`, 2026-11-18 D-1) — 알고 싶은 것(wish)·상태
+    까닭(state)·까닭 없음(none). 주면 `reason`보다 앞선다.
     """
     target_lo, target_hi = body_target(min_body=min_body, max_body=max_body, max_chars=max_chars)
     concern = analysis.get("concern", "")
@@ -1327,8 +1417,10 @@ def draft_user(
         parts.append(
             f"이번 초안의 {brand} 대목: {named} — 이 조각은 정해져 있다(바꾸지 않는다). "
             f"이어 쓰면: '{pieces.joined(brand)}'. "
-            "다른 때·세기 말·잘한다는 말·들은 꼴·끝말을 쓰면 다시 쓰게 된다. 까닭을 넣으면 "
-            f"'저도' 바로 뒤에: '저도 [까닭] {pieces.ending()}'."
+            "다른 때·세기 말·잘한다는 말·들은 꼴·끝말을 쓰면 다시 쓰게 된다. "
+            + (f"알고 싶은 것은 '저도' 바로 뒤에: '저도 [알고 싶은 것] {pieces.ending()}'."
+               if reason_kind == REASON_WISH else
+               f"까닭을 넣으면 '저도' 바로 뒤에: '저도 [까닭] {pieces.ending()}'.")
         )
     elif hearsay:
         parts.append(
@@ -1342,7 +1434,31 @@ def draft_user(
             "바람의 끝말은 이번에 이런 식으로(목록에 없는 말도 되지만 가 보겠다는 뜻은 넣는다): "
             + " / ".join(f"'{e}'" for e in endings)
         )
-    if reason is True:
+    ending_text = f"{pieces.ending()}'" if pieces is not None else "끝말'"
+    if reason_kind == REASON_WISH:
+        parts.append(
+            "이번 끝말은 **'저도 + [사주로 알고 싶은 것] + " + ending_text + "** 꼴로 쓴다 — 이 "
+            f"영상 고민('{concern}')에서 나온, 사주로 볼 법한 것(인연인지·언제 만나는지·궁합이 "
+            "맞는지·재회운·결혼운·연애운·때)을 '~인지/~는지/~ㄹ지'로 15자 안의 내 말로. 이 고민을 "
+            "가진 내가 사주로 무엇을 알고 싶은지가 읽히게 쓴다. 결과를 단정하지 않고, 영상 속 "
+            "숫자·사정·애인을 내 것으로 옮기지 않는다."
+            + (" 잇는 문장에 쓴 낱말(인연·때·궁합 등)은 알고 싶은 것에서 되풀이하지 않고 다른 "
+               "말로 쓴다." if bridge is True else
+               " 잇는 문장이 없으니 알고 싶은 것이 영상 반응과 운명원을 잇는다.")
+        )
+    elif reason_kind == REASON_STATE:
+        parts.append(
+            "이번 끝말에는 '저도' 뒤, 가 보겠다는 말 앞에 이 영상의 고민에서 온 짧은 **상태 "
+            f"까닭**(12자 안)을 넣는다 — 고민 한 줄('{concern}')을 쉬운 내 말로 줄여 '~서·~때문에·"
+            "~문제로·~러'로 끝낸다('저도 [까닭] + " + ending_text + "). 지어내지 않고, 영상 속 "
+            "숫자·사정·애인을 내 것으로 옮기지 않는다."
+        )
+    elif reason_kind == REASON_NONE:
+        parts.append(
+            "이번 끝말은 까닭 없이 본보기 꼴('저도 " + ending_text + ")로 쓴다(같은 영상 앞 초안에 "
+            "까닭이 있다 — 짜임을 다르게)."
+        )
+    elif reason is True:
         parts.append(
             "이번 끝말에는 '저도' 뒤, 가 보겠다는 말 앞에 이 영상의 고민에서 온 짧은 까닭(12자 "
             f"안)을 넣는다 — 고민 한 줄('{concern}')을 쉬운 내 말로 줄여 '~서·~때문에·~문제로·"
@@ -1371,8 +1487,8 @@ def draft_user(
             + "). 쉬운 말로: " + "·".join(BRIDGE_WORDS) + " + "
             + "·".join(f"'{e}'" for e in BRIDGE_ENDINGS)
             + " 같은 끝(" + "·".join(f"'{w}'" for w in FANCY_BRIDGE_WORDS) + " ✗). "
-            + f"'{brand}'·'사주'는 이 문장에 쓰지 않는다. 끝말의 까닭까지 넣어 길이가 넘치면 "
-            "까닭을 뺀다(잇는 문장은 남긴다)."
+            + f"'{brand}'·'사주'는 이 문장에 쓰지 않는다. "
+            + _bridge_length_line(reason_kind)
         )
         bridges = list(dict.fromkeys(b for b in used_bridges if b))[:MAX_USED_BRIDGES]
         if bridges:
@@ -1381,9 +1497,10 @@ def draft_user(
                 "겹쳐도 된다)."
             )
     reasons = list(dict.fromkeys(r for r in used_reasons if r))[:MAX_USED_REASONS]
-    if reasons and reason is not None:
+    if reasons and (reason is not None or reason_kind not in (None, REASON_NONE)):
         parts.append(
-            f"이미 쓴 까닭: {_quoted(reasons)} — 까닭을 넣으면 이 말들과 겹치지 않는 다른 말로 쓴다"
+            ("이미 쓴 까닭·알고 싶은 것: " if reason_kind is not None else "이미 쓴 까닭: ")
+            + f"{_quoted(reasons)} — 까닭을 넣으면 이 말들과 겹치지 않는 다른 말로 쓴다"
             "(같은 낱말을 쓰지 않는다)."
         )
     if 0 <= last_model < len(BRAND_MODELS):
@@ -1446,8 +1563,8 @@ def polish_system(*, brand: str, disclosure: str) -> str:
         "2. 틀린 조사·어미·띄어쓰기('이유여쭤보고' → '이유 물어보고', '없었네라는 말에' → "
         "'없었다는 말에', 끝난 말에 바로 붙인 조사 '헤어지자는 거야부터' → '헤어지자는 말부터')\n"
         "3. 억지로 끼운 말(영상 속 용어를 바람에 끼운 것: '내짝 찾기 언제 되는지' → '나도 언제 짝 "
-        "만나는지'). '저도' 뒤 가 보겠다는 말 앞의 짧은 까닭('저도 [까닭] + 끝말'의 "
-        "[까닭])과 운명원 대목의 때·세기 말·평판·들은 꼴·끝말은 그대로 둔다\n"
+        "만나는지'). '저도' 뒤 가 보겠다는 말 앞의 짧은 까닭('저도 [까닭] + 끝말'의 [까닭])·"
+        "알고 싶은 것과 운명원 대목의 때·세기 말·평판·들은 꼴·끝말은 그대로 둔다\n"
         "4. 영상 속 숫자·사정을 그대로 내 것으로 옮긴 문장, 인터뷰한 유명인의 일을 내 일처럼 "
         "쓴 문장 → 숫자 없는 내 말이나 보는 사람 자리의 반응으로(비슷한 처지라는 공감은 "
         "그대로 둔다)\n"

@@ -437,12 +437,13 @@ def test_draft_user_suggests_hearsay_endings_and_lists_used_openings():
 def test_draft_system_asks_for_a_wish_about_my_own_love_life():
     # 2026-11-17 다섯 조각: 「내 연애의 일」 바람 대신 가 보겠다는 말 앞에 내 일을 짧게.
     # 2026-11-18(기획 담당): 그 자리를 「이 영상의 고민에서 온 짧은 까닭(12자 안)」으로 분명히 함
-    assert ("⑸의 '저도' 뒤, 가 보겠다는 말 앞에 **이 영상의 고민에서 온 짧은 까닭**(12자 안)을 "
-            "넣으면 앞 문장과 더 이어진다") in SYSTEM
+    # 2026-11-18(기획 담당 D-1): 그 자리는 「사주로 알고 싶은 것」이 기본(상태 까닭은 요청 때만)
+    assert ("⑸의 '저도' 뒤, 가 보겠다는 말 앞에는 **이 영상의 고민에서 나온, 사주로 알고 싶은 "
+            "것**을 넣는 것이 기본이다") in SYSTEM
     # 2026-11-18(기획 담당 C): 잇는 문장을 넣을지는 코드가 정한다 — 빼라고 하면 까닭을 꼭
-    assert "② 잇는 문장과 이 까닭 가운데 **적어도 하나는** 넣는다" in SYSTEM
+    assert "② 잇는 문장과 이 까닭(알고 싶은 것) 가운데 **적어도 하나는** 넣는다" in SYSTEM
     assert "요청 글이 잇는 문장을 빼라고 하면 까닭을 꼭 넣는다" in SYSTEM
-    assert "까닭이 아닌 자리에 핵심 말을 바람으로 끼워 넣지 않는다" in SYSTEM
+    assert "그 밖의 자리에 핵심 말을 바람으로 끼워 넣지 않는다" in SYSTEM
     assert "사실 문장을 '~하는 곳이라던데'처럼 그대로 옮기지 않는다" in SYSTEM
     assert "'~라는 말에 ~네요' 틀만 쓰지 말고" in SYSTEM
 
@@ -476,13 +477,18 @@ def test_draft_system_says_ga_bwayagetda_takes_no_fortune_or_timing():
 
 def test_draft_system_keeps_key_phrases_out_of_the_wish_and_endings_light():
     # 2026-11-17 다섯 조각: ④가 없어졌고 끝말은 가 보겠다는 말이다
-    assert "핵심 말은 ①과 까닭에만 쓴다('내짝 찾기 언제 되는지 궁금해지네요' ✗)" in SYSTEM
+    # 2026-11-18(기획 담당 D-1): ⑤ 안의 알고 싶은 것은 된다 — 그 밖의 자리에 바람으로 끼우지 않는다
+    assert ("알고 싶은 것은 ⑤ 안에서 가 보겠다는 말과 함께 쓰고, 그 밖의 자리에 핵심 말을 바람으로 "
+            "끼워 넣지 않는다('내짝 찾기 언제 되는지 궁금해지네요' ✗)") in SYSTEM
     # 2026-11-18(기획 담당): 그대로 베낄 수 있는 까닭 예시는 두지 않는다(꼴만)
     assert "'저도 언제 짝 만날지 조만간 한번 상담받아보고 싶어요'" not in SYSTEM
     assert "'여쭤보고 싶네요'처럼 딱딱한 끝말은 피한다" in SYSTEM
     # 2026-11-18: 세 덩이(① 반응 → ② 잇는 문장 → ③ 운명원), 처지 한마디는 ①에 붙여도 된다
     assert "② 잇는 한 문장 → ③ 운명원 대목 두 토막. 마무리 문장은 따로 붙이지 않는다" in SYSTEM
-    assert "①에 내 처지 한마디를 붙여도 된다(쓰면 ①과 합쳐 두 문장 안)" in SYSTEM
+    # 2026-11-18(기획 담당 D-2): 처지 한마디는 붙이면 좋다(강제 아님) — 막연한 한마디는
+    # 지어낸 후기가 아니다
+    assert "①에 **내 처지 한마디**를 붙이면 좋다(강제 아님, 쓰면 ①과 합쳐 두 문장 안)" in SYSTEM
+    assert "이런 막연한 처지 한마디는 지어낸 이용 후기가 아니다" in SYSTEM
     assert "④" not in SYSTEM
 
 
@@ -562,13 +568,17 @@ def test_draft_system_shows_reasons_from_the_concern_and_what_not_to_make_up():
     # 예시 문구를 그대로 옮긴 까닭(「저도 썸이 답답해서」)이 영상 셋에서 나와 꼴만 알려 준다
     for example in ("썸이 답답해서", "속마음이 궁금해서", "재회 문제로", "맞는지 확인하러"):
         assert example not in SYSTEM, example
-    assert ("꼴만 따른다: 이 영상의 고민 한 줄을 12자 안의 내 말로 줄이고 '~서', '~때문에', "
-            "'~문제로', '~러'로 끝낸다('저도 [까닭] + 요청 글이 정해 준 끝말')") in SYSTEM
+    # 2026-11-18(기획 담당 D-1): 상태 까닭은 요청 글이 넣으라고 할 때만, 꼴은 그대로
+    assert ("요청 글이 **상태 까닭**을 넣으라고 하면 알고 싶은 것 대신 이 영상의 고민 한 줄을 12자 "
+            "안의 내 말로 줄여 '~서', '~때문에', '~문제로', '~러'로 끝낸 짧은 까닭('저도 [까닭] + "
+            "요청 글이 정해 준 끝말')") in SYSTEM
     # 2026-11-18(기획 담당): 까닭 예시에서 끝말을 뺐다 — 끝말은 코드가 초안마다 정해 준다
     assert "조만간 한번 가 보려고요" not in SYSTEM
-    assert "예시나 앞 초안의 까닭을 그대로 쓰지 않는다" in SYSTEM
+    assert ("알고 싶은 것·까닭 문구는 영상마다 새로 쓴다 — 예시나 앞 초안의 것을 그대로 쓰지 "
+            "않는다") in SYSTEM
     assert "(이 까닭 문구는 그대로 쓰지 않는다)" in SYSTEM
-    assert "까닭은 고민 한 줄·핵심 말에서 가져오고 지어내지 않는다" in SYSTEM
+    assert "고민 한 줄·핵심 말에서 가져오고 지어내지 않는다" in SYSTEM
+    assert "결과를 미리 단정하지 않는다('가면 다 알려 준다던데' ✗)" in SYSTEM
     assert "'저도 3년 만난 남친 때문에' ✗" in SYSTEM and "'저도 가 봤는데' ✗" in SYSTEM
     # 좋은 예 하나(3번)는 까닭을 넣고, 나머지는 까닭 없는 본보기 꼴 그대로
     with_reason = [ex for ex in P.GOOD_EXAMPLES if P.intent_reason(ex.body, "운명원")]
