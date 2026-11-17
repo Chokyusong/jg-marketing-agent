@@ -1,0 +1,349 @@
+"""초안 전후 비교(C1 다듬기에서 쓴 평가를 정리): 영상 맥락 × 초안 N개를 실제 AI로 만들어 표로.
+
+    .\\.venv\\Scripts\\python.exe scripts\\compare_drafts.py --ai ollama --model qwen3.8:27b ^
+        --fixtures EvalCtx0001,EvalCtx0002 --out-md out\\after.md --out-json out\\after.json
+    .\\.venv\\Scripts\\python.exe scripts\\compare_drafts.py --ai ollama --db <앱 DB 사본> ^
+        --videos m0c7g8q3OY8,EvalCtx0001 --before out\\before.json --out-md out\\compare.md
+
+- 영상 맥락: `--fixtures`(tests/fixtures/contexts 의 가상 영상 이름, 가짜 YouTube로 넣는다)와
+  `--videos`(`--db`로 준 DB 사본에 이미 저장된 실제 영상 맥락). 둘 다 쓰면 `--videos` 순서대로
+  돈다(`--videos`에 없는 가상 영상은 뒤에 붙는다). YouTube·인터넷은 부르지 않는다.
+- DB: `--db`를 주면 그 파일을 **임시 폴더로 복사해** 쓴다(원본은 읽기만, 분석·초안 표는 비운다).
+  없으면 빈 임시 DB. 실제 DB 사본은 저장소에 넣지 않는다(결과 파일도 저장소 밖에 두는 것을 권한다).
+- AI: `--ai`는 `config.yaml`의 `llm.providers` 이름(앱이 쓰는 `build_llm(settings)` 그대로 —
+  `llm.active`를 그 이름으로 바꾼다). `--model`을 주면 그 AI의 모델을 바꾼다. 키가 필요한 AI는
+  `llm.providers.<이름>.api_key_env`에 적힌 환경 변수로 읽는다(`--env-file`로 .env를 줄 수도
+  있다). 키 값은 어디에도 찍지 않는다.
+- 영상마다 처음 통과한 초안을 승인한다(다음 영상이 「이미 쓴 표현」·V11을 받는 실제 흐름).
+- 결과: `--out-json`(초안 전문·시도별 글·다시 쓰기 까닭·시간)과 `--out-md`(초안 전문 표 + 지표 +
+  다듬기 검사 S1~S5로 센 남은 수). `--before`에 예전 결과 JSON을 주면 같은 영상끼리 나란히 놓는다.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import sqlite3
+import sys
+import tempfile
+import time
+from collections import Counter
+from collections.abc import Sequence
+from dataclasses import replace
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from eval_drafts import CONTEXTS_DIR, load_contexts, prepare, youtube_transport  # noqa: E402
+
+from app.analysis import style  # noqa: E402
+from app.api.deps import Services, build_services  # noqa: E402
+from app.config import Settings, load_settings  # noqa: E402
+from app.errors import AppError  # noqa: E402
+from app.youtube.quota import utc_now  # noqa: E402
+
+RETRY_HEAD = "걸린 항목(고치는 법):"
+FAKE_YOUTUBE_KEY = "AIza" + "x" * 35  # 가짜 YouTube에만 쓰는 가짜 키(실행할 때 조립)
+
+
+# ---------------------------------------------------------------- 설정
+
+
+def make_settings(
+    ai: str, db_path: Path, *, model: str = "", env_file: Path | None = None,
+    timeout: float | None = None, environ: dict[str, str] | None = None,
+) -> Settings:
+    """앱 설정(config.yaml)에서 글 쓰는 AI만 `ai`로 바꾼 설정.
+
+    프로그램에 저장한 설정은 읽지 않는다(`use_user=False`).
+    """
+    env = dict(os.environ if environ is None else environ)
+    env["YOUTUBE_API_KEY"] = FAKE_YOUTUBE_KEY
+    base = load_settings(env_path=env_file, db_path=db_path, environ=env, use_user=False)
+    llm = replace(base.llm, active=ai)
+    provider = llm.providers.get(ai)
+    if model:
+        if provider is not None and provider.type == "ollama":
+            llm = replace(llm, ollama_model=model)
+        else:
+            llm = replace(llm, models={**llm.models, ai: model})
+    if timeout:
+        llm = replace(llm, timeout_seconds=timeout)
+    return replace(base, llm=llm)
+
+
+# ---------------------------------------------------------------- 실행
+
+
+def run(
+    services: Services, order: Sequence[str], *, drafts_per_video: int = 2,
+    titles: dict[str, str] | None = None, log=print,
+) -> list[dict[str, Any]]:
+    """영상마다 분석 1번 + 초안 N개. 처음 통과한 초안은 승인한다."""
+    llm = services.require_llm()
+    seen: list[str] = []
+    real_generate = llm.generate_json
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        seen.append(str(kwargs.get("user", "")))
+        return real_generate(*args, **kwargs)
+
+    llm.generate_json = spy  # type: ignore[method-assign]
+    videos: list[dict[str, Any]] = []
+    for vid in order:
+        row: dict[str, Any] = {"video_id": vid, "drafts": []}
+        videos.append(row)
+        try:
+            ctx = services.context.current(vid)
+            row["title"] = (titles or {}).get(vid) or ctx.video.video.title
+            started = time.monotonic()
+            analysis = services.drafts.analyze(vid)
+        except AppError as exc:
+            row["error"] = f"{exc.kind}: {exc.detail}"
+            log(f"{vid} 분석 오류 {row['error']}")
+            continue
+        row.update(
+            analysis_s=round(time.monotonic() - started, 1), concern=analysis.concern,
+            key_phrases=list(analysis.key_phrases or ()),
+        )
+        used: list[str] = []
+        approved = False
+        for n in range(1, drafts_per_video + 1):
+            seen.clear()
+            started = time.monotonic()
+            try:
+                d = services.drafts.generate(vid, avoid_quotes=tuple(used))
+            except AppError as exc:
+                row["drafts"].append({"n": n, "error": f"{exc.kind}: {exc.detail}"})
+                continue
+            used.append(d.evidence_quote)
+            row["drafts"].append({
+                "n": n, "body": d.body, "chars": len(d.body), "passed": d.passed,
+                "first_passed": d.first_passed, "attempts": d.attempts,
+                "seconds": round(time.monotonic() - started, 1), "quote": d.evidence_quote,
+                "tone": d.tone_label, "failures": d.validation.failure_lines(),
+                "run": json.loads(json.dumps(services.drafts.last_run, ensure_ascii=False)),
+                "retry_reasons": [
+                    [ln[2:] for ln in p.split(RETRY_HEAD, 1)[1].splitlines() if ln.startswith("- ")]
+                    for p in seen if RETRY_HEAD in p
+                ],
+            })
+            if d.passed and not approved:
+                try:
+                    services.drafts.approve(d.id)
+                    approved = True
+                except AppError:
+                    pass
+        log(f"{vid}: 초안 {len(row['drafts'])}개")
+    return videos
+
+
+# ---------------------------------------------------------------- 표
+
+
+def _esc(text: str) -> str:
+    return (text or "").replace("|", "\\|").replace("\n", " ")
+
+
+def _drafts(videos: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [x for v in videos for x in v.get("drafts", []) if x.get("body")]
+
+
+def _cell(x: dict[str, Any] | None) -> str:
+    if not x:
+        return "—"
+    if not x.get("body"):
+        return f"오류: {_esc(x.get('error', ''))}"
+    mark = "통과" if x.get("passed") else "실패"
+    return f"{_esc(x['body'])} ({x['chars']}자 · {mark} · {x.get('attempts', '?')}번째)"
+
+
+def _stats(videos: Sequence[dict[str, Any]]) -> dict[str, str]:
+    ds = _drafts(videos)
+    n = len(ds)
+    if not n:
+        return {}
+    chars = [x["chars"] for x in ds]
+    attempts = Counter(x.get("attempts", 0) for x in ds)
+    return {
+        "3번 안 통과": f"{sum(bool(x.get('passed')) for x in ds)}/{n}",
+        "첫 시도 규칙 검사 통과": f"{sum(bool(x.get('first_passed')) for x in ds)}/{n}",
+        "시도 1·2·3번": " · ".join(str(attempts.get(i, 0)) for i in (1, 2, 3)),
+        "글자 수 범위(평균)": f"{min(chars)}~{max(chars)}자({sum(chars) / n:.0f})",
+        "110자 넘음": str(sum(c > style.SOFT_MAX_TOTAL for c in chars)),
+        "초안 1개 평균 시간": f"{sum(x.get('seconds', 0) for x in ds) / n:.1f}초",
+    }
+
+
+def remaining_issues(
+    videos: Sequence[dict[str, Any]], *, brand: str, disclosure: str,
+    contexts: dict[str, str] | None = None,
+) -> Counter[str]:
+    """최종 글에 지금의 다듬기 검사(S1~S5)를 대 본 수. 같은 영상 앞 초안과 비교(S4)도 한다."""
+    counts: Counter[str] = Counter()
+    for v in videos:
+        earlier: list[str] = []
+        for x in v.get("drafts", []):
+            if not x.get("body"):
+                continue
+            found = style.style_issues(
+                x["body"], brand=brand, disclosure=disclosure,
+                key_phrases=v.get("key_phrases") or [], earlier=earlier,
+                context=(contexts or {}).get(v["video_id"], ""),
+            )
+            counts.update({i.split(":", 1)[0] for i in found})
+            earlier.append(x["body"])
+    return counts
+
+
+def markdown_table(
+    after: Sequence[dict[str, Any]], *, before: Sequence[dict[str, Any]] | None = None,
+    labels: tuple[str, str] = ("전", "후"), brand: str, disclosure: str,
+    contexts: dict[str, str] | None = None,
+) -> str:
+    """초안 전문 표 + 지표 + 남은 수(Markdown). `before`가 없으면 한 열만."""
+    old = {v["video_id"]: v for v in before or []}
+    width = max([len(v.get("drafts", [])) for v in [*after, *(before or [])]] or [0])
+    lines: list[str] = []
+    if before is not None:
+        lines += [f"| 영상 | # | {labels[0]} | {labels[1]} |", "|---|---|---|---|"]
+    else:
+        lines += [f"| 영상 | # | {labels[1]} |", "|---|---|---|"]
+    for v in after:
+        title = _esc(v.get("title") or v["video_id"])[:40]
+        if v.get("error"):
+            lines.append(f"| {title} | — | 분석 오류: {_esc(v['error'])} |" +
+                         (" |" if before is not None else ""))
+            continue
+        for i in range(width):
+            mine = v["drafts"][i] if i < len(v.get("drafts", [])) else None
+            head = f"| {title if i == 0 else ''} | {i + 1} |"
+            if before is not None:
+                theirs = old.get(v["video_id"], {}).get("drafts", [])
+                lines.append(f"{head} {_cell(theirs[i] if i < len(theirs) else None)} | "
+                             f"{_cell(mine)} |")
+            else:
+                lines.append(f"{head} {_cell(mine)} |")
+    sides = [before, after] if before is not None else [after]
+    names = list(labels) if before is not None else [labels[1]]
+    stats = [_stats(s or []) for s in sides]
+    keys = list(dict.fromkeys(k for s in stats for k in s))
+    lines += ["", "| 지표 | " + " | ".join(names) + " |", "|---" * (len(names) + 1) + "|"]
+    for k in keys:
+        lines.append(f"| {k} | " + " | ".join(s.get(k, "—") for s in stats) + " |")
+    left = [remaining_issues(s or [], brand=brand, disclosure=disclosure, contexts=contexts)
+            for s in sides]
+    codes = sorted(set().union(*left))
+    lines += ["", "| 다듬기 검사로 남은 초안 수 | " + " | ".join(names) + " |",
+              "|---" * (len(names) + 1) + "|"]
+    for c in codes or ["(없음)"]:
+        lines.append(f"| {c} | " + " | ".join(str(x.get(c, 0)) for x in left) + " |")
+    reasons: Counter[str] = Counter()
+    for x in _drafts(after):
+        for retry in x.get("retry_reasons", []):
+            reasons.update(r.split(":", 1)[0] for r in retry)
+    if reasons:
+        lines += ["", f"{labels[1]} 다시 쓰게 만든 까닭: " +
+                  ", ".join(f"{k} {n}번" for k, n in reasons.most_common())]
+    return "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------- 진입점
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    p.add_argument("--ai", required=True, help="config.yaml llm.providers의 이름(예: ollama)")
+    p.add_argument("--model", default="", help="그 AI에 쓸 모델(비우면 설정 그대로)")
+    p.add_argument("--fixtures", default="", help="가상 영상 이름들(쉼표), 'all'이면 전부")
+    p.add_argument("--fixtures-dir", type=Path, default=CONTEXTS_DIR)
+    p.add_argument("--videos", default="", help="DB 사본에 저장된 영상 ID들(쉼표, 순서대로 돈다)")
+    p.add_argument("--db", type=Path, default=None, help="앱 DB 사본(임시 폴더로 복사해 쓴다)")
+    p.add_argument("-d", "--drafts", type=int, default=2, help="영상마다 초안 수")
+    p.add_argument("--before", type=Path, default=None, help="비교할 예전 결과 JSON")
+    p.add_argument("--labels", default="전,후", help="표 열 이름 두 개(쉼표)")
+    p.add_argument("--out-json", type=Path, default=None)
+    p.add_argument("--out-md", type=Path, default=None)
+    p.add_argument("--env-file", type=Path, default=None, help="키를 읽을 .env(값은 찍지 않는다)")
+    p.add_argument("--timeout", type=float, default=600.0, help="AI 한 번 기다리는 초")
+    args = p.parse_args(argv)
+    if not args.fixtures and not args.videos:
+        p.error("--fixtures나 --videos 중 하나는 있어야 합니다")
+    if args.videos and args.db is None:
+        p.error("--videos는 그 영상 맥락이 저장된 --db(DB 사본)와 함께 씁니다")
+    return args
+
+
+def _split(text: str) -> list[str]:
+    return [x.strip() for x in text.split(",") if x.strip()]
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    fixtures = load_contexts(args.fixtures_dir)
+    if args.fixtures != "all":
+        wanted = set(_split(args.fixtures))
+        fixtures = [c for c in fixtures if c["video_id"] in wanted]
+    order = _split(args.videos)
+    order += [c["video_id"] for c in fixtures if c["video_id"] not in order]
+    labels = tuple((_split(args.labels) + ["전", "후"])[:2])
+    out: dict[str, Any] = {"ai": args.ai, "model": args.model, "videos": []}
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "compare.sqlite3"
+        if args.db is not None:
+            shutil.copy(args.db, db_path)
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("DELETE FROM drafts")
+                conn.execute("DELETE FROM analyses")
+        settings = make_settings(args.ai, db_path, model=args.model, env_file=args.env_file,
+                                 timeout=args.timeout)
+        services = build_services(settings, transport=youtube_transport(fixtures), clock=utc_now)
+        try:
+            llm = services.require_llm()
+            out["model"] = str(getattr(llm, "model", "") or args.model)
+            warmup = getattr(llm, "warmup", None)
+            if callable(warmup):
+                started = time.monotonic()
+                warmup()
+                out["load_s"] = round(time.monotonic() - started, 1)
+            prepare(services, fixtures)
+            titles = {c["video_id"]: c.get("title", "") for c in fixtures}
+            out["videos"] = run(services, order, drafts_per_video=args.drafts, titles=titles)
+            contexts = {}
+            for vid in order:
+                try:
+                    contexts[vid] = services.context.search_text(services.context.current(vid))
+                except AppError:
+                    contexts[vid] = ""
+            rules = services.drafts.rules
+        finally:
+            unload = getattr(services.llm, "unload", None)
+            if callable(unload):
+                try:
+                    unload()
+                except Exception:  # noqa: BLE001 — 내리지 못해도 결과는 남긴다
+                    pass
+            services.close()
+    if args.out_json:
+        args.out_json.parent.mkdir(parents=True, exist_ok=True)
+        args.out_json.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+    before = None
+    if args.before:
+        before = json.loads(args.before.read_text(encoding="utf-8")).get("videos", [])
+    table = markdown_table(out["videos"], before=before, labels=labels, brand=rules.brand,
+                           disclosure=rules.disclosure, contexts=contexts)
+    if args.out_md:
+        args.out_md.parent.mkdir(parents=True, exist_ok=True)
+        args.out_md.write_text(table, encoding="utf-8")
+    sys.stdout.write(table)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+    raise SystemExit(main())
