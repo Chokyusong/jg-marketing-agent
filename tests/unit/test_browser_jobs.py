@@ -677,6 +677,29 @@ def test_recently_signed_out_profile_is_refused_before_reserving(env, path, cloc
     e.jobs.wait(job_id, 5)
 
 
+def test_auto_assignment_uses_only_signed_in_profiles(env, path, clock):
+    """2026-11-17: 유튜브1·2만 로그인됨이면 자동 배정은 유튜브3(확인한 적 없음)을 쓰지 않는다."""
+    e = env(confirm_before_post=False)
+    _login(path, "유튜브1", "signed_in", clock())
+    _login(path, "유튜브2", "signed_in", clock())
+    used = []
+    for n in (1, 2, 3):
+        job_id, *_ = e.start(n, target="youtube")
+        used.append(e.jobs.get(job_id).profile)
+        assert e.jobs.wait(job_id, 5).state == "posted"
+        clock.advance(minutes=1)
+    assert used == ["유튜브1", "유튜브2", "유튜브1"]
+
+
+def test_named_unchecked_profile_still_runs(env, path, clock):
+    """사람이 직접 고른 프로필은 확인한 적이 없어도 실행기가 페이지에서 직접 본다(예전 그대로)."""
+    e = env(confirm_before_post=False)
+    _login(path, "유튜브1", "signed_in", clock())
+    job_id, *_ = e.start(1, target="youtube", profile="유튜브3")
+    assert e.jobs.get(job_id).profile == "유튜브3"
+    e.jobs.wait(job_id, 5)
+
+
 def test_old_signed_out_result_lets_the_driver_check(env, path, clock):
     e = env(confirm_before_post=False)
     _login(path, "유튜브1", "signed_out", clock() - timedelta(hours=2))

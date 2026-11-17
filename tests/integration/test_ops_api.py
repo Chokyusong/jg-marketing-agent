@@ -58,6 +58,42 @@ def test_profiles_list_names_folders_and_auto(setup):
     assert client.get("/api/profiles", params={"target": "youtube"}).json()["auto"] == "유튜브1"
 
 
+def _set_login(services, profile: str, state: str) -> None:
+    from app import db
+
+    with db.session(services.settings.db_path) as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO profile_logins(profile, state, channel, checked_at, note) "
+            "VALUES (?, ?, '', ?, '')",
+            (profile, state, services.jobs.clock().isoformat()),
+        )
+
+
+def test_profiles_auto_prefers_signed_in_for_real_posting(setup):
+    """2026-11-17: 유튜브1·2 로그인됨, 유튜브3 확인한 적 없음 → 실제 게시 자동 배정에 3이 없다."""
+    client, services, use = setup
+    d = approved_draft(client, use)
+    services.rules.reserve(VID, "youtube", "유튜브1", d["id"])
+    data = client.get("/api/profiles", params={"target": "youtube"}).json()
+    assert data["auto"] == "유튜브2" and data["auto_confirmed"] is False  # 아직 확인한 것이 없다
+    assert "로그인을 확인한 프로필이 없어" in data["auto_note"]
+    _set_login(services, "유튜브1", "signed_in")
+    data = client.get("/api/profiles", params={"target": "youtube"}).json()
+    assert (data["auto"], data["auto_confirmed"], data["auto_note"]) == ("유튜브1", True, "")
+    _set_login(services, "유튜브2", "signed_in")
+    data = client.get("/api/profiles", params={"target": "youtube"}).json()
+    assert data["auto"] == "유튜브2"
+    # 연습 모드는 로그인이 필요 없다
+    sandbox = client.get("/api/profiles", params={"target": "sandbox"}).json()
+    assert sandbox["auto"] == "유튜브1" and sandbox["auto_confirmed"] is None
+    # 상태 응답에도 같은 값(③칸 「자동 배정 · 이번에는 유튜브2」)
+    from app.api.status import browser_status
+
+    picks = browser_status(services).model_dump()["auto_pick"]
+    assert picks["youtube"] == {"name": "유튜브2", "confirmed": True, "note": ""}
+    assert picks["sandbox"]["name"] == "유튜브1" and picks["sandbox"]["confirmed"] is None
+
+
 def test_profiles_reject_unknown_target(setup):
     client, _, _ = setup
     assert client.get("/api/profiles", params={"target": "assist"}).status_code == 422

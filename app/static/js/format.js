@@ -109,3 +109,18 @@ export function thumbnail(video) {
     duration ? el('span', { class: 'duration', text: duration }) : null,
   ]);
 }
+
+// 이름 뒤 「은/는」: 마지막 글자에 받침이 있으면 「은」(숫자는 읽는 소리로: 0·1·3·6·7·8)
+export function withTopic(name) {
+  const text = String(name || '');
+  const last = text.slice(-1);
+  if (!last) return text;
+  let batchim = false;
+  if (/[0-9]/.test(last)) batchim = '013678'.includes(last);
+  else if (/[A-Za-z]/.test(last)) batchim = 'lmnLMN'.includes(last);
+  else {
+    const code = last.charCodeAt(0) - 0xac00;
+    batchim = code >= 0 && code <= 11171 && code % 28 !== 0;
+  }
+  return `${text}${batchim ? '은' : '는'}`;
+}

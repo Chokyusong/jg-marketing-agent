@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from test_ops_rules import PROFILES, Clock, add_draft, vid
@@ -111,6 +111,89 @@ def test_resolve_auto_or_named(profiles):
     assert profiles.resolve("유튜브3", "sandbox").name == "유튜브3"
     with pytest.raises(AppError):
         profiles.resolve("모르는 이름", "sandbox")
+
+
+def _login(path, profile: str, state: str, at: datetime) -> None:
+    with db.session(path) as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO profile_logins(profile, state, channel, checked_at, note) "
+            "VALUES (?, ?, '', ?, '')",
+            (profile, state, at.isoformat()),
+        )
+
+
+def _choose(profiles, clock, target="youtube", login=True):
+    return profiles.choose_auto(target, login=login, now=clock(), trust=timedelta(hours=1))
+
+
+def test_choose_auto_only_from_signed_in_profiles(profiles, rules, path, clock):
+    """2026-11-17: 유튜브1·2는 로그인됨, 유튜브3은 확인한 적 없음 → 1과 2만 돌아가며."""
+    _login(path, "유튜브1", "signed_in", clock())
+    _login(path, "유튜브2", "signed_in", clock())
+    picked = []
+    for n in range(5):
+        pick = _choose(profiles, clock)
+        assert pick.confirmed is True and pick.note == ""
+        picked.append(pick.profile.name)
+        rules.reserve(vid(n), "youtube", pick.profile.name, add_draft(path, vid(n)))
+        clock.advance(minutes=1)
+    assert picked == ["유튜브1", "유튜브2", "유튜브1", "유튜브2", "유튜브1"]
+
+
+def test_choose_auto_skips_never_used_but_unchecked_profile(profiles, rules, path, clock):
+    """한 번도 안 쓴 프로필이 먼저였지만, 로그인을 확인하지 않았으면 고르지 않는다."""
+    _login(path, "유튜브1", "signed_in", clock())
+    _login(path, "유튜브2", "signed_in", clock())
+    rules.reserve(vid(1), "youtube", "유튜브1", add_draft(path, vid(1)))
+    rules.reserve(vid(2), "youtube", "유튜브2", add_draft(path, vid(2)))
+    assert profiles.pick_auto("youtube").name == "유튜브3"  # 예전 규칙
+    assert _choose(profiles, clock).profile.name == "유튜브1"  # 새 규칙
+
+
+def test_choose_auto_single_signed_in_profile(profiles, path, clock):
+    _login(path, "유튜브2", "signed_in", clock() - timedelta(days=3))  # 오래된 확인도 로그인됨
+    _login(path, "유튜브1", "signed_out", clock() - timedelta(days=3))
+    pick = _choose(profiles, clock)
+    assert (pick.profile.name, pick.confirmed) == ("유튜브2", True)
+
+
+def test_choose_auto_without_any_confirmed_profile_warns(profiles, path, clock):
+    pick = _choose(profiles, clock)
+    assert (pick.profile.name, pick.confirmed) == ("유튜브1", False)
+    assert "로그인을 확인한 프로필이 없어 유튜브1로 해 봅니다" in pick.note
+    assert "[로그인 확인]" in pick.note
+    # 최근 「로그인 안 됨」은 뒤로 미룬다(예전과 같다)
+    _login(path, "유튜브1", "signed_out", clock())
+    pick = _choose(profiles, clock)
+    assert pick.profile.name == "유튜브2" and pick.confirmed is False
+    assert "유튜브2로" in pick.note
+
+
+def test_choose_auto_all_signed_out(profiles, path, clock):
+    for name in PROFILES:
+        _login(path, name, "signed_out", clock())
+    pick = _choose(profiles, clock)
+    assert pick.confirmed is False and "로그인된 프로필이 없습니다" in pick.note
+
+
+def test_choose_auto_practice_mode_ignores_login(profiles, path, clock):
+    _login(path, "유튜브2", "signed_in", clock())
+    pick = _choose(profiles, clock, target="sandbox", login=False)
+    assert (pick.profile.name, pick.confirmed, pick.note) == ("유튜브1", None, "")
+
+
+def test_choose_auto_ignores_unknown_profile_rows(profiles, path, clock):
+    _login(path, "옛프로필", "signed_in", clock())
+    assert _choose(profiles, clock).confirmed is False
+
+
+def test_with_ro_particle():
+    from app.ops.profiles import with_ro
+
+    assert [with_ro(f"유튜브{i}") for i in (1, 2, 3, 6, 7)] == [
+        "유튜브1로", "유튜브2로", "유튜브3으로", "유튜브6으로", "유튜브7로"
+    ]
+    assert with_ro("서울") == "서울로" and with_ro("계정") == "계정으로" and with_ro("") == ""
 
 
 def test_empty_profile_list(path):

@@ -179,3 +179,36 @@ def test_confirm_before_post_stops_until_post_button(confirm_live):
         page.wait_for_function(JOB_STATE.format("posted"), timeout=45000)
         assert page.get_attribute("#job-view", "href") == WATCH + PICK
     assert not errors, errors
+
+
+def test_auto_assignment_shows_profile_and_unchecked_profile_hint(live):
+    """2026-11-17(PDF 대조): ③ 「자동 배정 · 이번에는 유튜브1」, 로그인 확인 안 한 프로필을 고르면
+    [댓글 달기] 아래에 이유와 [프로필 화면에서 로그인]."""
+    from app import db
+
+    base = live["base"]
+    services = live["app"].state.services.get()
+    now = services.jobs.clock().isoformat()
+    with db.session(services.settings.db_path) as conn:
+        for name in ("유튜브1", "유튜브2"):
+            conn.execute(
+                "INSERT OR REPLACE INTO profile_logins(profile, state, channel, checked_at, note) "
+                "VALUES (?, 'signed_in', '', ?, '')", (name, now))
+    with headless_page(base) as (page, errors):
+        _load(page, base)
+        page.wait_for_function(
+            "document.querySelector('#profile option[value=\"\"]').textContent"
+            " === '자동 배정 · 이번에는 유튜브1'", timeout=15000)
+        assert page.is_hidden("#job-login")
+        page.select_option("#profile", "유튜브3")
+        page.wait_for_selector("#job-login", state="visible")
+        assert page.text_content("#job-login-text") == "유튜브3은 아직 로그인을 확인하지 않았습니다"
+        assert page.text_content("#job-login-btn") == "프로필 화면에서 로그인"
+        _no_scroll(page)
+        page.click("#job-login-btn")
+        page.wait_for_selector("#screen-profiles", state="visible")
+        # 연습 모드는 로그인이 필요 없다
+        page.click("#nav-work")
+        page.check("#practice-mode", force=True)
+        page.wait_for_selector("#job-login", state="hidden")
+    assert not errors, errors

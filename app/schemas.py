@@ -173,6 +173,14 @@ class BrowserProfileOut(BaseModel):
     login_checking_auto: bool = False  # 창을 닫아 저절로 시작한 확인인지
 
 
+class AutoPickOut(BaseModel):
+    """자동 배정이 이번에 고를 프로필과 까닭."""
+
+    name: str
+    confirmed: bool | None = None  # True 확인된 것 중에서 · False 확인된 것 없음 · None 연습
+    note: str = ""
+
+
 class BrowserStatusOut(BaseModel):
     """위 줄 BROWSER 상태(8단계)."""
 
@@ -184,6 +192,8 @@ class BrowserStatusOut(BaseModel):
     confirm_before_post: bool = False  # 게시 직전 확인(켜면 입력 뒤 [게시])
     disclose_default: bool = True  # 「광고 표기 붙이기」의 처음 상태
     login_trust_seconds: int = 3600  # 이보다 최근의 「로그인 안 됨」 확인이면 [댓글 달기]를 막는다
+    # 2026-11-17: 「자동 배정」이 이번에 쓸 프로필(대상별). ③칸 「자동 배정 · 이번에는 유튜브2」
+    auto_pick: dict[str, AutoPickOut] = Field(default_factory=dict)
 
 
 class StatusOut(BaseModel):
@@ -489,6 +499,9 @@ class ProfilesOut(BaseModel):
     target: Literal["sandbox", "youtube"]
     items: list[ProfileOut]
     auto: str  # 「자동 배정」이면 지금 고를 프로필(가장 오래 안 쓴 것)
+    # 2026-11-17: 실제 게시는 로그인이 확인된 프로필 중에서만 고른다(없으면 False와 안내)
+    auto_confirmed: bool | None = None
+    auto_note: str = ""
 
 
 class RunOut(BaseModel):

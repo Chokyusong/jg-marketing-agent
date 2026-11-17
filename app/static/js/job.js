@@ -7,8 +7,9 @@
 // - 바깥 글은 textContent로만 넣는다.
 import { api } from './api.js';
 import { draftText } from './draft.js';
-import { targetName } from './format.js';
+import { targetName, withTopic } from './format.js';
 import { refreshOps } from './ops.js';
+import { focusProfile } from './profiles.js';
 import { ensureApproved, isRunning } from './report.js';
 import { getState, selectedVideo, setState, subscribe } from './state.js';
 import { refreshStatus } from './topbar.js';
@@ -73,6 +74,36 @@ function loginBlocker(state) {
   return b.profiles.every((p) => signedOutRecently(p, b))
     ? '로그인된 프로필이 없습니다. 프로필 화면에서 [로그인하기]를 눌러 주세요.'
     : null;
+}
+
+// 자동 배정이 이번에 쓸 프로필(GET /api/status의 browser.auto_pick, 대상별)
+export function autoPick(state) {
+  const b = state.browser;
+  const target = apiTarget(state.ops ? state.ops.target : 'sandbox');
+  return (b && b.auto_pick && b.auto_pick[target]) || null;
+}
+
+export function autoOptionText(pick) {
+  return pick && pick.name ? `자동 배정 · 이번에는 ${pick.name}` : '자동 배정';
+}
+
+// 실제 게시에서 로그인이 확인되지 않은 프로필을 쓰게 될 때 [댓글 달기] 아래에 보일 말과 그 프로필.
+// 막지는 않는다(최근 「로그인 안 됨」은 loginBlocker가 막는다). 연습 모드는 로그인이 필요 없다.
+export function loginHint(state) {
+  const ops = state.ops;
+  const b = state.browser;
+  if (!ops || ops.target === 'sandbox' || !b || !b.profiles) return null;
+  if (ops.profile) {
+    const p = b.profiles.find((x) => x.name === ops.profile);
+    if (!p || p.signed_in === true) return null;
+    const text = p.signed_in === false
+      ? `${withTopic(p.name)} 아직 로그인하지 않았습니다`
+      : `${withTopic(p.name)} 아직 로그인을 확인하지 않았습니다`;
+    return { text, profile: p.name };
+  }
+  const pick = autoPick(state);
+  if (pick && pick.confirmed === false && pick.note) return { text: pick.note, profile: pick.name };
+  return null;
 }
 
 function checkFor(state) {
@@ -249,6 +280,18 @@ function paint(state) {
   const why = !job || job.finished ? (state.jobBusy ? '' : blocker || '') : '';
   $('job-why').textContent = why && video && !isRunning(state) ? why : '';
 
+  // 프로필: 「자동 배정 · 이번에는 유튜브2」, 로그인이 확인되지 않은 프로필이면 이유와 프로필 화면으로 가는 길
+  const auto = $('profile').querySelector('option[value=""]');
+  const autoText = autoOptionText(autoPick(state));
+  if (auto && auto.textContent !== autoText) auto.textContent = autoText;
+  const hint = running(job) ? null : loginHint(state);
+  const loginLine = $('job-login');
+  loginLine.hidden = !hint || Boolean(why && why.includes('로그인'));
+  if (hint) {
+    $('job-login-text').textContent = hint.text;
+    $('job-login-btn').dataset.profile = hint.profile;
+  }
+
   // 작은 단추 줄: 필요한 것만([그만두기] · 게시 완료면 [댓글 보기] · 실패면 [화면 캡처 보기])
   show('job-cancel', running(job));
   const view = show('job-view', Boolean(job && job.state === 'posted'));
@@ -305,6 +348,7 @@ export function initJob() {
     const { job } = getState();
     if (job) act(() => api.cancelJob(job.id));
   });
+  $('job-login-btn').addEventListener('click', (event) => focusProfile(event.currentTarget.dataset.profile || ''));
   subscribe(paint);
   // 화면을 새로 고쳐도 진행 중인 작업을 이어 본다(GET /api/status의 browser.active_job_id)
   let resumed = false;

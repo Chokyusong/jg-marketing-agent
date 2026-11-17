@@ -15,6 +15,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import Services, get_services
+from app.browser.jobs import LOGIN_TRUST
 from app.browser.login import HOME_URL, LOGIN_URL, LoginState
 from app.schemas import (
     ProfileLoginOut,
@@ -53,13 +54,18 @@ def list_profiles(services: ServicesDep, target: Target = "sandbox") -> Profiles
     profiles = services.profiles
     used = profiles.last_used(target)
     states = {s.name: s for s in services.accounts.states()}
+    pick = profiles.choose_auto(
+        target, login=target == "youtube", now=services.jobs.clock(), trust=LOGIN_TRUST
+    )
     return ProfilesOut(
         target=target,
         items=[
             ProfileOut.from_profile(p, used).model_copy(update=_login_fields(states.get(p.name)))
             for p in profiles.list_profiles()
         ],
-        auto=profiles.pick_auto(target).name,
+        auto=pick.profile.name,
+        auto_confirmed=pick.confirmed,
+        auto_note=pick.note,
     )
 
 

@@ -16,6 +16,7 @@ from app.config import DEFAULT_OLLAMA_MODEL
 from app.errors import AppError, ErrorKind
 from app.schemas import (
     AIStatusOut,
+    AutoPickOut,
     BrowserProfileOut,
     BrowserStatusOut,
     ProblemOut,
@@ -122,7 +123,23 @@ def browser_status(services: Services) -> BrowserStatusOut:
         confirm_before_post=services.settings.confirm_before_post,
         disclose_default=services.settings.disclose_default,
         login_trust_seconds=int(LOGIN_TRUST.total_seconds()),
+        auto_pick=_auto_picks(services),
     )
+
+
+def _auto_picks(services: Services) -> dict[str, AutoPickOut]:
+    """「자동 배정」이 이번에 쓸 프로필(실제 게시는 로그인이 확인된 것 중에서만)."""
+    out: dict[str, AutoPickOut] = {}
+    now = services.jobs.clock()
+    for target in ("youtube", "sandbox"):
+        try:
+            pick = services.profiles.choose_auto(
+                target, login=target == "youtube", now=now, trust=LOGIN_TRUST
+            )
+        except AppError:  # 프로필이 없는 설정 — 상태 화면은 죽지 않는다
+            continue
+        out[target] = AutoPickOut(name=pick.profile.name, confirmed=pick.confirmed, note=pick.note)
+    return out
 
 
 @router.get("/status", response_model=StatusOut)

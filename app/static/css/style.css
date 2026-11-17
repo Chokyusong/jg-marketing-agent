@@ -291,6 +291,9 @@ select { padding-right: 6px; cursor: pointer; }
 .job-desc { color: var(--sub); font-size: 13px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .job-why { color: var(--warn); font-size: 12px; }
 .job-why:empty { display: none; }
+.job-login { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; color: var(--warn); font-size: 12px; }
+.job-login[hidden] { display: none; }
+.job-login .btn-text { min-height: 0; padding: 0; font-size: 12px; }
 .job-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
 .job-steps li { position: relative; padding-top: 10px; color: var(--dim); font-size: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .job-steps li::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 2px; background: var(--line-strong); }

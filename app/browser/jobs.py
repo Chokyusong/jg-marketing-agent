@@ -62,7 +62,7 @@ import threading
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode, urlsplit
@@ -386,7 +386,12 @@ class JobService:
             if chrome is None:
                 raise AppError(ErrorKind.CHROME_NOT_FOUND)
             signed_out = self._recently_signed_out() if live else set()
-            chosen = self.profiles.resolve(profile or None, post_target, avoid=signed_out)
+            if not profile or profile == "auto":  # 실제 게시는 로그인이 확인된 프로필 중에서만
+                chosen = self.profiles.choose_auto(
+                    post_target, login=live, now=self.clock(), trust=LOGIN_TRUST
+                ).profile
+            else:
+                chosen = self.profiles.get(profile)
             if chosen.name in signed_out:
                 raise AppError(ErrorKind.PROFILE_NOT_SIGNED_IN, detail=chosen.name)
             folder_path = ensure_profile_dir(self.browser.profiles_root, chosen.folder)
@@ -451,22 +456,7 @@ class JobService:
 
     def _recently_signed_out(self) -> set[str]:
         """최근(`LOGIN_TRUST` 안에) 로그인 확인에서 「로그인 안 됨」으로 나온 프로필 이름들."""
-        cutoff = self.clock() - LOGIN_TRUST
-        with db.session(self.db_path) as conn:
-            rows = conn.execute(
-                "SELECT profile, checked_at FROM profile_logins WHERE state = 'signed_out'"
-            ).fetchall()
-        out: set[str] = set()
-        for row in rows:
-            try:
-                at = datetime.fromisoformat(row["checked_at"])
-            except (TypeError, ValueError):
-                continue
-            if at.tzinfo is None:
-                at = at.replace(tzinfo=UTC)
-            if at >= cutoff:
-                out.add(row["profile"])
-        return out
+        return self.profiles.login_sets(now=self.clock(), trust=LOGIN_TRUST)[1]
 
     def _save_signed_out(self, profile: str) -> None:
         """실행기가 로그인 안 됨을 봤다: 프로필 화면의 로그인 상태도 그렇게 고쳐 둔다."""
