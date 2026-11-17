@@ -8,6 +8,9 @@
   한국어로 돌려준다.
   `apply_overlay()`는 `config.yaml` 내용(dict)에 바꾼 값을 덮어 `load_settings`가 그대로 읽게 한다.
 - 키 값은 어떤 응답·화면·기록에도 돌려주지 않는다. 이 모듈도 키를 로그에 찍지 않는다.
+- R5: 글 쓰는 AI의 API 키는 AI마다 따로 `llm_keys/<이름>.bin`(유튜브 키와 같은 DPAPI). 유튜브 키
+  파일(`youtube_key.bin`)과 그 동작은 그대로다. AI 고르기(`llm.active`), AI별 모델(`llm.models`),
+  「직접 입력」 주소(`llm.base_urls`)는 `settings.json`에.
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ log = logging.getLogger("app.user_settings")
 USER_DIR_ENV = "JG_USER_DIR"  # 사용자 설정 폴더를 바꿀 때(다른 PC·확인용). 비우면 아래 기본
 SETTINGS_FILE = "settings.json"
 KEY_FILE = "youtube_key.bin"
+LLM_KEY_DIR = "llm_keys"  # R5: AI별 API 키(<이름>.bin, DPAPI)
 FILE_VERSION = 1
 
 # 글자 입력 속도(글자마다 기다리는 밀리초 최소·최대). 보통이 config.yaml의 기본값과 같다
@@ -38,6 +42,12 @@ TYPING_SPEEDS: dict[str, tuple[int, int]] = {
 }
 TYPING_SPEED_LABELS = {"slow": "느리게", "normal": "보통", "fast": "빠르게"}
 _KEY_SHAPE = re.compile(r"^[A-Za-z0-9_\-]{20,200}$")
+# R5: AI 이름(파일 이름에 쓴다), 모델 이름(명령 인자로도 넘기므로 '-'로 시작하지 못하게), 주소
+PROVIDER_NAME = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,39}$")
+MODEL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+\-\[\]]{0,199}$")
+_URL = re.compile(r"^https?://[^\s/?#]+(?::\d+)?(?:/[^\s?#]*)?$")
+# AI 서비스 키는 회사마다 모양이 달라(sk-…, xai-…, AIza…) 넓게 본다: 빈칸 없는 글자 8~400자
+_LLM_KEY_SHAPE = re.compile(r"^[!-~]{8,400}$")
 
 
 def default_user_dir(environ: dict[str, str] | None = None) -> Path:
@@ -190,10 +200,51 @@ class UserStore:
         self.key_path.unlink(missing_ok=True)
         return existed
 
+    # -- R5: AI별 API 키(유튜브 키와 같은 방식, 파일만 따로)
+
+    def llm_key_path(self, name: str) -> Path:
+        if not PROVIDER_NAME.match(name):
+            raise ValueError("AI 이름이 잘못됐습니다")
+        return self.root / LLM_KEY_DIR / f"{name}.bin"
+
+    def has_llm_key(self, name: str) -> bool:
+        return self.llm_key_path(name).is_file()
+
+    def read_llm_key(self, name: str) -> str | None:
+        try:
+            blob = self.llm_key_path(name).read_bytes()
+        except (FileNotFoundError, ValueError):
+            return None
+        except OSError:
+            return None
+        try:
+            text = self.protector.unprotect(blob).decode("utf-8").strip()
+        except Exception:  # 값은 찍지 않는다
+            log.warning("저장한 AI API 키를 풀지 못했습니다(%s)", name)
+            return None
+        return text or None
+
+    def write_llm_key(self, name: str, key: str) -> None:
+        if not self.protector.available:
+            raise SecretStoreUnavailable("이 PC에서는 키를 암호화해 저장할 수 없습니다")
+        path = self.llm_key_path(name)
+        _atomic_write(path, self.protector.protect(key.encode("utf-8")))
+
+    def delete_llm_key(self, name: str) -> bool:
+        path = self.llm_key_path(name)
+        existed = path.is_file()
+        path.unlink(missing_ok=True)
+        return existed
+
 
 def key_shape_ok(key: str) -> bool:
     """키 모양(영문·숫자·_-, 20~200자). 진짜인지는 [연결 확인]이 본다."""
     return bool(_KEY_SHAPE.match(key))
+
+
+def llm_key_shape_ok(key: str) -> bool:
+    """R5: AI 서비스 키 모양(빈칸 없는 글자 8~400자). 진짜인지는 [연결 확인]이 본다."""
+    return bool(_LLM_KEY_SHAPE.match(key))
 
 
 # ---------------------------------------------------------------- 칸 정의
@@ -201,7 +252,7 @@ def key_shape_ok(key: str) -> bool:
 
 @dataclass(frozen=True)
 class Field:
-    kind: str  # int | str | bool | choice | lines
+    kind: str  # int | str | bool | choice | lines | models | urls(R5: AI 이름 → 글)
     label: str  # 화면 이름(오류 문구에 쓴다)
     path: tuple[str, ...] | None = None  # config.yaml 안의 자리(없으면 따로 다룬다)
     lo: int | None = None  # int: 최솟값, str·lines: 가장 짧은 길이
@@ -255,6 +306,11 @@ FIELDS: dict[str, Field] = {
         "int", "뜨기 직전 시간당 조회수", ("rising", "min_views_per_hour"), 1, 1_000_000
     ),
 }
+# R5: 글 쓰는 AI. 고를 수 있는 이름인지(설정의 llm.providers, 설치·키 여부)는 설정 API가 본다.
+# llm.models·llm.base_urls는 AI 이름 → 모델·주소(보낸 이름만 바꾸고, 빈 글이면 지운다)
+FIELDS["llm.active"] = Field("str", "글 쓰는 AI", ("llm", "active"), 1, 40)
+FIELDS["llm.models"] = Field("models", "AI별 모델", None, 1, 200, max_items=20)
+FIELDS["llm.base_urls"] = Field("urls", "직접 입력 주소", None, 8, 300, max_items=5)
 # 화면이 직접 보내지 않고 서버가 계산해 넣는 칸
 COMPUTED_FIELDS = ("browser.window_position",)
 
@@ -281,6 +337,25 @@ def _clean_one(name: str, field: Field, value: Any) -> tuple[Any, str | None]:
         if text not in field.choices:
             return None, f"{label}에서 고를 수 없는 값입니다"
         return text, None
+    if field.kind in ("models", "urls"):
+        if not isinstance(value, dict) or len(value) > field.max_items:
+            return None, f"{label} 모양이 잘못됐습니다"
+        out: dict[str, str] = {}
+        for key, item in value.items():
+            if not isinstance(key, str) or not PROVIDER_NAME.match(key):
+                return None, f"{label}: 모르는 AI 이름입니다"
+            if item is None:
+                item = ""
+            if not isinstance(item, str):
+                return None, f"{label}은(는) 글로 적어 주세요"
+            text = item.strip()
+            if text and field.kind == "models" and not MODEL_NAME.match(text):
+                return None, "모델 이름은 영문·숫자로 시작하고 빈칸 없이 200자까지입니다"
+            too_long = len(text) > (field.hi or 300)
+            if text and field.kind == "urls" and (too_long or not _URL.match(text)):
+                return None, "주소는 http:// 또는 https://로 시작해야 합니다(예: http://127.0.0.1:1234/v1)"
+            out[key] = text.rstrip("/") if field.kind == "urls" else text
+        return out, None
     if field.kind == "lines":
         if not isinstance(value, list):
             return None, f"{label}은(는) 문장 목록이어야 합니다"

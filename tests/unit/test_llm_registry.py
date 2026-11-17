@@ -92,14 +92,15 @@ def test_unknown_type_is_clear_error(make_config):
         make_config,
         {
             "active": "claude",
-            "providers": {"ollama": {"type": "ollama"}, "claude": {"type": "anthropic"}},
+            # R5부터 anthropic은 지원한다 → 모르는 종류는 다른 이름으로 본다
+            "providers": {"ollama": {"type": "ollama"}, "claude": {"type": "mystery"}},
         },
     )
     with pytest.raises(AppError) as info:
         build_llm(settings)
     assert info.value.kind == "llm_provider_unknown"
     assert "아직 지원하지 않는 공급자" in info.value.detail
-    assert "anthropic" in info.value.detail and "ollama" in info.value.detail
+    assert "mystery" in info.value.detail and "ollama" in info.value.detail
 
 
 def test_active_not_in_providers(make_config):
@@ -131,7 +132,8 @@ def test_no_llm_section_defaults_to_ollama(make_config):
 
 
 def test_supported_types_now():
-    assert supported_types() == ("ollama",)
+    # R5: 네 종류(API 키 둘 + 이 PC + 로그인된 프로그램)
+    assert supported_types() == ("ollama", "openai_compatible", "anthropic", "cli")
 
 
 @pytest.mark.parametrize(
@@ -164,7 +166,9 @@ def test_api_key_env_names_join_secret_list_and_redaction(make_config):
         },
         environ={"OPENAI_API_KEY": fake, "YOUTUBE_API_KEY": youtube},
     )
-    assert settings.secret_env_names == ("YOUTUBE_API_KEY", "OPENAI_API_KEY")
+    # R5: config.yaml에 다른 AI의 키 이름도 있다(값은 없음) → 순서와 포함만 본다
+    names = settings.secret_env_names
+    assert names[0] == "YOUTUBE_API_KEY" and "OPENAI_API_KEY" in names
     assert set(settings.secret_values()) == {youtube, fake}
     assert fake not in repr(settings)
     llm = build_llm(settings)
@@ -216,3 +220,44 @@ def test_only_registry_imports_ollama_module():
         if p.name != "ollama.py" and "app.llm.ollama" in _imports(p)
     ]
     assert inside == ["app/llm/registry.py"]
+
+
+# ---------------------------------------------------------------- R5: 저장소 config.yaml의 AI 목록
+
+
+def test_repo_config_lists_every_ai_without_secrets(clean_env, tmp_path):
+    settings = load_settings(env_path=tmp_path / "없음.env", environ={})
+    providers = settings.llm.providers
+    expected = {
+        "ollama": "ollama", "openai": "openai_compatible", "claude": "anthropic",
+        "gemini": "openai_compatible", "grok": "openai_compatible", "custom": "openai_compatible",
+        "codex-cli": "cli", "claude-cli": "cli", "gemini-cli": "cli",
+    }
+    assert {n: p.type for n, p in providers.items()} == expected
+    for p in providers.values():
+        assert p.options.get("label")
+        assert "model" not in p.options  # 모델 이름을 박지 않는다
+        assert not any("key" in k and k != "key_optional" for k in p.options)
+
+
+def test_build_provider_by_name(clean_env, tmp_path):
+    from app.llm.anthropic import AnthropicClient
+    from app.llm.cli import CLIClient
+    from app.llm.openai_compatible import OpenAICompatibleClient
+    from app.llm.registry import build_provider
+
+    key = "sk-" + "k" * 30  # 실행할 때 조립한다
+    settings = load_settings(env_path=tmp_path / "없음.env", environ={"OPENAI_API_KEY": key})
+    openai = build_provider(settings, "openai")
+    assert isinstance(openai, OpenAICompatibleClient)
+    assert openai.base_url == "https://api.openai.com/v1" and openai.has_key
+    assert openai.model == ""  # 고르기 전에는 비어 있다
+    assert settings.llm.key_sources == {"openai": "dev_file"}
+    assert key in settings.secret_values()
+    claude = build_provider(settings, "claude")
+    assert isinstance(claude, AnthropicClient) and not claude.has_key
+    codex = build_provider(settings, "codex-cli")
+    assert isinstance(codex, CLIClient) and codex.program == "codex"
+    assert "OPENAI_API_KEY" in codex._hidden_env and "YOUTUBE_API_KEY" in codex._hidden_env
+    for llm in (openai, claude, codex):
+        llm.close()

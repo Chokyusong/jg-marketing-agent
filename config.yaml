@@ -44,7 +44,51 @@ llm:
   num_ctx: 8192           # 모델 입력 길이(토큰)
   keep_alive: "30m"       # 답한 뒤 모델을 메모리에 두는 시간
   context_chars: 6000     # 모델에 넣을 영상 자료 길이 한도(3단계)
+  # R5: 설정 화면의 「AI」에서 고르는 목록. 비밀값은 없다 — 키는 프로그램 설정(사용자 폴더에 암호화)
+  # > .env의 api_key_env 이름(개발용) 순서로 읽는다. 모델 이름은 여기에 박지 않는다(각 AI의 목록에서
+  # 고르거나 직접 적는다). 주소는 각 회사 문서로 확인한 것(app/llm/*.py 머리말에 날짜·출처).
   providers:
-    ollama: {type: ollama}   # 주소·모델은 .env의 OLLAMA_BASE_URL, OLLAMA_MODEL
-    # 12단계에서 다른 종류를 더한다. 키는 값이 아니라 환경 변수 이름만 적는다(값은 .env).
-    # 예: openai: {type: openai_compatible, base_url: "...", model: "...", api_key_env: OPENAI_API_KEY}
+    ollama: {type: ollama, label: Ollama}   # 주소·모델은 .env의 OLLAMA_BASE_URL, OLLAMA_MODEL
+    openai:
+      type: openai_compatible
+      label: ChatGPT(OpenAI)
+      sends_to: OpenAI
+      base_url: "https://api.openai.com/v1"
+      api_key_env: OPENAI_API_KEY
+      json_mode: true
+      max_tokens_field: max_completion_tokens
+    claude:
+      type: anthropic
+      label: Claude(Anthropic)
+      sends_to: Anthropic
+      base_url: "https://api.anthropic.com"
+      api_key_env: ANTHROPIC_API_KEY
+    gemini:
+      type: openai_compatible
+      label: Gemini(Google)
+      sends_to: Google
+      base_url: "https://generativelanguage.googleapis.com/v1beta/openai"
+      api_key_env: GEMINI_API_KEY
+      json_mode: false
+      max_tokens_field: ""
+    grok:
+      type: openai_compatible
+      label: Grok(xAI)
+      sends_to: xAI
+      base_url: "https://api.x.ai/v1"
+      api_key_env: XAI_API_KEY
+      json_mode: true
+      max_tokens_field: max_completion_tokens
+    custom:
+      type: openai_compatible
+      label: 직접 입력
+      sends_to: 입력한 주소
+      base_url: ""
+      editable_url: true
+      key_optional: true
+      api_key_env: CUSTOM_LLM_API_KEY
+      json_mode: false
+      max_tokens_field: max_tokens
+    codex-cli: {type: cli, label: Codex, program: codex, sends_to: "OpenAI(Codex)"}
+    claude-cli: {type: cli, label: Claude Code, program: claude, sends_to: "Anthropic(Claude Code)"}
+    gemini-cli: {type: cli, label: Gemini CLI, program: gemini, sends_to: "Google(Gemini CLI)"}

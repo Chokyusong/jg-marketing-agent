@@ -35,6 +35,10 @@ class ErrorKind(StrEnum):
     LLM_BAD_OUTPUT = "llm_bad_output"
     LLM_ERROR = "llm_error"  # 위 넷에 들지 않는 LLM 서버 오류
     LLM_PROVIDER_UNKNOWN = "llm_provider_unknown"  # llm.active가 providers에 없거나 종류를 모름
+    # R5: 다른 AI(API 키·로그인된 프로그램). 키 거부·로그인 안 됨 / 요청 한도
+    LLM_AUTH = "llm_auth"
+    LLM_RATE_LIMITED = "llm_rate_limited"
+    LLM_SETTINGS_INVALID = "llm_settings_invalid"  # 고를 수 없는 AI(설치 안 됨·키 없음 등)
     # 5단계: 초안
     DRAFT_NOT_FOUND = "draft_not_found"
     DRAFT_NOT_PASSED = "draft_not_passed"  # 규칙 검사에 걸린 초안은 승인하지 않는다(409)
@@ -163,9 +167,25 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
     ),
     ErrorKind.LLM_PROVIDER_UNKNOWN: ErrorText(
         "설정한 AI 공급자를 쓸 수 없습니다.",
-        "config.yaml의 llm.active를 llm.providers에 있는 이름으로 바꿔 주세요. "
-        "지금 쓸 수 있는 종류(type)는 ollama입니다.",
+        "설정 화면의 「AI」에서 쓸 AI를 다시 골라 주세요. "
+        "(개발용: config.yaml의 llm.active를 llm.providers에 있는 이름으로)",
         503,
+    ),
+    ErrorKind.LLM_AUTH: ErrorText(
+        "AI 서비스가 이 키(또는 로그인)를 받아 주지 않았습니다.",
+        "설정 화면의 「AI」에서 API 키를 다시 넣거나, 그 프로그램에서 다시 로그인한 뒤 "
+        "[연결 확인]을 눌러 주세요.",
+        502,
+    ),
+    ErrorKind.LLM_RATE_LIMITED: ErrorText(
+        "AI 서비스의 요청 한도에 걸렸습니다(너무 자주 보냈거나 쓸 수 있는 양을 다 썼습니다).",
+        "잠시 뒤 다시 시도해 주세요. 계속되면 그 서비스의 요금·사용량 화면을 확인해 주세요.",
+        429,
+    ),
+    ErrorKind.LLM_SETTINGS_INVALID: ErrorText(
+        "이 AI는 아직 쓸 수 없습니다.",
+        "설정 화면의 「AI」에서 준비 상태를 확인해 주세요.",
+        422,
     ),
     ErrorKind.DRAFT_NOT_FOUND: ErrorText(
         "초안을 찾지 못했습니다.",
@@ -307,12 +327,21 @@ class AppError(Exception):
     """사용자에게 보일 수 있는 오류. 응답 본문은 `to_dict()`."""
 
     def __init__(
-        self, kind: ErrorKind, *, detail: str = "", extra: dict[str, Any] | None = None
+        self,
+        kind: ErrorKind,
+        *,
+        detail: str = "",
+        extra: dict[str, Any] | None = None,
+        message: str | None = None,
+        action: str | None = None,
     ) -> None:
+        """R5: `message`·`action`을 주면 그 AI에 맞는 문구로 바꾼다(종류와 HTTP 상태는 그대로).
+
+        예: Ollama 문구("Ollama를 켜세요") 대신 "OpenAI에 연결하지 못했습니다"."""
         self.kind = ErrorKind(kind)
         text = ERROR_TEXTS[self.kind]
-        self.message = text.message
-        self.action = text.action
+        self.message = message or text.message
+        self.action = action or text.action
         self.http_status = text.http_status
         self.detail = detail
         self.extra = dict(extra or {})  # 응답에 함께 싣는 구조화된 값(예: 걸린 검사 항목)

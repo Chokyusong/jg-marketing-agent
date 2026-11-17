@@ -50,7 +50,8 @@ def test_status_ai_model_missing(make_client, mock_http):
 
 
 def test_status_ai_unknown_provider_keeps_app_up(make_client):
-    overrides = {"llm": {"active": "claude", "providers": {"claude": {"type": "anthropic"}}}}
+    # R5부터 anthropic은 지원한다 → 모르는 종류는 다른 이름으로 본다
+    overrides = {"llm": {"active": "claude", "providers": {"claude": {"type": "mystery"}}}}
     client = make_client(overrides=overrides)
     res = client.get("/api/status")
     assert res.status_code == 200  # 앱은 뜨고, AI 상태가 이유를 알린다

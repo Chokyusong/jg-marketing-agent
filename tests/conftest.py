@@ -92,6 +92,16 @@ def _never_real_youtube(monkeypatch):
 
     monkeypatch.setattr(auto, "default_lister", lambda timeout=10.0: lambda video_id: [])
 
+    # R5: 로그인된 프로그램(Codex·Claude Code 등)도 진짜로 실행하지 않는다. 가짜 실행기를 끼우지
+    # 않은 테스트에서는 「설치되지 않음」으로 보이고, 실행하려 하면 실패한다
+    from app.llm import cli
+
+    def blocked_runner(req):
+        raise AssertionError(f"자동 테스트가 진짜 프로그램을 실행하려고 했다: {req.args[:2]}")
+
+    monkeypatch.setattr(cli, "default_runner", blocked_runner)
+    monkeypatch.setattr(cli, "default_which", lambda program: None)
+
 
 # ---------------------------------------------------------------- 임시 저장소·설정
 

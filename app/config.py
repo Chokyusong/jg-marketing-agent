@@ -12,6 +12,11 @@
   `llm.provider: ollama`도 읽는다. `providers.*.api_key_env`에 적힌 환경 변수 이름은 비밀값 목록에
   자동으로 들어가 로그·오류 문구에서 가려진다(값을 실제로 쓰는 공급자는 12단계).
 - 환경 변수가 `.env`보다 우선한다(테스트·일회성 실행에서 덮어쓰기 쉽게).
+- R5: 글 쓰는 AI(`llm.active`), AI마다 고른 모델(`llm.models`),
+  「직접 입력」 주소(`llm.base_urls`)는
+  프로그램 설정에서 읽는다. API 키는 AI마다 따로 암호화해 둔 것(`llm_keys/<이름>.bin`) >
+  `.env`(`api_key_env`가 가리키는 이름, 개발용) 순서. 어느 쪽이든 키 값은 비밀값 목록에 들어가
+  로그·오류 문구에서 가려진다.
 """
 
 from __future__ import annotations
@@ -34,6 +39,8 @@ DEFAULT_ENV_PATH = ROOT / ".env"
 DEFAULT_DB_PATH = ROOT / "data" / "app.sqlite3"
 
 SECRET_ENV_NAMES = ("YOUTUBE_API_KEY",)
+# R5: API 키를 쓰는 AI 종류(app/llm/registry.py와 같은 이름). 키는 AI마다 따로 저장한다
+LLM_KEY_TYPES = ("openai_compatible", "anthropic")
 DEFAULT_CONTEXT_CHARS = 6000
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 # D3(5단계 끝): 초안 비교에서 3번 안 통과율이 가장 높은 모델(docs/MODEL_EVAL.md).
@@ -115,10 +122,34 @@ class LLMSettings:
     keep_alive: str = "30m"
     ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL
     ollama_model: str = DEFAULT_OLLAMA_MODEL
+    # R5: 프로그램 설정에서 고른 AI별 모델·주소, AI별 API 키와 그 출처(program | dev_file)
+    models: dict[str, str] = field(default_factory=dict)
+    base_urls: dict[str, str] = field(default_factory=dict)
+    api_keys: dict[str, str] = field(default_factory=dict, repr=False)
+    key_sources: dict[str, str] = field(default_factory=dict)
 
     @property
     def active_provider(self) -> ProviderSettings | None:
         return self.providers.get(self.active)
+
+    def model_for(self, name: str) -> str:
+        """그 AI에 쓸 모델: 프로그램에서 고른 것 > config.yaml의 model > 빈 글(고르지 않음).
+
+        Ollama는 따로(`ollama_model`: 고른 모델 > .env의 OLLAMA_MODEL > 코드 기본값)."""
+        provider = self.providers.get(name)
+        if provider is not None and provider.type == "ollama":
+            return str(provider.options.get("model") or self.ollama_model)
+        chosen = (self.models.get(name) or "").strip()
+        if chosen:
+            return chosen
+        return str((provider.options.get("model") if provider else "") or "").strip()
+
+    def base_url_for(self, name: str) -> str:
+        provider = self.providers.get(name)
+        chosen = (self.base_urls.get(name) or "").strip()
+        if chosen and provider is not None and provider.options.get("editable_url"):
+            return chosen
+        return str((provider.options.get("base_url") if provider else "") or "").strip()
 
     @property
     def secret_env_names(self) -> tuple[str, ...]:
@@ -393,8 +424,12 @@ def load_settings(
     chosen_model = _clean(str(user_values.get("llm.model") or ""))
     if chosen_model:  # 프로그램에서 고른 모델이 .env의 OLLAMA_MODEL보다 먼저
         llm_settings = replace(llm_settings, ollama_model=chosen_model)
+    llm_settings = _llm_user_values(llm_settings, user_values, env, store)
     llm_secrets = tuple(
-        v for v in (_clean(env.get(n)) for n in llm_settings.secret_env_names) if v
+        dict.fromkeys(
+            [v for v in (_clean(env.get(n)) for n in llm_settings.secret_env_names) if v]
+            + [v for v in llm_settings.api_keys.values() if v]
+        )
     )
 
     if db_path is None:
@@ -437,6 +472,36 @@ def load_settings(
         user_values=user_values,
         source=source,
     )
+
+
+def _llm_user_values(
+    llm: LLMSettings, user_values: dict[str, Any], env: dict[str, str], store: UserStore | None
+) -> LLMSettings:
+    """R5: AI별 모델·주소와 키. 키는 프로그램에 저장한 것 > .env(개발용)."""
+    models_raw = user_values.get("llm.models")
+    urls_raw = user_values.get("llm.base_urls")
+    models = {
+        str(k): str(v).strip()
+        for k, v in (models_raw.items() if isinstance(models_raw, dict) else [])
+        if k in llm.providers and str(v).strip()
+    }
+    urls = {
+        str(k): str(v).strip()
+        for k, v in (urls_raw.items() if isinstance(urls_raw, dict) else [])
+        if k in llm.providers and str(v).strip()
+    }
+    keys: dict[str, str] = {}
+    sources: dict[str, str] = {}
+    for name, provider in llm.providers.items():
+        if provider.type not in LLM_KEY_TYPES:
+            continue
+        stored = store.read_llm_key(name) if store is not None else None
+        env_key = _clean(env.get(provider.api_key_env)) if provider.api_key_env else None
+        if stored:
+            keys[name], sources[name] = stored, "program"
+        elif env_key:
+            keys[name], sources[name] = env_key, "dev_file"
+    return replace(llm, models=models, base_urls=urls, api_keys=keys, key_sources=sources)
 
 
 def _transcript_provider(raw: Any) -> str:
