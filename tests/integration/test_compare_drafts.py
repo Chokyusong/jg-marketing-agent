@@ -299,3 +299,25 @@ def test_seed_changes_the_first_suggestion_on_an_empty_history():
     first_a = spread(seed=1)[0][0]
     others = {spread(seed=s)[0][0] for s in (2, 3, 4)}
     assert others - {first_a}, (first_a, others)
+
+
+def test_stats_count_bridges_reasons_and_ai_review():
+    """2026-11-18: 잇는 문장·까닭·잇는 문장 되풀이와 AI 검수 결과를 센다."""
+    lead = "요즘 운명원이 연애사주를 잘 본다고 하더라구요. "
+    bodies = [
+        ("[광고] 연락 문제로 싸웠다니. 결국 타이밍 문제인가 싶네요. " + lead + "저도 가보려구요.",
+         "passed", []),
+        ("[광고] 기대치 차이라니. 결국 타이밍 문제인가 싶어요. " + lead + "저도 가보려구요.",
+         "rewritten", ["x"]),
+        ("[광고] 장거리라니. " + lead + "저도 연락 문제로 조만간 가보려구요.", "flagged", ["y"]),
+        ("[광고] 장거리라니. " + lead + "저도 가보려구요.", "error", []),
+    ]
+    videos = [{"video_id": "v", "drafts": [
+        {"body": b, "chars": len(b), "passed": True, "first_passed": True, "attempts": 1,
+         "seconds": 2.0, "review": st, "review_first": first} for b, st, first in bodies]}]
+    stats = C._stats(videos)
+    assert stats["잇는 문장 있음"] == "2/4" and stats["까닭 있음"] == "1/4"
+    assert stats["잇는 문장 되풀이"] == "1"
+    assert stats["AI 검수 거짓(처음)"] == "2" and stats["AI 검수 고쳐 써서 통과"] == "1"
+    assert stats["AI 검수 고쳐도 남음"] == "1" and stats["AI 검수 못 함"] == "1"
+    assert stats["초안 1개 평균 시간"] == "2.0초"

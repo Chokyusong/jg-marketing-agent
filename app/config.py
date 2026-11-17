@@ -196,6 +196,8 @@ class Settings:
     # 게시 직전 확인(켜면 입력 뒤 [게시]를 한 번 더 눌러야 게시). 옛 키 own_video_ids는 읽지 않는다
     disclose_default: bool = True
     confirm_before_post: bool = False
+    # 2026-11-18 AI 검수 한 번: 규칙 검사를 통과한 초안을 AI가 한 번 더 읽는다(기본 켬)
+    ai_review: bool = True
     typing_speed: str = "normal"  # slow | normal | fast (browser.typing_delay_ms와 같은 뜻)
     window_screen: str | None = None  # 크롬 창을 띄울 모니터 ID(고른 적이 없으면 None)
     youtube_key_source: str | None = None  # program(프로그램에 저장) | dev_file(.env·환경 변수)
@@ -483,6 +485,7 @@ def load_settings(
         default_target=_default_target(rules.get("browser")),
         browser=browser,
         disclose_default=_flag(comment.get("disclose_default", True), "comment.disclose_default"),
+        ai_review=_flag(comment.get("ai_review", True), "comment.ai_review"),
         confirm_before_post=_flag(
             posting.get("confirm_before_post", False), "posting.confirm_before_post"
         ),

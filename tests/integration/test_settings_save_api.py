@@ -62,6 +62,16 @@ def test_disclose_default_and_confirm_apply_right_away(client):
     assert browser["disclose_default"] is False and browser["confirm_before_post"] is True
 
 
+def test_ai_review_setting_defaults_on_and_turns_off_right_away(client):
+    # 2026-11-18 AI 검수 한 번: 기본 켬, 끄면 초안 서비스가 바로 검수를 건너뛴다
+    assert client.get("/api/settings").json()["edit"]["values"]["comment.ai_review"] is True
+    assert client.app.state.services.get().drafts.ai_review is True
+    res = put(client, **{"comment.ai_review": False})
+    assert res.status_code == 200, res.text
+    assert client.app.state.services.get().drafts.ai_review is False
+    assert client.get("/api/settings").json()["edit"]["values"]["comment.ai_review"] is False
+
+
 # ---------------------------------------------------------------- 저장·바로 적용
 
 

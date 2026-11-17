@@ -4,6 +4,8 @@
 //   저장된 분석만 있으면 분석은 건너뛰고 초안만 만든다.
 // - 다른 영상을 고르면 하던 것은 버린다(차례 번호 runToken으로 늦게 온 응답·타이머를 무시한다).
 // - [다른 댓글 만들기]는 이미 쓴 근거를 피해 초안만 다시. 실패하면 이유와 [다시 해 보기].
+// - 2026-11-18 AI 검수 한 번: 초안이 규칙 검사를 통과하면(서버가 review.status 'pending'으로 돌려줌)
+//   「다듬는 중」을 보이며 POST /api/drafts/{id}/review를 부른다. 검수 요청이 실패해도 초안은 그대로 보인다.
 // - 연애 고민이 없는 자료(no_love_concern)면 초안 없이 멈추고 「자막 직접 넣기」를 연다. 자막을 [저장]하면 다시 만든다.
 // - ensureApproved(): ③의 [댓글 달기]가 부른다. 고친 글이면 먼저 저장(PATCH)하고, 아직 승인 전이면 승인한다.
 import { api } from './api.js';
@@ -12,11 +14,12 @@ import { refreshOps } from './ops.js';
 import { getState, setState, subscribe } from './state.js';
 
 const $ = (id) => document.getElementById(id);
-const PHASES = ['context', 'analysis', 'draft', 'check'];
+const PHASES = ['context', 'analysis', 'draft', 'review', 'check'];
 const PHASE_TEXT = {
   context: '영상 자료 읽는 중',
   analysis: '고민 정리 중',
   draft: '댓글 쓰는 중',
+  review: 'AI가 한 번 더 읽고 다듬는 중',
   check: '규칙 검사 정리 중',
 };
 const SLOW_NOTE = '처음에는 1분쯤 걸릴 수 있습니다';
@@ -101,8 +104,19 @@ async function run(videoId, { another = false, analysis = null } = {}) {
       }
       setRun({ phase: 'draft', ...(analysis ? {} : { cold: false }) }); // 분석이 모델을 불러 뒀다
     }
-    const draft = await api.createDraft(videoId, { another, disclose: discloseOn() });
+    let draft = await api.createDraft(videoId, { another, disclose: discloseOn(), review: false });
     if (!live()) return;
+    if (draft.review && draft.review.status === 'pending') {
+      setRun({ phase: 'review' });
+      try {
+        draft = await api.reviewDraft(draft.id);
+      } catch (error) {
+        // 검수 요청이 실패해도 초안은 그대로 쓴다(게시를 막지 않는다)
+      }
+      if (!live()) return;
+    } else {
+      setRun({ skipReview: true }); // 설정에서 껐거나 규칙 검사에 걸린 초안: 「다듬는 중」은 하지 않았다
+    }
     setRun({ phase: 'check' });
     loadDraft(draft);
     const tries = draft.passed
@@ -221,8 +235,10 @@ function renderRun(state) {
   for (const li of $('run-steps').children) {
     const i = PHASES.indexOf(li.dataset.phase);
     const finished = r && r.phase === 'done';
-    const done = r && (finished || (at >= 0 && i < at) || (r.skipAnalysis && i === 1 && r.phase !== 'error'));
+    const skipped = Boolean(r && r.skipReview && li.dataset.phase === 'review');
+    const done = r && !skipped && (finished || (at >= 0 && i < at) || (r.skipAnalysis && i === 1 && r.phase !== 'error'));
     li.classList.toggle('is-done', Boolean(done));
+    li.classList.toggle('is-skip', skipped);
     li.classList.toggle('is-current', Boolean(r && i === at && running));
     li.classList.toggle('is-bad', Boolean(r && r.phase === 'error' && i === PHASES.indexOf(r.failedAt || '')));
   }
@@ -236,6 +252,7 @@ function renderRun(state) {
   else if (r && r.phase === 'done') text = `${seconds(r)}초 · ${r.note}`;
   else if (r && r.phase === 'error') text = `${seconds(r)}초 만에 멈췄습니다 · 아래 안내를 확인해 주세요`;
   if (note.textContent !== text) note.textContent = text;
+  if (note.title !== text) note.title = text;
 
   const btn = $('run-btn');
   btn.disabled = !state.selectedId || running;

@@ -45,7 +45,18 @@ def create_draft(body: DraftCreateIn, services: ServicesDep) -> DraftOut:
     avoid = list(body.avoid_quotes)
     if body.another:
         avoid += used_quotes(drafts.list(body.video_id))
-    draft = drafts.generate(body.video_id, avoid_quotes=avoid, disclose=body.disclose)
+    draft = drafts.generate(
+        body.video_id, avoid_quotes=avoid, disclose=body.disclose, review=body.review
+    )
+    return DraftOut.from_draft(draft, services.checks.rules)
+
+
+@router.post("/drafts/{draft_id}/review", response_model=DraftOut)
+def review_draft(draft_id: int, services: ServicesDep) -> DraftOut:
+    """AI 검수 한 번(2026-11-18). 규칙 검사를 통과한 모델 초안을 AI가 읽고, 어색하면 한 번
+    다시 쓴다. 검수할 것이 없으면(이미 함·사람이 고침·설정을 끔) 그대로 돌려준다. 검수가
+    실패해도 오류를 내지 않고 「검수 못 함」으로 남긴다."""
+    draft = services.drafts.review(draft_id)
     return DraftOut.from_draft(draft, services.checks.rules)
 
 

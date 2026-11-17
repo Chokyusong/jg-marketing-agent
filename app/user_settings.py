@@ -269,6 +269,7 @@ FIELDS: dict[str, Field] = {
     "brand.facts": Field("lines", "써도 되는 사실 문장", ("brand", "facts"), 2, 200, max_items=10),
     "comment.disclosure": Field("str", "광고 표기 문구", ("comment", "disclosure"), 1, 20),
     "comment.disclose_default": Field("bool", "광고 표기 기본값", ("comment", "disclose_default")),
+    "comment.ai_review": Field("bool", "AI 검수 한 번", ("comment", "ai_review")),
     "limits.daily_max_comments": Field(
         "int", "하루 상한", ("limits", "daily_max_comments"), 1, 50
     ),

@@ -67,6 +67,9 @@ def test_full_flow_select_auto_draft_one_click_post_and_screens_keep_state(live)
         assert llm.count("analysis", 2) == 1 and llm.count("draft", 2) == 1
         assert "모두 통과" in page.text_content("#draft-checks")
         assert page.locator(".checks-fail li").count() == 0  # 통과면 한 줄로 접힌다
+        # 2026-11-18 AI 검수 한 번: 「모두 통과」 옆 한 줄, 「다듬는 중」 단계를 거쳤다
+        assert page.text_content("#checks-review") == "AI 검수 통과"
+        assert "is-done" in page.get_attribute('#run-steps li[data-phase="review"]', "class")
 
         # ③ [댓글 달기] 한 번 → 승인 API → 연습 모드 게시 시작 → 게시 직전 금색 [게시]
         assert page.is_checked("#practice-mode")

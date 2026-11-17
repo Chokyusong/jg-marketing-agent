@@ -46,10 +46,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from eval_drafts import CONTEXTS_DIR, load_contexts, prepare, youtube_transport  # noqa: E402
 
+from app.analysis import review as rv  # noqa: E402
 from app.analysis import style  # noqa: E402
 from app.api.deps import Services, build_services  # noqa: E402
 from app.config import Settings, load_settings  # noqa: E402
 from app.errors import AppError  # noqa: E402
+from app.llm import prompts  # noqa: E402
 from app.youtube.quota import utc_now  # noqa: E402
 
 RETRY_HEAD = "걸린 항목(고치는 법):"
@@ -142,6 +144,10 @@ def run(
                 "first_passed": d.first_passed, "attempts": d.attempts,
                 "seconds": round(time.monotonic() - started, 1), "quote": d.evidence_quote,
                 "tone": d.tone_label, "failures": d.validation.failure_lines(),
+                # 2026-11-18 AI 검수 한 번: 결과와 처음 검수가 짚은 문제(다시 쓰기 전)
+                "review": d.review_status, "review_problems": list((d.review or {}).get("problems")
+                                                                   or []),
+                "review_first": list((d.review or {}).get("first") or []),
                 "run": json.loads(json.dumps(services.drafts.last_run, ensure_ascii=False)),
                 "retry_reasons": [
                     [ln[2:] for ln in p.split(RETRY_HEAD, 1)[1].splitlines() if ln.startswith("- ")]
@@ -180,21 +186,52 @@ def _cell(x: dict[str, Any] | None) -> str:
     return f"{_esc(x['body'])} ({x['chars']}자 · {mark} · {x.get('attempts', '?')}번째)"
 
 
-def _stats(videos: Sequence[dict[str, Any]]) -> dict[str, str]:
+def _bridge_counts(ds: Sequence[dict[str, Any]], brand: str) -> tuple[int, int, int]:
+    """(잇는 문장 있는 초안, 까닭 있는 초안, 앞 초안의 잇는 문장을 되풀이한 초안) — 2026-11-18."""
+    bridges = [prompts.bridge_sentence(x["body"], brand) for x in ds]
+    reasons = sum(bool(prompts.intent_reason(x["body"], brand)) for x in ds)
+    repeats = sum(bool(style.repeated_bridge(b, [o for o in bridges[:i] if o]))
+                  for i, b in enumerate(bridges))
+    return sum(bool(b) for b in bridges), reasons, repeats
+
+
+def _review_counts(ds: Sequence[dict[str, Any]]) -> dict[str, int]:
+    """AI 검수 한 번(2026-11-18): 처음 검수가 거짓 · 한 번 고쳐 써서 통과 · 고쳐도 남음 · 못 함."""
+    status = Counter(x.get("review", "") for x in ds)
+    first_false = sum(1 for x in ds if x.get("review") in (rv.REWRITTEN, rv.FLAGGED)
+                      or x.get("review_first"))
+    return {"false": first_false, "rewritten": status[rv.REWRITTEN],
+            "left": status[rv.FLAGGED], "error": status[rv.ERROR]}
+
+
+def _stats(videos: Sequence[dict[str, Any]], brand: str = "운명원") -> dict[str, str]:
     ds = _drafts(videos)
     n = len(ds)
     if not n:
         return {}
     chars = [x["chars"] for x in ds]
     attempts = Counter(x.get("attempts", 0) for x in ds)
-    return {
+    bridged, reasons, repeats = _bridge_counts(ds, brand)
+    out = {
         "3번 안 통과": f"{sum(bool(x.get('passed')) for x in ds)}/{n}",
         "첫 시도 규칙 검사 통과": f"{sum(bool(x.get('first_passed')) for x in ds)}/{n}",
         "시도 1·2·3번": " · ".join(str(attempts.get(i, 0)) for i in (1, 2, 3)),
         "글자 수 범위(평균)": f"{min(chars)}~{max(chars)}자({sum(chars) / n:.0f})",
         "110자 넘음": str(sum(c > style.SOFT_MAX_TOTAL for c in chars)),
         "초안 1개 평균 시간": f"{sum(x.get('seconds', 0) for x in ds) / n:.1f}초",
+        "잇는 문장 있음": f"{bridged}/{n}",
+        "까닭 있음": f"{reasons}/{n}",
+        "잇는 문장 되풀이": str(repeats),
     }
+    if any("review" in x for x in ds):
+        r = _review_counts(ds)
+        out.update({
+            "AI 검수 거짓(처음)": str(r["false"]),
+            "AI 검수 고쳐 써서 통과": str(r["rewritten"]),
+            "AI 검수 고쳐도 남음": str(r["left"]),
+            "AI 검수 못 함": str(r["error"]),
+        })
+    return out
 
 
 def remaining_issues(
@@ -248,7 +285,7 @@ def markdown_table(
                 lines.append(f"{head} {_cell(mine)} |")
     sides = [before, after] if before is not None else [after]
     names = list(labels) if before is not None else [labels[1]]
-    stats = [_stats(s or []) for s in sides]
+    stats = [_stats(s or [], brand) for s in sides]
     keys = list(dict.fromkeys(k for s in stats for k in s))
     lines += ["", "| 지표 | " + " | ".join(names) + " |", "|---" * (len(names) + 1) + "|"]
     for k in keys:

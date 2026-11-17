@@ -397,6 +397,9 @@ class DraftCreateIn(BaseModel):
     another: bool = False
     # 광고 표기를 붙일지(R3: 모든 영상에서 켜고 끌 수 있다). 비우면 설정의 「광고 표기 기본값」
     disclose: bool | None = None
+    # AI 검수 한 번(2026-11-18): 비우면 규칙 검사를 통과한 초안을 바로 검수한다(설정이 켜져 있을
+    # 때). false면 「pending」으로 두고 화면이 POST /api/drafts/{id}/review를 따로 부른다
+    review: bool | None = None
 
 
 class DraftPatchIn(BaseModel):
@@ -407,6 +410,25 @@ class DraftDisclosureIn(BaseModel):
     """R3: 초안의 광고 표기를 붙이거나 뗀다(저장된 글에서 표기만 바꾸고 다시 검사)."""
 
     disclose: bool
+
+
+class ReviewOut(BaseModel):
+    """AI 검수 한 번(2026-11-18).
+
+    status: passed | rewritten | flagged | error | off | pending | 빈 글(안 함)."""
+
+    status: str = ""
+    label: str = ""  # 화면에 보이는 한 줄(없으면 빈 글)
+    problems: list[str] = Field(default_factory=list)  # 남은 문제(flagged일 때만)
+
+    @classmethod
+    def from_review(cls, review: dict | None) -> ReviewOut:
+        from app.analysis import review as rv
+
+        data = review or {}
+        status = str(data.get("status") or "")
+        problems = [str(p) for p in data.get("problems") or []] if status == rv.FLAGGED else []
+        return cls(status=status, label=rv.label(status), problems=problems)
 
 
 class DraftOut(BaseModel):
@@ -428,11 +450,13 @@ class DraftOut(BaseModel):
     approved_at: str | None
     validation: ValidationOut
     disclosed: bool = True  # 광고 표기를 붙인 초안인지(R3: 모든 영상에서 켜고 끌 수 있다)
+    review: ReviewOut = Field(default_factory=ReviewOut)  # AI 검수 한 번(2026-11-18)
 
     @classmethod
     def from_draft(cls, d: Draft, rules: ValidatorRules) -> DraftOut:
         return cls(
             disclosed=d.disclosed,
+            review=ReviewOut.from_review(d.review),
             id=d.id,
             video_id=d.video_id,
             body=d.body,

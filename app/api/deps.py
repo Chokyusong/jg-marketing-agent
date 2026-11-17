@@ -180,6 +180,7 @@ def build_services(
         brand_facts=settings.brand_facts,
         ledger=services.ledger,
         disclose_default=settings.disclose_default,
+        ai_review=settings.ai_review,
     )
     services.hooks = browser_hooks or BrowserHooks()
     services.jobs = build_jobs(services, clock=clock)

@@ -391,7 +391,8 @@ def test_report_box_runs_by_itself_with_three_steps(page):
     assert 'id="run-btn" disabled>다시 해 보기</button>' in run_error
     phases = re.findall(r'<li data-phase="(\w+)">([^<]+)</li>', report)
     assert phases == [
-        ("context", "영상 자료 읽는 중"), ("analysis", "고민 정리 중"), ("draft", "댓글 쓰는 중")]
+        ("context", "영상 자료 읽는 중"), ("analysis", "고민 정리 중"), ("draft", "댓글 쓰는 중"),
+        ("review", "다듬는 중")]  # 2026-11-18 AI 검수 한 번
     assert "처음에는 1분쯤 걸릴 수 있습니다" in report  # 긴 작업 안내
     assert 'id="run-error" role="alert" hidden' in report
     assert '<p class="label">영상 속 고민 한 줄</p>' in report and 'id="an-concern"' in report

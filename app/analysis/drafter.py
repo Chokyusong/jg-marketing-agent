@@ -40,6 +40,11 @@ C1 다듬기(2026-11-17, 대표 지시 「초안 더 다듬고」)
 
 7단계: 분석·초안 생성·승인을 작업 기록(`runs`)에 남긴다(`ledger`를 넣었을 때). 해낸 것은 info,
 오류로 멈춘 것은 failure와 사유. V11의 이전 글에는 게시한 댓글(다른 영상)도 들어간다.
+
+AI 검수 한 번(2026-11-18, `review` · `app/analysis/review.py`): 규칙 검사를 통과한 초안을 AI가 한 번
+더 읽는다(문법·뜻·이어짐·댓글 말투). 거짓이면 그 문제로 한 번만 다시 쓰게 하고(다시 쓴 글도 규칙·
+다듬기 검사) 다시 검수한다. 결과는 `drafts.review_json`. 게시(승인)는 막지 않고, 검수 호출이
+실패하면 초안을 그대로 두고 「검수 못 함」으로 남긴다. 설정 `comment.ai_review`(기본 켬).
 """
 
 from __future__ import annotations
@@ -52,10 +57,12 @@ import unicodedata
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from app import db
 from app.analysis import analyzer, style
+from app.analysis import review as rv
 from app.analysis.analyzer import Analysis, Evidence
 from app.analysis.checking import CheckService
 from app.analysis.context import ContextService
@@ -106,6 +113,13 @@ class Draft:
     approved_at: str | None
     first_passed: bool = False  # 첫 시도에서 통과했는지(모델 비교용)
     disclosed: bool = True  # R3: 광고 표기를 붙인 초안인지(끈 초안은 V4가 「표기 끔」으로 통과)
+    # AI 검수 한 번(2026-11-18): {"status": passed|rewritten|flagged|error|off|pending, "problems":
+    # [...], "first": [...]} — 아직 안 했거나 규칙 검사에 걸린 초안·사람이 고친 글은 빈 dict
+    review: dict[str, Any] | None = None
+
+    @property
+    def review_status(self) -> str:
+        return str((self.review or {}).get("status") or "")
 
 
 def clean_body(raw: Any, disclosure: str) -> str:
@@ -150,6 +164,14 @@ def _validation_from_json(raw: str) -> Validation:
     )
 
 
+def _review_from_json(raw: str) -> dict[str, Any]:
+    try:
+        data = json.loads(raw) if raw else {}
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 class DraftService:
     def __init__(
         self,
@@ -165,6 +187,7 @@ class DraftService:
         disclose_default: bool = True,
         polish: bool = POLISH_DRAFTS,
         rng: random.Random | None = None,
+        ai_review: bool = True,
     ) -> None:
         self.context = context
         # 꺼내는 말·끝말을 권할 때 횟수가 같으면 무작위로(2026-11-17). 시험은 씨앗을 넣는다
@@ -178,6 +201,7 @@ class DraftService:
         self.ledger = ledger
         self.disclose_default = bool(disclose_default)  # R3: 설정의 「광고 표기 기본값」
         self.polish = bool(polish)
+        self.ai_review = bool(ai_review)  # 설정 comment.ai_review: 규칙 검사 뒤 AI 검수 한 번
         self.last_run: dict[str, Any] = {}  # 마지막 초안 만들기의 과정(시도별 글·다듬기)
         self._context_text = ""  # 지금 초안을 만드는 영상의 자료 글(다듬기 검사 S5)
         self._last_shown = ""  # 바로 앞에 보인 초안(다듬기 검사 S8)
@@ -284,11 +308,15 @@ class DraftService:
     # ------------------------------------------------------------ 초안
 
     def generate(
-        self, video_id: str, *, avoid_quotes: Sequence[str] = (), disclose: bool | None = None
+        self, video_id: str, *, avoid_quotes: Sequence[str] = (), disclose: bool | None = None,
+        review: bool | None = None,
     ) -> Draft:
         """초안 하나를 만들어 저장한다. 같은 영상의 이전 'draft' 초안은 'superseded'가 된다.
 
         `disclose`: 광고 표기를 붙일지(어떤 영상이든). None이면 설정의 「광고 표기 기본값」.
+        `review`: 규칙 검사를 통과하면 바로 AI 검수까지 할지. None이면 한다(설정이 켜져 있을
+        때). False면 검수를 미뤄 두고(「pending」) 화면이 「다듬는 중」을 보이며 `review()`를 따로
+        부른다.
         """
         self._check_id(video_id)
         disclose = self.disclose_default if disclose is None else bool(disclose)
@@ -298,9 +326,19 @@ class DraftService:
             self._record("draft", "failure", video_id=video_id, reason=exc.message)
             raise
         if draft.passed:
+            if not self.ai_review:
+                draft = self._save_review(draft, {"status": rv.OFF})
+            elif review is False:
+                draft = self._save_review(draft, {"status": "pending"})
+            else:
+                draft = self.review(draft.id)
+        if draft.passed:
             reason = f"규칙 검사 통과 · {draft.attempts}번째 시도"
             if self.last_run.get("polish", {}).get("accepted"):
                 reason += " · 다듬음"
+            label = rv.label(draft.review_status)
+            if label:
+                reason += f" · {label}"
         else:
             reason = f"규칙 검사 {len(draft.validation.failures)}개 걸림 · {draft.attempts}번 시도"
         self._record(
@@ -314,62 +352,10 @@ class DraftService:
         if analysis is None or analysis.legacy:
             analysis = self.analyze(video_id)  # C1: 예전 분석은 다시 한다(핵심 말·고민의 꼴)
         evidence = analyzer.pick_evidence(analysis.evidence, avoid_quotes)
-        llm = self._llm()
-        rules = self.rules
-        mark = rules.disclosure if disclose else ""  # 앞에 붙일 표기(끄면 빈 글)
-        min_body, max_body = prompts.body_limits(
-            min_chars=rules.min_chars, max_chars=rules.max_chars, disclosure=mark
-        )
-        system = prompts.draft_system(
-            brand=rules.brand, disclosure=rules.disclosure, facts=self.brand_facts,
-            sample=ASSIGNMENT_SAMPLE,
-        )
-        previous = self.previous_texts(video_id)
-        mine = self.list(video_id)
-        avoid_bodies = [d.body for d in mine][:3]
-        # C1 다듬기: [다른 댓글 만들기]는 앞 초안과 다른 핵심 말로(남은 핵심 말이 있을 때)
-        phrases = [k for k in analysis.key_phrases if k]
-        used_before = [k for k in phrases if any(k in style.used_phrases(b, phrases)
-                                                 for b in avoid_bodies)]
-        avoid_phrases = used_before if len(used_before) < len(phrases) else []
-        # C1: 말투 유형이 영상마다 이어서 같지 않게(직전 승인 초안), 같은 영상 초안끼리도 다르게
-        avoid_tones = [self.last_tone(video_id)] + [d.tone_label for d in mine[:2]]
-        tones = prompts.allowed_tones(avoid_tones)
-        schema = prompts.draft_schema(tones)
-        # 다른 영상에서 승인한 초안의 권유 문장: 되풀이하지 말라고 프롬프트에 넣는다(5단계 점검)
-        used_closings = [
-            prompts.closing_sentence(t, brand=rules.brand, disclosure=rules.disclosure)
-            for t in previous
-        ]
-        # C1 손질 2회차: 운명원 꺼내는 말·끝말·첫 반응이 한 틀로 굳지 않게 덜 쓴 것을 권한다.
-        # 2026-11-17(대표): 「이미 쓴 글」은 승인한 초안이 아니라 사람에게 보인 초안 전부로 센다
-        # (초안을 보기만 하고 게시하지 않으면 기록이 늘지 않아 같은 말만 권했다).
-        # V11 같은 규칙 검사의 기준(`previous`, 게시한 글)은 그대로 둔다
-        shown = self.shown_texts()
-        hearsay = prompts.hearsay_choices(
-            rules.brand, shown, n=3, avoid=avoid_bodies, rng=self.rng)
-        endings = prompts.ending_choices(shown, n=3, avoid=avoid_bodies, rng=self.rng)
-        used_openings = [prompts.opening_sentence(t, disclosure=rules.disclosure) for t in shown]
-
-        try:  # S5(영상 숫자를 내 것으로)를 볼 영상 자료 글
-            context_text = self.context.search_text(self.context.current(video_id))
-        except AppError:
-            context_text = ""
-        self._context_text = context_text
-        # ⑤의 까닭(2026-11-18): 같은 영상 초안 가운데 적어도 하나는 이 영상 고민에서 온 까닭을
-        # 넣게 한다. 앞 초안에 이미 있으면 까닭 없는 본보기 꼴도 된다고 한다(전부 강제하지 않음)
-        want_reason = not any(prompts.intent_reason(b, rules.brand) for b in avoid_bodies)
-        # 2026-11-18: 앞서 보인 초안(다른 영상 포함, 꺼내는 말을 세는 범위와 같게)의 까닭은 피한다
-        self._used_reasons = list(dict.fromkeys(
-            r for r in (prompts.intent_reason(t, rules.brand) for t in [*avoid_bodies, *shown]) if r
-        ))
-        # ② 잇는 문장(2026-11-18): 앞서 보인 초안(다른 영상 포함)에 쓴 잇는 문장은 피한다
-        self._used_bridges = list(dict.fromkeys(
-            b for b in (prompts.bridge_sentence(t, rules.brand) for t in [*avoid_bodies, *shown])
-            if b
-        ))
-        # S8: 바로 앞에 보인 초안과 같은 본보기를 그대로 옮기지 않게
-        self._last_shown = shown[0] if shown else ""
+        kit = self._prepare(video_id, analysis, disclose)
+        llm, rules, mark = kit.llm, kit.rules, kit.mark
+        system, schema, max_body = kit.system, kit.schema, kit.max_body
+        previous, avoid_bodies = kit.previous, kit.avoid_bodies
 
         # (실패 수, 다듬기 문제 수, 글, 말투, 검사, 차례, 다듬기 문제)
         best: tuple[int, int, str, str, Validation, int, list[str]] | None = None
@@ -380,31 +366,7 @@ class DraftService:
         attempts = 0
         first_passed = False
         for attempt in range(1, self.max_attempts + 1):
-            user = prompts.draft_user(
-                analysis=analysis.to_prompt(),
-                quote=evidence.quote,
-                source=evidence.source,
-                min_body=min_body,
-                max_body=max_body,
-                key_phrases=analysis.key_phrases,
-                tones=tones,
-                avoid_tones=[t for t in avoid_tones if t and t not in tones],
-                max_chars=rules.max_chars,
-                brand=rules.brand,
-                hearsay=hearsay,
-                endings=endings,
-                used_openings=used_openings,
-                failure_lines=failure_lines,
-                previous_body=previous_body,
-                avoid_bodies=avoid_bodies,
-                used_closings=used_closings,
-                avoid_phrases=avoid_phrases,
-                last_model=prompts.copied_model(self._last_shown) if self._last_shown else -1,
-                reason=want_reason,
-                used_reasons=self._used_reasons,
-                bridge=True,
-                used_bridges=self._used_bridges,
-            )
+            user = self._draft_prompt(kit, analysis, evidence, failure_lines, previous_body)
             try:
                 data = llm.generate_json(
                     system=system,
@@ -481,6 +443,107 @@ class DraftService:
             draft_id = int(cur.lastrowid)
         return self.get(draft_id)
 
+    def _prepare(
+        self, video_id: str, analysis: Analysis, disclose: bool, exclude: Draft | None = None
+    ) -> SimpleNamespace:
+        """초안 프롬프트에 넣을 것을 모은다(초안 만들기와 AI 검수 뒤 다시 쓰기가 함께 쓴다).
+
+        `exclude`: AI 검수로 다시 쓰는 그 초안. 「같은 영상 앞 초안」·「보인 초안」에서 뺀다(자기
+        글을 피하라고 하지 않게). 다듬기 검사가 볼 이 영상의 것(`_used_reasons` 등)도 여기서 정한다.
+        """
+        llm = self._llm()
+        rules = self.rules
+        mark = rules.disclosure if disclose else ""  # 앞에 붙일 표기(끄면 빈 글)
+        min_body, max_body = prompts.body_limits(
+            min_chars=rules.min_chars, max_chars=rules.max_chars, disclosure=mark
+        )
+        system = prompts.draft_system(
+            brand=rules.brand, disclosure=rules.disclosure, facts=self.brand_facts,
+            sample=ASSIGNMENT_SAMPLE,
+        )
+        previous = self.previous_texts(video_id)
+        mine = [d for d in self.list(video_id) if exclude is None or d.id != exclude.id]
+        avoid_bodies = [d.body for d in mine][:3]
+        # C1 다듬기: [다른 댓글 만들기]는 앞 초안과 다른 핵심 말로(남은 핵심 말이 있을 때)
+        phrases = [k for k in analysis.key_phrases if k]
+        used_before = [k for k in phrases if any(k in style.used_phrases(b, phrases)
+                                                 for b in avoid_bodies)]
+        avoid_phrases = used_before if len(used_before) < len(phrases) else []
+        # C1: 말투 유형이 영상마다 이어서 같지 않게(직전 승인 초안), 같은 영상 초안끼리도 다르게
+        avoid_tones = [self.last_tone(video_id)] + [d.tone_label for d in mine[:2]]
+        tones = prompts.allowed_tones(avoid_tones)
+        schema = prompts.draft_schema(tones)
+        # 다른 영상에서 승인한 초안의 권유 문장: 되풀이하지 말라고 프롬프트에 넣는다(5단계 점검)
+        used_closings = [
+            prompts.closing_sentence(t, brand=rules.brand, disclosure=rules.disclosure)
+            for t in previous
+        ]
+        # C1 손질 2회차: 운명원 꺼내는 말·끝말·첫 반응이 한 틀로 굳지 않게 덜 쓴 것을 권한다.
+        # 2026-11-17(대표): 「이미 쓴 글」은 승인한 초안이 아니라 사람에게 보인 초안 전부로 센다
+        # (초안을 보기만 하고 게시하지 않으면 기록이 늘지 않아 같은 말만 권했다).
+        # V11 같은 규칙 검사의 기준(`previous`, 게시한 글)은 그대로 둔다
+        shown = [t for t in self.shown_texts() if exclude is None or t != exclude.body]
+        hearsay = prompts.hearsay_choices(
+            rules.brand, shown, n=3, avoid=avoid_bodies, rng=self.rng)
+        endings = prompts.ending_choices(shown, n=3, avoid=avoid_bodies, rng=self.rng)
+        used_openings = [prompts.opening_sentence(t, disclosure=rules.disclosure) for t in shown]
+
+        try:  # S5(영상 숫자를 내 것으로)를 볼 영상 자료 글
+            context_text = self.context.search_text(self.context.current(video_id))
+        except AppError:
+            context_text = ""
+        self._context_text = context_text
+        # ⑤의 까닭(2026-11-18): 같은 영상 초안 가운데 적어도 하나는 이 영상 고민에서 온 까닭을
+        # 넣게 한다. 앞 초안에 이미 있으면 까닭 없는 본보기 꼴도 된다고 한다(전부 강제하지 않음)
+        want_reason = not any(prompts.intent_reason(b, rules.brand) for b in avoid_bodies)
+        # 2026-11-18: 앞서 보인 초안(다른 영상 포함, 꺼내는 말을 세는 범위와 같게)의 까닭은 피한다
+        self._used_reasons = list(dict.fromkeys(
+            r for r in (prompts.intent_reason(t, rules.brand) for t in [*avoid_bodies, *shown]) if r
+        ))
+        # ② 잇는 문장(2026-11-18): 앞서 보인 초안(다른 영상 포함)에 쓴 잇는 문장은 피한다
+        self._used_bridges = list(dict.fromkeys(
+            b for b in (prompts.bridge_sentence(t, rules.brand) for t in [*avoid_bodies, *shown])
+            if b
+        ))
+        # S8: 바로 앞에 보인 초안과 같은 본보기를 그대로 옮기지 않게
+        self._last_shown = shown[0] if shown else ""
+        return SimpleNamespace(
+            llm=llm, rules=rules, mark=mark, min_body=min_body, max_body=max_body, system=system,
+            previous=previous, avoid_bodies=avoid_bodies, avoid_phrases=avoid_phrases,
+            avoid_tones=avoid_tones, tones=tones, schema=schema, used_closings=used_closings,
+            hearsay=hearsay, endings=endings, used_openings=used_openings, want_reason=want_reason,
+        )
+
+    def _draft_prompt(
+        self, kit: SimpleNamespace, analysis: Analysis, evidence: Evidence,
+        failure_lines: Sequence[str], previous_body: str,
+    ) -> str:
+        return prompts.draft_user(
+            analysis=analysis.to_prompt(),
+            quote=evidence.quote,
+            source=evidence.source,
+            min_body=kit.min_body,
+            max_body=kit.max_body,
+            key_phrases=analysis.key_phrases,
+            tones=kit.tones,
+            avoid_tones=[t for t in kit.avoid_tones if t and t not in kit.tones],
+            max_chars=kit.rules.max_chars,
+            brand=kit.rules.brand,
+            hearsay=kit.hearsay,
+            endings=kit.endings,
+            used_openings=kit.used_openings,
+            failure_lines=failure_lines,
+            previous_body=previous_body,
+            avoid_bodies=kit.avoid_bodies,
+            used_closings=kit.used_closings,
+            avoid_phrases=kit.avoid_phrases,
+            last_model=prompts.copied_model(self._last_shown) if self._last_shown else -1,
+            reason=kit.want_reason,
+            used_reasons=self._used_reasons,
+            bridge=True,
+            used_bridges=self._used_bridges,
+        )
+
     def _style(
         self, text: str, mark: str, key_phrases: Sequence[str], earlier: Sequence[str]
     ) -> list[str]:
@@ -539,6 +602,126 @@ class DraftService:
         info["accepted"] = True
         return new_text, checked
 
+    # ------------------------------------------------------------ AI 검수 한 번(2026-11-18)
+
+    def review(self, draft_id: int) -> Draft:
+        """규칙 검사를 통과한 모델 초안을 AI가 한 번 더 읽는다(`app/analysis/review.py`).
+
+        검수할 것이 없으면(설정을 끔·이미 함·규칙 검사에 걸림·사람이 고침·승인됨) 그대로 돌려준다.
+        거짓이면 그 문제로 **한 번만** 다시 쓰게 하고, 다시 쓴 글이 규칙 검사를 통과하고 다듬기
+        검사 문제가 늘지 않을 때만 그 글로 바꿔 다시 검수한다. 어떤 경우에도 예외를 내지 않는다
+        (검수 때문에 초안 만들기가 실패하지 않게). 과정은 `last_run["review"]`에 남는다.
+        """
+        draft = self.get(draft_id)
+        if not self.ai_review:
+            return draft if draft.review_status else self._save_review(draft, {"status": rv.OFF})
+        if (draft.status != "draft" or not draft.passed or draft.edited_by_human
+                or draft.review_status not in ("", "pending")):
+            return draft
+        started = time.monotonic()
+        info: dict[str, Any] = {}
+        self.last_run["review"] = info
+        try:
+            result, text, validation = self._review(draft, info)
+        except Exception as exc:  # noqa: BLE001 — 검수는 초안 만들기를 절대 막지 않는다
+            info["error"] = f"{type(exc).__name__}: {exc}"
+            result, text, validation = {"status": rv.ERROR, "problems": []}, None, None
+        result["seconds"] = info["seconds"] = round(time.monotonic() - started, 1)
+        info["status"] = result["status"]
+        return self._save_review(draft, result, text=text, validation=validation)
+
+    def _review(
+        self, draft: Draft, info: dict[str, Any]
+    ) -> tuple[dict[str, Any], str | None, Validation | None]:
+        """(검수 결과, 바꿀 글 또는 None, 그 글의 검사 또는 None)."""
+        rules = self.rules
+        mark = rules.disclosure if draft.disclosed else ""
+        analysis = self.stored_analysis(draft.video_id)
+        concern = analysis.concern if analysis else ""
+        phrases = list(analysis.key_phrases) if analysis else []
+        try:
+            title = self.context.current(draft.video_id).video.video.title
+        except AppError:
+            title = ""
+        system = rv.review_system(brand=rules.brand)
+        llm = self._llm()
+
+        def ask(text: str) -> tuple[bool, list[str]] | None:
+            body = toggle_disclosure(text, rules.disclosure, False)
+            try:
+                return rv.ask(llm, system=system, user=rv.review_user(
+                    body=body, title=title, concern=concern, key_phrases=phrases))
+            except (AppError, ValueError) as exc:
+                info.setdefault("errors", []).append(str(getattr(exc, "message", exc)))
+                return None
+
+        first = ask(draft.body)
+        if first is None:
+            return {"status": rv.ERROR, "problems": []}, None, None
+        ok, problems = first
+        info["first"] = {"ok": ok, "problems": problems}
+        if ok:
+            return {"status": rv.PASSED, "problems": []}, None, None
+        flagged = {"status": rv.FLAGGED, "problems": problems, "first": problems}
+        if analysis is None:
+            return flagged, None, None
+        # 한 번만 다시 쓴다: 같은 근거 구절, 같은 프롬프트에 검수 문제를 「걸린 항목」으로
+        evidence = Evidence(quote=draft.evidence_quote, source=draft.evidence_source)
+        kit = self._prepare(draft.video_id, analysis, draft.disclosed, exclude=draft)
+        before = self._style(draft.body, mark, analysis.key_phrases, kit.avoid_bodies)
+        previous_body = toggle_disclosure(draft.body, rules.disclosure, False)
+        user = self._draft_prompt(kit, analysis, evidence, rv.retry_lines(problems), previous_body)
+        try:
+            data = kit.llm.generate_json(
+                system=kit.system, user=user, schema=kit.schema,
+                temperature=prompts.DRAFT_TEMPERATURE, max_tokens=prompts.DRAFT_MAX_TOKENS,
+            )
+        except AppError as exc:
+            info["rewrite_error"] = exc.message
+            return flagged, None, None
+        body = clean_body(data.get("body") if isinstance(data, dict) else None, rules.disclosure)
+        text = with_disclosure(body, mark)
+        validation = self.checks.check(
+            draft.video_id, text, previous_texts=kit.previous, evidence_quote=evidence.quote,
+            disclose=draft.disclosed, key_phrases=analysis.checked_phrases,
+            concern=analysis.concern,
+        )
+        issues = self._style(text, mark, analysis.key_phrases, kit.avoid_bodies)
+        info["rewrite"] = {"body": text, "failures": validation.failure_lines(),
+                           "issues": issues, "issues_before": before}
+        if not body or text == draft.body or not validation.passed or len(issues) > len(before):
+            return flagged, None, None  # 다시 쓴 글이 더 나쁘면 원래 글을 둔다
+        second = ask(text)
+        if second is None:
+            return {"status": rv.ERROR, "problems": [], "first": problems}, text, validation
+        ok2, problems2 = second
+        info["second"] = {"ok": ok2, "problems": problems2}
+        if ok2:
+            return {"status": rv.REWRITTEN, "problems": [], "first": problems}, text, validation
+        return {"status": rv.FLAGGED, "problems": problems2, "first": problems}, text, validation
+
+    def _save_review(
+        self, draft: Draft, result: dict[str, Any], *, text: str | None = None,
+        validation: Validation | None = None,
+    ) -> Draft:
+        """검수 결과를 남긴다. `text`가 있으면 다시 쓴 글로 바꾼다(모델에게 쓰게 한 횟수 +1)."""
+        now = self._now()
+        raw = json.dumps(result, ensure_ascii=False)
+        with db.session(self.db_path) as conn:
+            if text is not None and validation is not None:
+                conn.execute(
+                    "UPDATE drafts SET body=?, validation_json=?, passed=?, attempts=attempts+1, "
+                    "review_json=?, updated_at=? WHERE id=?",
+                    (text, _validation_to_json(validation), int(validation.passed), raw, now,
+                     draft.id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE drafts SET review_json=?, updated_at=? WHERE id=?",
+                    (raw, now, draft.id),
+                )
+        return self.get(draft.id)
+
     def list(self, video_id: str) -> list[Draft]:
         """그 영상의 초안들(최신이 위)."""
         self._check_id(video_id)
@@ -575,7 +758,9 @@ class DraftService:
         with db.session(self.db_path) as conn:
             conn.execute(
                 "UPDATE drafts SET body=?, evidence_quote=?, evidence_source=?, validation_json=?, "
-                "passed=?, edited_by_human=?, status=?, approved_at=?, updated_at=? WHERE id=?",
+                "passed=?, edited_by_human=?, status=?, approved_at=?, updated_at=?, "
+                # 사람이 글을 바꾸면 AI 검수 결과는 그 글의 것이 아니다(지운다)
+                "review_json=CASE WHEN ? THEN '' ELSE review_json END WHERE id=?",
                 (
                     clean,
                     quote,
@@ -587,6 +772,7 @@ class DraftService:
                     "draft" if changed else draft.status,
                     None if changed else draft.approved_at,
                     now,
+                    int(changed),
                     draft_id,
                 ),
             )
@@ -787,6 +973,7 @@ class DraftService:
             approved_at=row["approved_at"],
             first_passed=bool(row["first_passed"]),
             disclosed=bool(row["disclosed"]),
+            review=_review_from_json(row["review_json"]) if "review_json" in row.keys() else {},
         )
 
 

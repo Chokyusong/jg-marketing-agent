@@ -134,6 +134,20 @@ function schedule() {
   timer = setTimeout(runCheck, DEBOUNCE_MS);
 }
 
+// 2026-11-18 AI 검수 한 번: 「규칙 검사 · 14개 모두 통과」 옆 한 줄. 글 상자의 글이 검수한 그 초안
+// 그대로일 때만 보인다(사람이 고치면 그 글의 검수가 아니다). 어색하다고 했으면 문제 한 줄을 붙인다
+// (넘치면 말줄임, 전체는 마우스를 올리면). 게시는 막지 않는다
+const REVIEW_CLASS = { passed: 'is-ok', rewritten: 'is-ok', flagged: 'is-warn', error: 'is-dim' };
+
+function reviewView(state, text) {
+  const d = state.draft;
+  const review = d && d.video_id === state.selectedId && d.body === text ? d.review : null;
+  if (!review || !review.label) return null;
+  const problem = review.status === 'flagged' && review.problems && review.problems[0];
+  const line = problem ? `${review.label} · ${problem}` : review.label;
+  return el('span', { class: `checks-review ${REVIEW_CLASS[review.status] || ''}`, id: 'checks-review', title: line, text: line });
+}
+
 function checksView(state) {
   const text = $('draft-text').value;
   const v = resultFor(state);
@@ -158,7 +172,7 @@ function checksView(state) {
     ? `규칙 검사 · ${result.total}개 중 ${result.passed_count}개 통과`
     : `규칙 검사 · ${result.total}개 모두 통과`;
   const summary = el('details', { class: `checks-pass${failed.length ? '' : ' is-all'}`, open: passOpen }, [
-    el('summary', { text: label }),
+    el('summary', {}, [el('span', { text: label }), reviewView(state, text)]),
     el('p', { text: passed.map((c) => `${c.code} ${c.name}`).join(' · ') || '통과한 항목 없음' }),
   ]);
   summary.addEventListener('toggle', () => { passOpen = summary.open; });

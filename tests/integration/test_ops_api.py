@@ -139,7 +139,8 @@ def test_analyze_draft_approve_are_recorded_newest_first(setup, clock):
     approve, made_row, analyze = rows
     assert approve["comment_text"] == made["body"] and approve["reason"] == "사람이 승인"
     assert made_row["comment_text"] == made["body"]
-    assert made_row["reason"] == "규칙 검사 통과 · 1번째 시도"
+    # 2026-11-18: AI 검수 결과도 남긴다(가짜 LLM은 검수에 통과로 답한다)
+    assert made_row["reason"] == "규칙 검사 통과 · 1번째 시도 · AI 검수 통과"
     assert analyze["reason"] == f"핵심 고민 · {ANALYSIS['concern']}"
     assert analyze["comment_text"] == ""
     for r in rows:

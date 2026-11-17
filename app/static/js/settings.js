@@ -26,6 +26,7 @@ export const FIELD_IDS = {
   'brand.facts': 'set-facts',
   'comment.disclosure': 'set-disclosure',
   'comment.disclose_default': 'set-disclose-default',
+  'comment.ai_review': 'set-ai-review',
   'limits.daily_max_comments': 'set-daily-max',
   'posting.confirm_before_post': 'set-confirm-before',
   'browser.typing_speed': 'set-typing-speed',
@@ -1362,6 +1363,7 @@ export function settingsView(s) {
       factsField(s),
       textField('comment.disclosure', '광고 표기 문구', { maxlength: 20, note: '켜면 댓글이 이 글로 시작합니다' }),
       switchField('comment.disclose_default', '광고 표기 기본값', '켜짐 · 새 초안에 광고 표기를 붙입니다', '꺼짐 · 새 초안을 광고 표기 없이 만듭니다'),
+      switchField('comment.ai_review', 'AI 검수 한 번', '켜짐 · 규칙 검사를 통과한 초안을 AI가 한 번 더 읽고, 어색하면 한 번 고쳐 씁니다', '꺼짐 · 규칙 검사만 합니다(초안이 더 빨리 나옵니다)'),
     ]),
     group('게시', 'set-post', [
       numberField('limits.daily_max_comments', '하루 상한', { unit: '개 (1~50)', note: '③에서는 낮추기만 됩니다' }),

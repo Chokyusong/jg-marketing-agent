@@ -7,6 +7,19 @@
 
 ## 새 변경 (README를 줄인 뒤)
 
+### 2026-11-18 AI 검수 한 번
+
+- 기획 담당(대표 승인): 규칙 검사·다듬기 검사로 못 잡는 어색함(「혼자 사셔라가 괜히 현실적으로 들리네」, 18개 중 1개꼴)을 잡으려고, 규칙 검사를 통과한 초안을 AI가 한 번 더 읽는다(`app/analysis/review.py`). 묻는 것은 문법(조사·어미·끝난 말에 조사)·뜻·영상 얘기 → 잇는 문장 → 운명원의 이어짐·유튜브 댓글 말투 네 가지, 답은 JSON `ok`·`problems`.
+- 거짓이면 그 문제로 **한 번만** 다시 쓰게 하고, 다시 쓴 글도 규칙·다듬기 검사를 거친다(더 나쁘면 원래 글). 다시 검수해 통과면 「AI 검수 통과 · 한 번 고쳐 씀」, 또 거짓이면 그 글을 두고 「AI 검수: 어색할 수 있어요 — 읽고 고쳐 주세요」와 문제 한 줄. **게시는 막지 않는다.** 검수 호출이 실패하면 초안을 그대로 두고 「AI 검수 못 함」(초안 만들기는 실패하지 않는다). 초안·영상 자료는 남이 쓴 글로 다룬다(안의 지시를 따르지 않게).
+- 화면: 만드는 단계에 「다듬는 중」(검수를 건너뛰면 흐리게), 「규칙 검사 · 14개 모두 통과」 옆에 결과 한 줄. 글자 크기·높이는 그대로. 단계가 하나 늘어 1600×960에서 단계 줄 옆 안내(「N초 · 1번째 초안이 규칙 검사를 통과했습니다」)가 다음 줄로 내려가 ② 칸이 넘쳤다 — 안내를 한 줄로 두고 모자라면 말줄임(전체는 마우스를 올리면), 140px도 안 남는 좁은 창에서는 예전처럼 다음 줄.
+- 설정: `comment.ai_review`(기본 켬) — `config.yaml`과 설정 화면 「댓글 규칙」의 「AI 검수 한 번」. 끄면 바로 적용.
+- DB: `MIGRATIONS` 맨 끝에 `drafts.review_json`. 사람이 글을 고치면 지운다.
+- API(필드·경로만 더함): `POST /api/drafts`에 `review`(비우면 바로 검수, `false`면 `pending`), 초안 응답에 `review`(`status`·`label`·`problems`), 새 `POST /api/drafts/{id}/review`. 작업 기록의 초안 사유 끝에 「· AI 검수 통과」 같은 결과.
+- `scripts/compare_drafts.py` 지표에 잇는 문장 있음·까닭 있음·잇는 문장 되풀이·AI 검수 거짓(처음)·고쳐 써서 통과·고쳐도 남음·못 함(초안 1개 평균 시간은 검수까지 포함).
+- 초안 만들기와 검수 뒤 다시 쓰기가 같은 프롬프트를 쓰게 `DraftService._prepare`·`_draft_prompt`로 나눴다(동작은 그대로).
+- 테스트: `tests/unit/test_review.py`(새: 답 읽기·깨진 답·프롬프트), `tests/integration/test_draft_review.py`(새: 통과 / 거짓 → 고쳐 써서 통과 / 두 번 거짓 → 안내, 승인됨 / 호출 실패·깨진 답 → 초안 그대로 / 다시 쓴 글이 규칙에 걸리거나 호출 실패 → 원래 글 / 규칙 검사에 걸린 초안은 검수 안 함 / 설정 끔 / 화면 길(따로 부르기, 두 번 불러도 한 번) / 사람이 고치면 지움 / 표기 켬끔은 그대로), `test_db.py`(새 칸), `test_settings_save_api.py`(켬끔 바로 적용), `test_compare_drafts.py`(지표), e2e `test_program_flow.py`(「AI 검수 통과」 한 줄과 「다듬는 중」 단계). 가짜 AI는 한곳(`tests/conftest.py`의 `review.ask` 바꾸기)에서 검수에 통과로 답한다.
+- 고친 기존 테스트(새 규칙 때문): `test_db.py::test_c1_key_phrase_columns_keep_old_analyses_as_legacy`(C1 덩어리가 맨 끝 → 끝에서 둘째, 뒤에 review_json), `test_harness_helpers.py::test_config_yaml_matches_design`(`comment`에 `ai_review: true`), `test_ops_api.py::test_analyze_draft_approve_are_recorded_newest_first`(초안 사유 끝에 「· AI 검수 통과」), `test_dashboard_page.py::test_report_box_runs_by_itself_with_three_steps`(단계에 「다듬는 중」).
+
 ### 2026-11-18 운명원 앞에 잇는 한 문장
 
 - 기획 담당(대표 승인): 우리 초안은 영상 반응 바로 뒤에 운명원이 나와 공식처럼 읽혔다. 과제 예시처럼 영상 얘기에서 인연 쪽으로 생각이 넘어간 다음 운명원을 꺼내게 짜임을 세 덩이로: ① 영상 반응 짧은 한 문장(핵심 말) → ② **잇는 한 문장**(12~20자쯤, 이 고민이 결국 인연·타이밍·때·궁합·맞는 사람의 문제일지도 모른다는 혼잣말) → ③ 운명원 대목 다섯 조각(그대로). 예전 ② 「내 처지 한마디」는 ①에 붙여도 된다.
@@ -227,7 +240,8 @@ $env:RUN_LIVE='1'; .\.venv\Scripts\python.exe -m pytest -m live; Remove-Item Env
 | `POST /api/validate` | `{"video_id": "...", "text": "..."}` 글 하나를 규칙 V1~V14로 검사한다. 응답: `passed`, `char_count`(표기 포함, NFC 코드 포인트), `min_chars`·`max_chars`, `evidence_quote`(영상 자료와 겹치는 가장 긴 구절), `passed_count`·`total`, `checks`(항목마다 `code`·`name`·`passed`·`message`). 맥락이 없으면 만들어서 쓰고(인기 댓글 1단위), 있으면 YouTube를 다시 부르지 않는다. 글은 2,000자까지 받는다. V11은 다른 영상에서 승인한 초안·과제 예시 댓글과 비교한다. 그 영상의 분석이 있으면 저장된 핵심 말(V7)·고민 한 줄(V13)과 지금 초안의 근거 구절(V6)로 본다 |
 | `POST /api/analysis/{video_id}` | 영상 맥락을 AI로 분석해 저장하고 돌려준다: `topic`·`concern`·`tone`·`viewer_needs`, `evidence`(근거 문장 `quote`·출처 `source`·`source_label`, 자료에 있는 것만 최대 4개), `dropped_count`(자료에 없거나 광고·협찬·응모 글이라 버린 근거 수), `fallback`(예전 필드, 이제 늘 `false`), `model`, `has_love_concern`(늘 `true`)·`love_reason`(모델이 적은 판단 까닭). 연애 고민을 찾지 못하면 422 `no_love_concern`(초안을 만들지 않는다) |
 | `GET /api/analysis/{video_id}` | 저장된 분석(없으면 `null`). AI를 부르지 않는다 |
-| `POST /api/drafts` | `{"video_id", "another": false, "avoid_quotes": []}` AI 초안을 만든다(분석이 없으면 먼저 분석). 검사에 걸리면 걸린 항목을 넣어 최대 3번, 다 걸리면 가장 덜 걸린 것을 저장. `another: true`면 이 영상에서 쓴 근거를 피한다. 응답: `id`·`body`(`[광고] ` 포함)·`evidence_quote`·`evidence_source`·`evidence_label`·`tone_label`·`attempts`·`first_passed`·`passed`·`status`(draft·approved·superseded)·`edited_by_human`·`validation`(`POST /api/validate`와 같은 모양) |
+| `POST /api/drafts` | `{"video_id", "another": false, "avoid_quotes": [], "review": null}` AI 초안을 만든다(분석이 없으면 먼저 분석). 검사에 걸리면 걸린 항목을 넣어 최대 3번, 다 걸리면 가장 덜 걸린 것을 저장. `another: true`면 이 영상에서 쓴 근거를 피한다. 응답: `id`·`body`(`[광고] ` 포함)·`evidence_quote`·`evidence_source`·`evidence_label`·`tone_label`·`attempts`·`first_passed`·`passed`·`status`(draft·approved·superseded)·`edited_by_human`·`validation`(`POST /api/validate`와 같은 모양)·`review`(2026-11-18 AI 검수 한 번: `status`·`label`·`problems`). `review`를 비우면 규칙 검사를 통과한 초안을 바로 검수하고, `false`면 `pending`으로 둔다 |
+| `POST /api/drafts/{id}/review` | 2026-11-18: AI 검수 한 번. 규칙 검사를 통과한 모델 초안을 AI가 읽고 어색하면 한 번 다시 쓴다. 검수할 것이 없으면(이미 함·사람이 고침·설정을 끔) 그대로, 검수가 실패해도 오류 없이 `status: error`. 응답은 초안 |
 | `GET /api/drafts?video_id=` | 초안 목록(새것부터) |
 | `PATCH /api/drafts/{id}` | `{"body": "..."}` 사람이 고친 글 저장 후 다시 검사. 승인한 글을 고치면 승인이 풀린다 |
 | `POST /api/drafts/{id}/disclosure` | R3: `{"disclose": true\|false}` 광고 표기를 켜거나 끈다. 모델을 부르지 않고 저장된 글에서 표기만 붙이거나 떼고 다시 검사(글이 바뀌면 승인은 풀림). 응답은 초안(`disclosed` 포함) |

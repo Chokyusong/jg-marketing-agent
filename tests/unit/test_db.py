@@ -233,7 +233,8 @@ def test_c1_key_phrase_columns_keep_old_analyses_as_legacy(tmp_db_path):
 
     # C1 덩어리 바로 앞까지 만든 DB에 예전 분석 하나
     last = next(i for i, m in enumerate(db.MIGRATIONS) if "key_phrases_json" in m)
-    assert last == len(db.MIGRATIONS) - 1  # 맨 끝에 붙였다
+    # 붙일 때는 맨 끝이었다. 2026-11-18 그 뒤에 AI 검수 칸(drafts.review_json) 하나를 더 붙였다
+    assert last == len(db.MIGRATIONS) - 2 and "review_json" in db.MIGRATIONS[-1]
     conn = sqlite3.connect(tmp_db_path)
     for i in range(last):
         conn.executescript("BEGIN;" + db.MIGRATIONS[i] + f"PRAGMA user_version = {i + 1};COMMIT;")
@@ -252,3 +253,29 @@ def test_c1_key_phrase_columns_keep_old_analyses_as_legacy(tmp_db_path):
         assert (row["key_phrases_json"], row["key_phrases_source"]) == ("[]", "")
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute("UPDATE analyses SET key_phrases_source = 'guess'")
+
+
+# ---------------------------------------------------------------- 2026-11-18: AI 검수 한 번
+
+
+def test_review_column_is_added_last_and_old_drafts_have_no_review(tmp_db_path):
+    import sqlite3
+
+    assert "ADD COLUMN review_json" in db.MIGRATIONS[-1]  # 맨 끝에 붙였다
+    last = len(db.MIGRATIONS) - 1
+    conn = sqlite3.connect(tmp_db_path)
+    for i in range(last):
+        conn.executescript("BEGIN;" + db.MIGRATIONS[i] + f"PRAGMA user_version = {i + 1};COMMIT;")
+    now = "2026-11-18T03:00:00+00:00"
+    conn.execute("INSERT INTO videos(video_id, title, fetched_at, source) "
+                 "VALUES ('BBBBBBBBBB2', 't', ?, 'search')", (now,))
+    conn.execute(
+        "INSERT INTO drafts(video_id, body, validation_json, passed, status, created_at, "
+        "updated_at) VALUES ('BBBBBBBBBB2', '[광고] 예전 초안', '{}', 1, 'draft', ?, ?)",
+        (now, now))
+    conn.commit()
+    conn.close()
+    assert db.init_db(tmp_db_path) == db.SCHEMA_VERSION
+    with db.session(tmp_db_path) as conn:
+        row = conn.execute("SELECT body, review_json FROM drafts").fetchone()
+    assert row["body"] == "[광고] 예전 초안" and row["review_json"] == ""

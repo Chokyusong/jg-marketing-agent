@@ -161,6 +161,7 @@ def effective_values(s: Settings) -> dict[str, Any]:
         "brand.facts": list(s.brand_facts),
         "comment.disclosure": str(comment.get("disclosure", "[광고]")),
         "comment.disclose_default": s.disclose_default,
+        "comment.ai_review": s.ai_review,
         "limits.daily_max_comments": s.daily_max_comments,
         "posting.confirm_before_post": s.confirm_before_post,
         "browser.typing_speed": s.typing_speed,

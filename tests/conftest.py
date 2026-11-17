@@ -35,6 +35,7 @@ def pytest_configure(config: pytest.Config) -> None:
     # pyproject.toml에도 등록돼 있다. 다른 루트에서 이 conftest만 쓸 때를 위해 한 번 더 등록.
     config.addinivalue_line("markers", "e2e: Playwright sandbox 화면 테스트")
     config.addinivalue_line("markers", "live: 진짜 외부 호출. RUN_LIVE=1일 때만")
+    config.addinivalue_line("markers", "real_review: AI 검수의 진짜 ask를 쓴다")
 
 
 def live_enabled() -> bool:
@@ -77,6 +78,34 @@ def bridge_check_on(monkeypatch):
     from app.analysis import drafter
 
     monkeypatch.setattr(drafter, "BRIDGE_CHECK", True)
+
+
+REVIEW_OK = {"ok": True, "problems": []}
+
+
+@pytest.fixture(autouse=True)
+def _ai_review_answers(request, monkeypatch):
+    """AI 검수 한 번(2026-11-18)의 가짜 답을 한곳에서 정한다.
+
+    검수는 `app.analysis.review.ask`로만 AI를 부른다. 자동 테스트에서는 이것을 바꿔:
+    - 가짜 LLM에 `answer_review`가 있으면(아래 `FakeLLM`) 그것이 답한다 — 준비한 검수 답이
+      다음 차례에 있으면 그것, 없으면 통과.
+    - 그 밖의 가짜(e2e의 ScriptedLLM, compare_drafts 시험의 가짜 등)는 부르지 않고 통과로 답한다.
+    그래서 그 전에 짠 시험의 응답 차례와 `calls`가 그대로다. 진짜 `ask`를 시험할 때는
+    `@pytest.mark.real_review`를 붙인다."""
+    if request.node.get_closest_marker("real_review"):
+        return
+    from app.analysis import review
+
+    real_parse = review.parse
+
+    def fake_ask(llm, *, system, user):
+        answer = getattr(llm, "answer_review", None)
+        if answer is None:
+            return real_parse(REVIEW_OK)
+        return real_parse(answer(system=system, user=user, schema=review.REVIEW_SCHEMA))
+
+    monkeypatch.setattr(review, "ask", fake_ask)
 
 
 @pytest.fixture(autouse=True)
@@ -210,6 +239,19 @@ class FakeLLM:
     def __init__(self, responses: list[Any]):
         self._responses = list(responses)
         self.calls: list[dict[str, Any]] = []
+        self.review_calls: list[dict[str, Any]] = []  # AI 검수 호출(`calls`에는 넣지 않는다)
+
+    def answer_review(self, **kwargs: Any) -> Any:
+        """AI 검수 답. 다음 차례가 「ok」가 든 dict면 그것을 쓴다(「raise」가 있으면 그 예외를
+        던진다). 아니면 차례를 쓰지 않고 통과로 답한다(그 전에 짠 시험은 검수 답이 없다)."""
+        self.review_calls.append({"args": (), "kwargs": kwargs})
+        nxt = self._responses[0] if self._responses else None
+        if not (isinstance(nxt, dict) and "ok" in nxt):
+            return dict(REVIEW_OK)
+        item = self._responses.pop(0)
+        if item.get("raise") is not None:
+            raise item["raise"]
+        return copy.deepcopy(item)
 
     def generate_json(self, *args: Any, **kwargs: Any) -> Any:
         self.calls.append({"args": args, "kwargs": kwargs})

@@ -222,6 +222,11 @@ MIGRATIONS: list[str] = [
     ALTER TABLE analyses ADD COLUMN key_phrases_source TEXT NOT NULL DEFAULT ''
         CHECK (key_phrases_source IN ('', 'model', 'derived'));
     """,
+    # 2026-11-18 AI 검수 한 번: 초안마다 검수 결과(JSON — status·problems). 빈 글이면 아직 안 함
+    # (예전 초안·규칙 검사에 걸린 초안·사람이 고친 글)
+    """
+    ALTER TABLE drafts ADD COLUMN review_json TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

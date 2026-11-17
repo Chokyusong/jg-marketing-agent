@@ -72,8 +72,10 @@ export const api = {
   analyze: (videoId) => request(`/api/analysis/${encodeURIComponent(videoId)}`, { method: 'POST' }),
   storedAnalysis: (videoId) => request(`/api/analysis/${encodeURIComponent(videoId)}`),
   // disclose: 광고 표기를 붙일지(R3: 모든 영상에서 켜고 끈다)
-  createDraft: (videoId, { another = false, disclose = true } = {}) =>
-    request('/api/drafts', { method: 'POST', body: JSON.stringify({ video_id: videoId, another, disclose }) }),
+  // review=false: 초안을 먼저 받고 AI 검수는 reviewDraft로 따로(화면이 「다듬는 중」을 보인다)
+  createDraft: (videoId, { another = false, disclose = true, review = false } = {}) =>
+    request('/api/drafts', { method: 'POST', body: JSON.stringify({ video_id: videoId, another, disclose, review }) }),
+  reviewDraft: (id) => request(`/api/drafts/${id}/review`, { method: 'POST' }),
   listDrafts: (videoId) => request(`/api/drafts?video_id=${encodeURIComponent(videoId)}`),
   updateDraft: (id, body) => request(`/api/drafts/${id}`, { method: 'PATCH', body: JSON.stringify({ body }) }),
   approveDraft: (id) => request(`/api/drafts/${id}/approve`, { method: 'POST' }),
