@@ -76,8 +76,8 @@ def start_warmup(holder: ServiceHolder) -> threading.Thread | None:
     def run() -> None:
         try:
             llm = holder.get().llm
-            if llm is None:
-                return
+            if llm is None or not getattr(llm, "warmup_supported", True):
+                return  # R5: 미리 불러오기는 Ollama만(바깥 AI에는 미리 보낼 것이 없다)
             seconds = llm.warmup()
             log.info("AI 모델 미리 불러오기 끝: %s · %.1f초", llm.model, seconds)
         except Exception as exc:  # noqa: BLE001 - 켤 때 돕는 일이라 실패해도 화면을 막지 않는다

@@ -190,6 +190,8 @@ class TextJSONLLM(ABC):
     model: str = ""
     local: bool = True
     max_attempts: int = 2  # 처음 + 다시 한 번
+    # R5: JSON으로 답하지 않았을 때의 「다음에 할 일」(Ollama가 아닌 AI는 설정 화면을 가리킨다)
+    bad_output_action: str | None = None
 
     @abstractmethod
     def _complete(
@@ -230,4 +232,5 @@ class TextJSONLLM(ABC):
         raise AppError(
             ErrorKind.LLM_BAD_OUTPUT,
             detail=f"{self.provider} · {self.model}: " + " / ".join(reasons),
+            action=self.bad_output_action,
         )

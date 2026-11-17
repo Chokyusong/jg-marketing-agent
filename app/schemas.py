@@ -153,6 +153,11 @@ class AIStatusOut(BaseModel):
     # R4: 추천 모델(코드 기본값)과 그것이 이 PC에 설치돼 있는지. 시작 준비 상자의 [바꾸기]
     recommended_model: str = ""
     recommended_installed: bool = False
+    # R5: 화면에 보일 AI 이름, 어디서 도는지(local 이 PC · api API 키 · program 로그인된 프로그램),
+    # 영상 자료가 가는 곳(외부일 때 알림 문구). 추천 모델은 Ollama일 때만 채운다
+    label: str = ""
+    kind: Literal["local", "api", "program"] = "local"
+    sends_to: str = ""
 
 
 class BrowserProfileOut(BaseModel):
@@ -680,6 +685,10 @@ class SettingsLLMOut(BaseModel):
     cold_timeout_seconds: float = 420.0
     warmup_on_start: bool = True
     recommended_model: str = ""
+    # R5
+    label: str = ""
+    kind: Literal["local", "api", "program"] = "local"
+    sends_to: str = ""
 
 
 class SettingsBrowserOut(BaseModel):
@@ -777,13 +786,72 @@ class LLMModelOut(BaseModel):
     kind: Literal["general", "code", "embed"]
     size_gb: float | None = None
     current: bool = False
+    label: str | None = None  # R5: 회사가 붙인 보기 이름(있을 때만)
 
 
 class LLMModelsOut(BaseModel):
-    reachable: bool  # Ollama에 닿았는지
+    reachable: bool  # Ollama에 닿았는지(R5: ?provider=면 그 AI에 닿았는지)
     current: str  # 지금 쓰는 모델
     current_installed: bool
     items: list[LLMModelOut]
+    # R5: ?provider=<이름>으로 물었을 때. 목록을 주지 않는 AI(로그인된 프로그램)는 manual_only
+    provider: str = ""
+    manual_only: bool = False
+    error: ProblemOut | None = None
+
+
+class LLMProviderOut(BaseModel):
+    """설정 화면 「AI」 목록 한 줄. 키 값·주소는 싣지 않는다(있는지와 어디서 왔는지만)."""
+
+    name: str
+    label: str
+    type: str
+    kind: Literal["local", "api", "program"]
+    active: bool
+    local: bool  # 거짓이면 영상 자료가 sends_to로 간다
+    sends_to: str
+    model: str
+    needs_key: bool
+    key_allowed: bool  # API 키를 넣을 수 있는 AI인지
+    key_configured: bool
+    key_source: Literal["program", "dev_file"] | None = None
+    can_store_key: bool
+    url_editable: bool  # 「직접 입력」: 주소를 적는다
+    models_listable: bool  # [모델 불러오기]가 되는지(아니면 직접 적는다)
+    installed: bool
+    verified: bool  # 안전하게 실행하는 방법을 확인한 프로그램인지(아니면 고를 수 없다)
+    unavailable_reason: str | None = None  # 고를 수 없는 이유(쉬운 한국어)
+
+
+class LLMProvidersOut(BaseModel):
+    active: str
+    items: list[LLMProviderOut]
+    kinds: list[dict[str, str]]
+
+
+class LLMTestOut(BaseModel):
+    ok: bool
+    result: Literal[
+        "ok", "no_key", "rejected", "rate_limited", "network", "not_installed",
+        "not_logged_in", "no_url", "not_wired", "error",
+    ]
+    message: str
+    action: str = ""
+    models: int | None = None  # 키가 통하면 받아 온 모델 수
+    version: str | None = None  # 로그인된 프로그램의 버전
+
+
+class LLMKeyIn(BaseModel):
+    key: str = Field(min_length=1, max_length=500)
+
+
+class LLMKeyOut(BaseModel):
+    """AI API 키 저장·지우기 결과. 키 값은 싣지 않는다."""
+
+    name: str
+    key_configured: bool
+    key_source: Literal["program", "dev_file"] | None
+    can_store_key: bool
 
 
 class ScreenOut(BaseModel):

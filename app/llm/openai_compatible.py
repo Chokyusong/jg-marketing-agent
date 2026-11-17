@@ -144,6 +144,9 @@ class OpenAICompatibleClient(TextJSONLLM):
     """`POST {base_url}/chat/completions` 한 번에 답 하나."""
 
     warmup_supported = False  # 미리 불러오기는 Ollama만
+    bad_output_action = (
+        "다시 시도해 주세요. 계속되면 설정 화면의 「AI」에서 다른 모델이나 다른 AI를 골라 주세요."
+    )
 
     def __init__(
         self,

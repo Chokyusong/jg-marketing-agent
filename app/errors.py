@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -368,3 +369,30 @@ def redact(text: str, secrets: Iterable[str] = ()) -> str:
         if secret:
             text = text.replace(secret, "***")
     return text
+
+
+# R5: 프로그램에 저장한 API 키(와 .env의 키)는 어느 로그 줄에 섞여도 가린다(`remember_log_secrets`)
+_LOG_SECRETS: set[str] = set()
+_BASE_FACTORY = logging.getLogRecordFactory()
+
+
+def _redacting_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
+    record = _BASE_FACTORY(*args, **kwargs)
+    if _LOG_SECRETS:
+        try:
+            message = record.getMessage()
+        except Exception:  # noqa: BLE001 - 모양이 틀린 로그는 그대로 둔다
+            return record
+        cleaned = redact(message, _LOG_SECRETS)
+        if cleaned != message:
+            record.msg, record.args = cleaned, ()
+    return record
+
+
+def remember_log_secrets(values: Iterable[str]) -> None:
+    """이 값들이 로그에 찍히면 `***`로 바꾼다(설정을 다시 읽을 때마다 더한다)."""
+    for value in values:
+        if value and len(value) >= 8:
+            _LOG_SECRETS.add(value)
+    if logging.getLogRecordFactory() is not _redacting_factory:
+        logging.setLogRecordFactory(_redacting_factory)

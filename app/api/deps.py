@@ -26,7 +26,7 @@ from app.browser.jobs import JobService
 from app.browser.login import LoginWindows, ProfileAccounts, default_checker
 from app.browser.screens import Monitor, read_monitors
 from app.config import Settings, load_settings, reload_settings
-from app.errors import AppError, ErrorKind
+from app.errors import AppError, ErrorKind, remember_log_secrets
 from app.llm.base import LLMClient, LLMHealth
 from app.llm.registry import build_llm
 from app.ops.ledger import Ledger
@@ -63,6 +63,8 @@ class Services:
     accounts: ProfileAccounts = field(default=None)  # type: ignore[assignment]
     # R4: 뜨기 직전 영상(초안까지만)
     rising: RisingService = field(default=None)  # type: ignore[assignment]
+    # R5: 고른 AI가 아닌 AI도 [연결 확인]·[모델 불러오기]를 할 때 쓰는 연결(테스트는 가짜)
+    llm_transport: httpx.BaseTransport | None = None
 
     def find_chrome(self):
         if self.hooks.chrome_finder is not None:
@@ -144,7 +146,9 @@ def build_services(
         checks=checks,
         llm=llm,
         llm_error=llm_error,
+        llm_transport=llm_transport,
     )
+    remember_log_secrets(settings.secret_values())  # R5: 저장한 키도 로그에서 가린다
     services.rising = RisingService(videos, rule=settings.rising, clock=clock)
     services.ledger = Ledger(
         settings.db_path, daily_limit=settings.daily_max_comments, clock=clock

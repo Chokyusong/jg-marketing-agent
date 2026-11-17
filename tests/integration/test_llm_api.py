@@ -28,6 +28,10 @@ def test_status_ai_ok(make_client, ollama_up):
         "loaded": None,  # R4: 불러온 모델 목록(/api/ps)을 못 읽으면 모른다
         "recommended_model": "qwen3.8:27b",
         "recommended_installed": False,  # 지금 모델이 추천 모델이면 따로 보지 않는다
+        # R5: 화면에 보일 이름 · 어디서 도는지 · 영상 자료가 가는 곳
+        "label": "Ollama",
+        "kind": "local",
+        "sends_to": "Ollama",
     }
     assert set(data["youtube"]) == {"key_configured", "quota"}  # 기존 항목은 그대로
 

@@ -42,20 +42,38 @@ def _problem(error: AppError) -> ProblemOut:
 
 
 def ai_status(services: Services) -> AIStatusOut:
+    """고른 AI의 상태. 바깥(요금이 드는 곳)에는 묻지 않는다(30초마다 불린다).
+
+    R5: 모델이 메모리에 있는지·추천 모델은 Ollama일 때만 본다. API 키 AI와 로그인된 프로그램은
+    그 공급자가 아는 준비 문제(`problem()` — 키 없음·주소 없음·모델 안 고름·설치 안 됨)를 알린다.
+    """
+    from app.api.ai_choice import kind_of, label_of, sends_to
+
     health = services.llm_health()
+    provider = services.settings.llm.active_provider
+    is_ollama = provider is not None and provider.type == "ollama"
+    llm = services.llm
     error: AppError | None = None
+    check = getattr(llm, "problem", None)
+    problem = check() if llm is not None and callable(check) else None
     if services.llm_error is not None:
         error = services.llm_error
+    elif problem is not None:
+        error = problem
     elif not health.reachable:
         error = AppError(ErrorKind.LLM_DOWN)
     elif not health.installed:
         error = AppError(ErrorKind.LLM_MODEL_MISSING)
     loaded, rec_installed = None, False
-    llm = services.llm
-    if llm is not None and health.reachable and health.installed:
+    if is_ollama and llm is not None and health.reachable and health.installed:
         is_loaded = getattr(llm, "is_loaded", None)
         loaded = is_loaded() if callable(is_loaded) else None
-    if llm is not None and health.reachable and not same_model(health.model, DEFAULT_OLLAMA_MODEL):
+    if (
+        is_ollama
+        and llm is not None
+        and health.reachable
+        and not same_model(health.model, DEFAULT_OLLAMA_MODEL)
+    ):
         lister = getattr(llm, "list_models", None)
         found = lister() if callable(lister) else None
         rec_installed = any(same_model(m["name"], DEFAULT_OLLAMA_MODEL) for m in found or [])
@@ -63,8 +81,11 @@ def ai_status(services: Services) -> AIStatusOut:
         **health.to_dict(),
         error=_problem(error) if error else None,
         loaded=loaded,
-        recommended_model=DEFAULT_OLLAMA_MODEL,
+        recommended_model=DEFAULT_OLLAMA_MODEL if is_ollama or provider is None else "",
         recommended_installed=rec_installed,
+        label=label_of(provider, services.settings.llm.active),
+        kind=kind_of(provider),  # type: ignore[arg-type]
+        sends_to=sends_to(provider),
     )
 
 

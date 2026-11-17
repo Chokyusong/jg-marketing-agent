@@ -26,16 +26,26 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
 
+from app.api.ai_choice import kind_of, label_of, readiness, sends_to
 from app.api.deps import ServiceHolder, Services, get_services
 from app.api.status import _problem
 from app.browser.chrome import profile_dir
 from app.browser.screens import check_window_position, find_choice, screen_choices
-from app.config import DEFAULT_OLLAMA_MODEL, Settings, load_settings, reload_settings
+from app.config import (
+    DEFAULT_OLLAMA_MODEL,
+    LLM_KEY_TYPES,
+    ProviderSettings,
+    Settings,
+    load_settings,
+    reload_settings,
+)
 from app.errors import ERROR_TEXTS, AppError, ErrorKind
 from app.schemas import (
     TARGET_LABELS,
     ChoiceOut,
     KeyTestOut,
+    LLMKeyIn,
+    LLMKeyOut,
     QuotaOut,
     ScreenOut,
     ScreensOut,
@@ -58,6 +68,7 @@ from app.user_settings import (
     SecretStoreUnavailable,
     UserStore,
     key_shape_ok,
+    llm_key_shape_ok,
     validate,
 )
 
@@ -88,6 +99,9 @@ def llm_settings(services: Services) -> SettingsLLMOut:
         cold_timeout_seconds=cfg.cold_timeout_seconds,
         warmup_on_start=cfg.warmup_on_start,
         recommended_model=DEFAULT_OLLAMA_MODEL,
+        label=label_of(provider, cfg.active),
+        kind=kind_of(provider),  # type: ignore[arg-type]
+        sends_to=sends_to(provider),
     )
 
 
@@ -141,6 +155,10 @@ def effective_values(s: Settings) -> dict[str, Any]:
         "rising.min_views": s.rising.min_views,
         "rising.max_views": s.rising.max_views,
         "rising.min_views_per_hour": s.rising.min_views_per_hour,
+        # R5: 글 쓰는 AI, AI별 모델, 「직접 입력」 주소(키는 싣지 않는다)
+        "llm.active": s.llm.active,
+        "llm.models": dict(s.llm.models),
+        "llm.base_urls": dict(s.llm.base_urls),
     }
 
 
@@ -249,6 +267,8 @@ def update_settings(body: SettingsUpdateIn, request: Request) -> SettingsOut:
             computed["browser.window_position"] = _xy(choice.position)
     clean, problems = validate(changes, effective_values(current))
     errors.update(problems)
+    if not errors:
+        errors.update(_check_llm(services, store, clean))
     if errors:
         raise _invalid(errors)
     defaults = effective_values(_defaults(current))
@@ -275,6 +295,61 @@ def update_settings(body: SettingsUpdateIn, request: Request) -> SettingsOut:
 
     holder.update_settings(write)
     return settings_view(request, holder.get())
+
+
+def _merged(stored: Any, sent: dict[str, str]) -> dict[str, str]:
+    """AI별 값은 보낸 이름만 바꾼다. 빈 글은 그 이름을 지운다."""
+    out = {str(k): str(v) for k, v in (stored.items() if isinstance(stored, dict) else [])}
+    for name, value in sent.items():
+        if value:
+            out[name] = value
+        else:
+            out.pop(name, None)
+    return out
+
+
+def _check_llm(services: Services, store: UserStore, clean: dict[str, Any]) -> dict[str, str]:
+    """R5: AI 칸을 저장 전에 본다. `clean`의 AI별 값은 저장된 값과 합친 것으로 바꿔 둔다."""
+    from app.api.ai_choice import _cli_state
+
+    llm = services.settings.llm
+    errors: dict[str, str] = {}
+    stored = store.read_values()
+    for name in ("llm.models", "llm.base_urls"):
+        if name not in clean:
+            continue
+        unknown = [k for k in clean[name] if k not in llm.providers]
+        if unknown:
+            errors[name] = f"목록에 없는 AI입니다: {', '.join(sorted(unknown))}"
+            continue
+        if name == "llm.base_urls":
+            fixed = [k for k in clean[name] if not llm.providers[k].options.get("editable_url")]
+            if fixed:
+                errors[name] = "주소를 바꿀 수 없는 AI입니다(「직접 입력」만 주소를 적습니다)"
+                continue
+        clean[name] = _merged(stored.get(name), clean[name])
+    if errors or "llm.active" not in clean:
+        return errors
+    active = str(clean["llm.active"])
+    provider = llm.providers.get(active)
+    if provider is None:
+        return {"llm.active": "목록에 없는 AI입니다"}
+    from app.llm.registry import supported_types
+
+    if provider.type not in supported_types():
+        return {"llm.active": "아직 쓸 수 없는 종류의 AI입니다"}
+    verified, installed = (True, True)
+    if provider.type == "cli":
+        verified, installed = _cli_state(services, active)
+    models = clean.get("llm.models", llm.models)
+    urls = clean.get("llm.base_urls", llm.base_urls)
+    reason = readiness(
+        services.settings, provider, models=models, base_urls=urls,
+        installed=installed, verified=verified,
+    )
+    if reason:
+        errors["llm.active"] = reason
+    return errors
 
 
 @router.post("/settings/reset", response_model=SettingsOut)
@@ -365,6 +440,73 @@ def test_youtube_key(services: Annotated[Services, Depends(get_services)]) -> Ke
         message="연결됐습니다. 유튜브가 키를 받아 줬습니다.",
         quota=QuotaOut(**services.quota.summary()),
     )
+
+
+# ---------------------------------------------------------------- R5: AI API 키(AI마다 따로)
+
+
+def _key_provider(s: Settings, name: str) -> ProviderSettings:
+    provider = s.llm.providers.get(name)
+    if provider is None or provider.type not in LLM_KEY_TYPES:
+        raise AppError(
+            ErrorKind.SETTINGS_INVALID, extra={"fields": {"key": "API 키를 넣을 수 없는 AI입니다"}}
+        )
+    return provider
+
+
+def llm_key_out(s: Settings, name: str) -> LLMKeyOut:
+    store = _store(s)
+    return LLMKeyOut(
+        name=name,
+        key_configured=bool(s.llm.api_keys.get(name)),
+        key_source=s.llm.key_sources.get(name),  # type: ignore[arg-type]
+        can_store_key=bool(store and store.protector.available),
+    )
+
+
+@router.put("/settings/llm-key/{name}", response_model=LLMKeyOut)
+def save_llm_key(name: str, body: LLMKeyIn, request: Request) -> LLMKeyOut:
+    """그 AI의 API 키를 사용자 폴더에 암호화해 저장하고 바로 적용한다. 응답에는 키가 없다."""
+    holder = _holder(request)
+    provider = _key_provider(holder.settings, name)
+    label = str(provider.options.get("label") or name)
+    key = body.key.strip()
+    if not llm_key_shape_ok(key):
+        raise AppError(
+            ErrorKind.KEY_BAD_SHAPE,
+            action=f"{label}에서 복사한 키를 앞뒤 빈칸 없이 그대로 붙여 넣어 주세요.",
+        )
+    if not holder.store().protector.available:
+        raise AppError(
+            ErrorKind.SECRET_STORE_UNAVAILABLE,
+            action=f"개발용 .env 파일의 {provider.api_key_env or 'API 키 칸'}에 키를 넣고 "
+            "프로그램을 다시 켜 주세요.",
+        )
+
+    def write(st: UserStore) -> None:
+        try:
+            st.write_llm_key(name, key)
+        except SecretStoreUnavailable:
+            raise AppError(ErrorKind.SECRET_STORE_UNAVAILABLE) from None
+        except OSError:
+            raise AppError(ErrorKind.SETTINGS_WRITE_FAILED) from None
+
+    return llm_key_out(holder.update_settings(write), name)
+
+
+@router.delete("/settings/llm-key/{name}", response_model=LLMKeyOut)
+def delete_llm_key(name: str, request: Request) -> LLMKeyOut:
+    """프로그램에 저장한 그 AI의 키를 지운다(.env의 키는 그대로 — key_source로 알린다)."""
+    holder = _holder(request)
+    _key_provider(holder.settings, name)
+
+    def remove(st: UserStore) -> None:
+        try:
+            st.delete_llm_key(name)
+        except OSError:
+            raise AppError(ErrorKind.SETTINGS_WRITE_FAILED) from None
+
+    return llm_key_out(holder.update_settings(remove), name)
 
 
 # ---------------------------------------------------------------- 모니터

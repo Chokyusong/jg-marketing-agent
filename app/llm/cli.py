@@ -277,6 +277,9 @@ def _classify(text: str) -> ErrorKind:
 class CLIClient(TextJSONLLM):
     local = False
     warmup_supported = False
+    bad_output_action = (
+        "다시 시도해 주세요. 계속되면 설정 화면의 「AI」에서 다른 모델이나 다른 AI를 골라 주세요."
+    )
 
     def __init__(
         self,
