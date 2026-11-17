@@ -196,6 +196,9 @@ function renderAnalysis(state) {
   line('an-concern', a ? a.concern : none ? '이 영상에서는 연애 고민을 찾지 못했습니다' : busy ? '고민 정리 중…' : '–', a ? a.concern : '');
   line('an-tone', a ? a.tone : empty, a ? a.tone : '');
   line('an-needs', a ? a.viewer_needs : empty, a ? a.viewer_needs : '');
+  // C1: 그 영상의 핵심 말(초안이 하나 이상 담는다 — 검사 V7)
+  const keys = a && a.key_phrases && a.key_phrases.length ? a.key_phrases.join(' · ') : '';
+  line('an-keys', a ? keys || '없음' : empty, keys);
   if (!a || !a.evidence.length) {
     line('an-evidence', a ? '근거 없음' : none ? '자막을 직접 넣으면 다시 찾아봅니다' : '근거 문장과 출처', '');
     return;
