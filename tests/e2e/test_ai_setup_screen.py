@@ -175,6 +175,32 @@ def test_setup_box_path_button_opens_that_ai(app):
     assert not errors, errors
 
 
+def test_key_path_is_three_steps(app):
+    """「API 키로 → Gemini」: [키 받는 페이지 열기] → 키 붙여 넣기 → [연결 확인]. [키 저장]을
+    따로 누르지 않아도 저장되고, 모델은 추천 목록 첫 번째로 골라진다. 키는 화면에 남지 않는다.
+    받는 곳은 가짜 AI 회사(진짜 구글을 부르지 않는다)."""
+    base = app["base"]
+    key = "AIza" + "k" * 35  # 실행할 때 조립한 가짜 키
+    with headless_page(base) as (page, errors):
+        page.goto(base + "/")
+        page.wait_for_function(STATUS_LOADED)
+        page.evaluate("document.getElementById('setup-ai-paths').hidden = false")
+        page.click("#setup-ai-paths [data-setup-path='key']")
+        page.wait_for_function(AI_LOADED)
+        assert "키 받는 페이지 열기" in page.text_content("#ai-path-key")
+        assert page.get_attribute("#ai-path-key a", "href") == "https://aistudio.google.com/apikey"
+        page.fill("#ai-key-gemini", key)
+        page.click("#ai-test-gemini")
+        page.wait_for_function("document.getElementById('ai-note-gemini')"
+                               ".textContent.includes('추천 목록 첫 번째')")
+        assert "키 저장" not in page.text_content("#ai-note-gemini")
+        assert page.input_value("#ai-model-gemini") == "gemini-3.8-flash"
+        assert "저장됨" in page.text_content("#ai-pane-gemini")
+        assert page.is_enabled("#ai-use-gemini")
+        assert key not in page.content()
+    assert not errors, errors
+
+
 @pytest.mark.parametrize("size", [(1920, 1009), (1600, 960)])
 def test_setup_screens_fit_without_page_scroll(app, size):
     base = app["base"]

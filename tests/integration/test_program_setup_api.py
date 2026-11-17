@@ -150,12 +150,35 @@ def test_gemini_program_is_not_wired_and_says_why(setup):
     client = make(Programs(installed={"gemini"}))
     p = by_name(client)["gemini-cli"]
     assert p["verified"] is False and p["can_open_login"] is False and p["install_guide"] is None
+    # 맨 위 안내는 늘 같은 문장(기획 세션 2026-11-17): 개인 무료 계정 종료와 대신 쓸 길
+    assert p["not_wired_notes"][0] == (
+        "구글이 2026년 6월부터 개인 무료 계정의 이용을 끝냈습니다. 기업 계정이나 유료 키가 "
+        "있어야 합니다. 없으면 「API 키로 → Gemini」를 쓰세요.")
     notes = " ".join(p["not_wired_notes"])
     assert "Antigravity 앱과는 다른 프로그램입니다. 같은 구글 계정으로 로그인합니다." in notes
-    assert "2026년 6월 18일" in notes and "API 키" in notes
+    assert "2026년 5월 19일 발표, 2026년 6월 18일부터 적용" in notes
+    # 까닭은 쉬운 말로: 계획 모드를 켰다 끄면 승인 없이 고칠 수 있음(문서 기준 판단)
+    assert "계획 모드" in notes and "문서 기준 판단 · 실제 실행 확인 전" in notes
+    assert "Antigravity는 글을 쓰는 중에 파일을 고칠 수 있어" in notes
     assert p["not_wired_page"].startswith("https://developers.googleblog.com/")
     res = client.post("/api/llm/providers/gemini-cli/login")
     assert res.status_code == 422 and windows == []
+
+
+def test_antigravity_is_not_in_the_list(setup):
+    make, _ = setup
+    items = by_name(make(Programs(installed={"agy", "gemini"})))
+    assert not any("agy" in n or "antigravity" in n.lower() for n in items)
+
+
+def test_first_run_key_path_is_three_steps(setup):
+    make, _ = setup
+    paths = {p["key"]: p for p in make(Programs()).get("/api/llm/providers").json()["first_run"]}
+    key = paths["key"]
+    assert key["providers"] == ["gemini"] and key["link"] == "https://aistudio.google.com/apikey"
+    assert key["link_label"] == "키 받는 페이지 열기"
+    assert "[키 받는 페이지 열기] → 이 AI 칸에 키 붙여 넣기 → [연결 확인]" in key["detail"]
+    assert "무료 등급" in key["detail"] and "2026-11-17 확인" in key["detail"]
 
 
 def test_api_key_ai_has_no_program_fields(setup):

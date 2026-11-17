@@ -424,7 +424,7 @@ const KIND_WORD = { local: '이 PC에서', api: 'API 키로', program: '로그�
 const KEY_GUIDES = {
   openai: ['platform.openai.com에 로그인합니다.', '「API keys」에서 [Create new secret key]를 눌러 키를 만듭니다.', '키를 복사해 위 칸에 붙여 넣고 [키 저장]을 누릅니다. 쓴 만큼 요금이 듭니다.'],
   claude: ['platform.claude.com(Claude 콘솔)에 로그인합니다.', '「API Keys」에서 [Create Key]를 눌러 키를 만듭니다.', '키를 복사해 위 칸에 붙여 넣고 [키 저장]을 누릅니다. 쓴 만큼 요금이 듭니다.'],
-  gemini: ['aistudio.google.com에 구글 계정으로 들어갑니다.', '「Get API key」에서 키를 만듭니다.', '키를 복사해 위 칸에 붙여 넣고 [키 저장]을 누릅니다.'],
+  gemini: ['aistudio.google.com에 구글 계정으로 들어갑니다.', '「Get API key」에서 키를 만듭니다.', '키를 복사해 위 칸에 붙여 넣고 [연결 확인]을 누릅니다(키 저장도 함께 됩니다).'],
   grok: ['console.x.ai에 로그인합니다.', '「API Keys」에서 키를 만듭니다.', '키를 복사해 위 칸에 붙여 넣고 [키 저장]을 누릅니다. 쓴 만큼 요금이 듭니다.'],
   custom: ['LM Studio 같은 프로그램에서 「OpenAI 호환 서버」를 켭니다.', '그 프로그램이 알려 주는 주소(예: http://127.0.0.1:1234/v1)를 위 주소 칸에 넣습니다.', '키가 필요한 곳이면 키도 넣습니다. 이 PC 주소면 영상 자료가 밖으로 나가지 않습니다.'],
 };
@@ -945,6 +945,37 @@ async function aiDeleteKey(name, button) {
   }
 }
 
+// 2026-11-17 첫 실행 「API 키로」 세 걸음: 키를 붙여 넣고 바로 [연결 확인]을 눌러도 되게,
+// 칸에 적힌 키가 있으면 먼저 저장하고 확인한다
+async function aiTestWithKey(name, button) {
+  const input = $(`ai-key-${name}`);
+  if (input && input.value.trim()) {
+    await aiSaveKey(name);
+    const fresh = $(`ai-test-${name}`);
+    const p = findProvider(name);
+    if (!fresh || !p || !p.key_configured) return; // 저장하지 못했으면 그 까닭이 이미 보인다
+    return aiTest(name, fresh);
+  }
+  return aiTest(name, button);
+}
+
+// 연결이 확인됐는데 모델을 아직 고르지 않았으면 추천 목록(공식 문서로 확인한 이름)의 첫 번째를 고른다
+function pickFirstModel(name) {
+  const p = findProvider(name);
+  const input = $(`ai-model-${name}`);
+  const select = $(`ai-model-sel-${name}`);
+  if (!p || p.kind !== 'api' || !input || !select || input.value.trim()) return null;
+  const first = (p.recommended_models || [])[0];
+  if (!first) return null;
+  input.value = first;
+  aiModelCustom[name] = false;
+  refillModelSelect(name);
+  select.value = first;
+  repaintUse(name);
+  markDirty();
+  return first;
+}
+
 async function aiTest(name, button) {
   button.disabled = true;
   setNote(name, '확인하는 중…');
@@ -962,6 +993,10 @@ async function aiTest(name, button) {
       if (res.result === 'not_logged_in' && after && after.can_open_login) {
         aiNotes[name] = { text: `${after.label}에 로그인돼 있지 않습니다. [로그인하기]를 누르면 그 프로그램의 로그인 창이 열립니다.`, tone: 'is-bad' };
       }
+    }
+    if (res.ok) {
+      const picked = pickFirstModel(name);
+      if (picked) aiNotes[name] = { text: `${aiNotes[name].text} 모델은 추천 목록 첫 번째(${picked})로 골랐습니다. [이 AI 쓰기] → [저장]하면 씁니다.`, tone: 'is-ok' };
     }
     setNote(name, aiNotes[name].text, aiNotes[name].tone);
     if (res.ok && findProvider(name) && canList(findProvider(name))) aiLoadModels(name);
@@ -1106,7 +1141,7 @@ function onAiClick(event) {
   else if (action === 'key-change') { aiKeyEditing[name] = true; render(data); if ($(`ai-key-${name}`)) $(`ai-key-${name}`).focus(); }
   else if (action === 'key-cancel') { aiKeyEditing[name] = false; render(data); }
   else if (action === 'key-delete') aiDeleteKey(name, button);
-  else if (action === 'test') aiTest(name, button);
+  else if (action === 'test') aiTestWithKey(name, button);
   else if (action === 'login') aiLogin(name, button);
   else if (action === 'copy') aiCopy(name, button);
   else if (action === 'models') aiLoadModels(name);

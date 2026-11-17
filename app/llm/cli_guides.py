@@ -12,14 +12,31 @@
   `irm https://chatgpt.com/codex/install.ps1 | iex`(설치 프로그램이 사용자 PATH에
   `%LOCALAPPDATA%\\Programs\\OpenAI\\Codex\\bin`을 더한다). 로그인은 `codex login`
   (https://learn.chatgpt.com/docs/auth.md).
-- Gemini(명령줄 프로그램) — https://github.com/google-gemini/gemini-cli 와
-  developers.googleblog.com 공지(2026-05-19): 2026-06-18부터 개인 무료 계정(Google AI
-  Pro/Ultra·개인용 Code Assist)으로는 쓸 수 없다. 로그인 상태를 묻는 명령도 문서에 없다
-  (https://geminicli.com/docs/get-started/authentication/). 뒤를 잇는 Antigravity CLI
-  (`agy`, https://antigravity.google/docs/cli/headless/)는 표준 입력을
-  `--input-format stream-json`에서만 받고, 공식 저장소에 「-p가 파일 쓰기를 자동 승인」
-  이슈가 있다. 이 앱의 안전 조건(프롬프트는 표준 입력, 쓰기·명령 도구 끔)을 확인하지
-  못했다 → **둘 다 물리지 않는다.**
+- Gemini(명령줄 프로그램) — developers.googleblog.com 공지(2026-05-19,
+  /en/an-important-update-transitioning-gemini-cli-to-antigravity-cli/): 2026-06-18부터
+  개인 무료 계정(Google AI Pro/Ultra·개인용 Code Assist)으로는 쓸 수 없다. 기업 라이선스와
+  유료 API 키로는 계속 쓸 수 있다. 로그인 상태를 묻는 명령은 문서에 없다
+  (https://geminicli.com/docs/get-started/authentication/).
+  안전 조건 네 가지(2026-11-17 공식 문서, 기획 세션 기준):
+  ① 비대화 한 번 실행 — 확인: `-p` "Forces non-interactive mode"
+     (https://geminicli.com/docs/cli/cli-reference/, 2026-05-01).
+  ② 프롬프트를 표준 입력으로 — 확인: `-p` "Appended to stdin input if provided"(같은 쪽).
+  ③ 도구 끔 또는 승인 없이 쓰기 불가 — **확인 못 함.** 쓰기·셸 도구는 `ask_user`이고
+     "In non-interactive mode, this is treated as `deny`"
+     (https://geminicli.com/docs/reference/policy-engine/, 2026-04-30). 그러나 계획 모드
+     쪽(https://geminicli.com/docs/cli/plan-mode/, 2026-06-18)은 계획 모드가 기본으로 켜져
+     있고, 「start a plan for…」 같은 말에 모델이 enter_plan_mode를 부르며, 비대화 실행에서는
+     enter_plan_mode·exit_plan_mode를 확인 없이 승인하고 계획 모드를 나가면 YOLO(모두 자동
+     승인)로 바뀐다고 적는다. 영상 자막 속 글이 이 길을 열 수 있다. 모든 도구를 막는
+     `--admin-policy`는 받는 값(파일·폴더)이 문서에 없고, 시스템 정책 파일이 있으면 무시된다.
+     도구를 모두 끄는 인자도 문서에 없다.
+  ④ 시간 제한 — 이 앱이 프로세스에 건다(문서와 상관없음).
+  → ③ 때문에 물리지 않는다(목록에는 두되 고를 수 없게, 칸에 까닭).
+- Antigravity CLI(`agy`, https://antigravity.google/docs/cli/headless/): 표준 입력을
+  `--input-format stream-json`에서만 받고(그때 `-p`는 버려짐), 승인 안 된 도구는
+  「soft-denied」로 이어 가며, 공식 저장소 이슈 #45(v1.0.0)에 「-p가 파일 쓰기를 자동 승인」
+  (https://github.com/google-antigravity/antigravity-cli/issues/45), 로그인 상태 명령 없음
+  → 물리지 않는다. 목록에도 넣지 않고 Gemini 칸 안내에 한 줄로 적는다.
 
 데스크톱 앱이 명령줄 프로그램을 함께 설치하는지(같은 날 공식 문서):
 - Claude 데스크톱 앱의 Code 탭은 「자체 Claude Code를 돌린다」
@@ -75,13 +92,16 @@ GUIDES: dict[str, InstallGuide] = {
 # 물리지 않는 프로그램을 화면에 설명하는 말(목록에는 보이되 고를 수 없다)
 NOT_WIRED: dict[str, tuple[str, ...]] = {
     "gemini": (
+        "구글이 2026년 6월부터 개인 무료 계정의 이용을 끝냈습니다. 기업 계정이나 유료 키가 "
+        "있어야 합니다. 없으면 「API 키로 → Gemini」를 쓰세요.",
+        "공식 공지: 2026년 5월 19일 발표, 2026년 6월 18일부터 적용(2026-11-17 확인).",
+        "연결하지 않은 까닭: 이 프로그램은 명령 없이 돌릴 때 「계획 모드」를 스스로 켰다 끄면 "
+        "승인 없이 파일을 고치고 명령을 실행하는 상태로 바뀐다고 공식 문서에 적혀 있습니다. "
+        "남이 쓴 영상 자막을 넘기면 그 글이 시키는 대로 할 수 있어 연결하지 않았습니다"
+        "(문서 기준 판단 · 실제 실행 확인 전).",
         "Antigravity 앱과는 다른 프로그램입니다. 같은 구글 계정으로 로그인합니다.",
-        "구글이 2026년 6월 18일부터 개인 무료 계정으로는 이 프로그램을 쓸 수 없게 "
-        "했습니다(공식 공지, 2026-11-17 확인).",
-        "뒤를 잇는 프로그램은 영상 자료를 안전하게 넘기는 방법(파일 쓰기·명령 실행 끔)을 "
-        "공식 문서로 확인하지 못해 연결하지 않았습니다.",
-        "구글 AI를 쓰려면 「Gemini(Google)」를 고르고 Google AI Studio에서 받은 API 키를 "
-        "넣으세요(무료 등급이 있습니다).",
+        "Antigravity는 글을 쓰는 중에 파일을 고칠 수 있어, 남이 쓴 영상 자막을 안전하게 넘길 "
+        "방법을 확인하지 못했습니다.",
     ),
 }
 NOT_WIRED_PAGE: dict[str, str] = {
@@ -96,6 +116,7 @@ NOT_WIRED_PAGE: dict[str, str] = {
 # https://aistudio.google.com/docs/pricing 「Free of charge」).
 FIRST_RUN_KEY_NAME = "gemini"
 FIRST_RUN_KEY_PAGE = "https://aistudio.google.com/apikey"
+FIRST_RUN_KEY_CHECKED = CHECKED  # 무료 등급을 공식 가격 페이지에서 확인한 날
 # Ollama: 공식 다운로드 페이지. 크기와 시간은 이 PC에서 잰 값(docs/MODEL_EVAL.md, RTX 4070
 # SUPER 그래픽 메모리 12GB): qwen3.8:27b 17.7GB, 불러오기 30초쯤, 첫 답 30초쯤
 OLLAMA_PAGE = "https://ollama.com/download/windows"

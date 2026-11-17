@@ -216,6 +216,7 @@ def first_run_paths(items: list[LLMProviderOut]) -> list[FirstRunPathOut]:
     「무료」는 공식 가격 페이지에 무료 등급이 적힌 곳(Gemini API)에만 쓴다
     (app/llm/cli_guides.py)."""
     from app.llm.cli_guides import (
+        FIRST_RUN_KEY_CHECKED,
         FIRST_RUN_KEY_NAME,
         FIRST_RUN_KEY_PAGE,
         OLLAMA_NOTE,
@@ -239,9 +240,11 @@ def first_run_paths(items: list[LLMProviderOut]) -> list[FirstRunPathOut]:
     if key_ai is not None:
         paths.append(FirstRunPathOut(
             key="key", title=f"API 키로 ({key_ai.label})",
-            detail="구글 계정으로 키를 받아 붙여 넣습니다. Gemini API에는 무료 등급이 있습니다"
-                   "(공식 가격 안내 기준, 무료 등급 자료는 구글 제품 개선에 쓰일 수 있음).",
-            providers=[key_ai.name], link=FIRST_RUN_KEY_PAGE, link_label="키 받는 곳 열기",
+            detail="세 걸음: [키 받는 페이지 열기] → 이 AI 칸에 키 붙여 넣기 → "
+                   "[연결 확인]. Gemini API에는 무료 등급이 있습니다"
+                   f"(공식 가격 안내, {FIRST_RUN_KEY_CHECKED} 확인. 무료 등급 자료는 "
+                   "구글 제품 개선에 쓰일 수 있고, 한도는 AI Studio에서 보입니다).",
+            providers=[key_ai.name], link=FIRST_RUN_KEY_PAGE, link_label="키 받는 페이지 열기",
             ready=key_ai.key_configured,
         ))
     if ollama:
