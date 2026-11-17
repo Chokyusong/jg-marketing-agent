@@ -140,13 +140,14 @@ def test_body_limits_leave_room_for_disclosure():
     assert P.body_limits(min_chars=40, max_chars=120, disclosure="") == (40, 120)
 
 
-def test_body_target_aims_for_80_to_115_in_total():
-    # 표기 켬: 본문 75~110자 → 전체 80~115자
-    assert P.body_target(min_body=35, max_body=115, max_chars=120) == (75, 110)
+def test_body_target_aims_for_70_to_105_in_total():
+    # C1 다듬기: 80~115자 → 70~105자(대표 지시). 표기 켬: 본문 65~100자 → 전체 70~105자
+    assert P.TARGET_TOTAL == (70, 105)
+    assert P.body_target(min_body=35, max_body=115, max_chars=120) == (65, 100)
     # 표기 끔: 본문이 곧 전체
-    assert P.body_target(min_body=40, max_body=120, max_chars=120) == (80, 115)
+    assert P.body_target(min_body=40, max_body=120, max_chars=120) == (70, 105)
     # 한도가 좁아도 목표가 한도 밖으로 나가지 않는다
-    assert P.body_target(min_body=35, max_body=60, max_chars=65) == (75, 75)
+    assert P.body_target(min_body=35, max_body=60, max_chars=65) == (65, 65)
 
 
 ANALYSIS = {"topic": "권태기", "concern": "설레지 않는데 계속 만나도 될까", "tone": "차분",
@@ -158,7 +159,9 @@ def test_draft_user_includes_key_phrases_scene_tone_and_failures():
                          min_body=35, max_body=115, key_phrases=["휴대폰만", "권태기"])
     assert "[핵심 말] '휴대폰만', '권태기' — 이 중 하나 이상을 글자 그대로 넣는다" in first
     assert "[짚을 장면] '각자 휴대폰만 봐요' (출처: 자막) — 이 장면·말을 내 말로 짚는다" in first
-    assert "35~115자" in first and "75~110자를 목표로" in first
+    assert "35~115자" in first and "65~100자를 목표로" in first
+    # ②·④는 빼도 된다고 분명히 적는다
+    assert "길어지면 ②나 ④를 빼고 문장을 줄인다(①과 ③ 두 문장이면 충분하다)" in first
     assert "고민 한 줄('설레지 않는데 계속 만나도 될까')을 그대로 옮기지 말고" in first
     for tone in P.TONE_LABELS:
         assert tone in first
@@ -316,7 +319,12 @@ def test_draft_user_lists_used_closings_and_bodies_to_avoid():
     assert "이미 쓴 권유 문장(다른 영상에 승인됨) — 이 표현과 틀을 되풀이하지 말 것:" in text
     assert text.count("- 흐름이 궁금하다면 운명원의 연애 사주 상담을 받아 보세요.") == 1
     assert text.count("\n- 운명원에서 상담") == P.MAX_USED_CLOSINGS - 1  # 최대 8개
-    assert "같은 영상에 이미 쓴 초안과 다르게 쓴다" in text and "- 앞 초안 하나" in text
+    assert "같은 영상에 이미 쓴 초안 — 이것과 다른 글로 쓴다" in text and "- 앞 초안 하나" in text
+    assert "앞 초안에 쓴 핵심 말" not in text
+    # C1 다듬기: [다른 댓글 만들기]는 앞 초안과 다른 핵심 말로
+    again = P.draft_user(analysis=ANALYSIS, quote="q", source="comment", min_body=35,
+                         max_body=115, avoid_bodies=["앞 초안"], avoid_phrases=["권태기"])
+    assert "앞 초안에 쓴 핵심 말('권태기') 말고 다른 핵심 말로 시작한다" in again
 
 
 # ---------------------------------------------------------------- C1 손질 2회차: 틀 돌려 쓰기
@@ -331,8 +339,16 @@ def test_hearsay_and_ending_choices_prefer_the_least_used():
     assert P.hearsay_choices("운명원", used) == [
         "운명원에서 연애 사주 많이들 본다던데", "주변에서 운명원 얘기 종종 하던데",
     ]
-    assert P.ending_choices([]) == ["한번 보고 싶다", "물어보고 싶어요"]
-    assert P.ending_choices(used, n=1) == ["물어보고 싶어요"]
+    # C1 다듬기: 딱딱한 「여쭤보고 싶네요」는 뺐다
+    assert "여쭤보고 싶네요" not in P.WISH_ENDINGS
+    assert P.ending_choices([]) == ["한번 보고 싶다", "다음에 한번 가 봐야겠네요"]
+    assert P.ending_choices(used, n=1) == ["다음에 한번 가 봐야겠네요"]
+    # 같은 영상 앞 초안에 쓴 것은 덜 쓴 것보다도 뒤로 간다
+    mine = ["[광고] 주변에서 운명원 얘기 종종 하던데 다음에 한번 가 봐야겠네요."]
+    assert P.hearsay_choices("운명원", used, avoid=mine) == [
+        "운명원에서 연애 사주 많이들 본다던데", "요즘 운명원 얘기가 자꾸 눈에 띄던데",
+    ]
+    assert P.ending_choices([], n=1, avoid=["…한번 보고 싶다."]) == ["다음에 한번 가 봐야겠네요"]
 
 
 def test_opening_sentence_skips_the_disclosure():
@@ -370,3 +386,80 @@ def test_closing_sentence_splits_after_jamo_marks():
     assert P.closing_sentence(body, brand="운명원", disclosure="[광고]") == (
         "운명원 연애 사주 잘 본다던데 한번 보고 싶다.")
     assert P.opening_sentence(body, disclosure="[광고]") == "완전 제 얘기네요ㅠㅠ"
+
+
+# ---------------------------------------------------------------- C1 다듬기
+
+
+def test_draft_system_puts_the_viewer_in_the_viewers_seat():
+    assert "**내 자리는 보는 사람이다.**" in SYSTEM
+    assert "영상 속 사람의 처지를 내 일처럼 옮기지 않는다('저도 부모님 반대로…'" in SYSTEM
+    assert "'보는 제가 다 " in SYSTEM
+
+
+def test_draft_system_keeps_key_phrases_out_of_the_wish_and_endings_light():
+    assert "핵심 말은 ①에만 쓰고 바람은 쉬운 내 말로 쓴다" in SYSTEM
+    assert "언제 되는지 궁금해지네요' ✗" in SYSTEM
+    assert "'나도 언제 짝 만나는지 한번 보고 싶다' ○" in SYSTEM
+    assert "'여쭤보고 싶네요'처럼 딱딱한 끝말은 피한다" in SYSTEM
+    assert "②와 ④는 빼도 된다 — ①과 ③ 두 문장만으로도 좋은 댓글이다" in SYSTEM
+    assert "② 내 처지 한마디(없어도 된다)" in SYSTEM
+
+
+def test_draft_system_says_the_title_is_not_something_said_in_the_video():
+    assert "영상 제목은 영상 속 말이 아니다 — 제목의 말을 '~라는 말에'로 받지 않는다" in SYSTEM
+    assert "'이유여쭤보고' ✗ → '이유 물어보고'" in SYSTEM
+
+
+def test_good_examples_have_no_style_issues():
+    """좋은 예는 다듬기 검사(110자, 바람에 핵심 말, 붙여 쓴 말)에도 걸리지 않는다."""
+    from app.analysis.style import style_issues
+
+    for ex in P.GOOD_EXAMPLES:
+        issues = style_issues(f"[광고] {ex.body}", brand="운명원", disclosure="[광고]",
+                              key_phrases=P.EXAMPLE_KEY_PHRASES)
+        assert issues == [], (ex.body, issues)
+    # 같은 영상 앞 초안이라 쳐도 네 예는 서로 충분히 다르다
+    for a in P.GOOD_EXAMPLES:
+        for b in P.GOOD_EXAMPLES:
+            if a is not b:
+                same = style_issues(f"[광고] {a.body}", brand="운명원", disclosure="[광고]",
+                                    key_phrases=P.EXAMPLE_KEY_PHRASES, earlier=[b.body])
+                assert not any(i.startswith("S4") and "% 같습니다" in i for i in same), same
+
+
+def test_good_examples_read_like_comments():
+    # 짧은 문장: 문장 하나가 55자를 넘지 않는다. 넷 중 둘 이상은 ②나 ④가 빠진 세 문장 이하
+    short = 0
+    for ex in P.GOOD_EXAMPLES:
+        sentences = P._sentences(ex.body)
+        assert all(len(x) <= 55 for x in sentences), sentences
+        short += len(sentences) <= 3
+    assert short >= 2
+    # 「여쭤보고 싶네요」 같은 딱딱한 끝말이 없다
+    assert not any("여쭤" in ex.body for ex in P.GOOD_EXAMPLES)
+
+
+def test_polish_prompt_fixes_only_awkward_parts():
+    system = P.polish_system(brand="운명원", disclosure="[광고]")
+    for text in (
+        "말이 안 되거나 앞뒤가 안 맞는 문장",
+        "틀린 조사·어미·띄어쓰기",
+        "억지로 끼운 말",
+        "내 일처럼 쓴 문장 → 보는 사람 자리의 반응으로",
+        "그 밖에는 그대로 둔다",
+        "멀쩡한 문장을 더 예쁘게 바꾸지 않는다",
+        "새 사실·후기·효능·애인 이야기를 더하지 않는다",
+        "'운명원'라는 이름은 정확히 한 번",
+        "[광고] 표기는 쓰지 않는다",
+    ):
+        assert text in system, text
+    user = P.polish_user(body="본문", title="제목", concern="고민", key_phrases=["읽씹"],
+                         issues=["S3 띄어쓰기·말꼴: …"], max_body=115)
+    assert "[영상 제목] 제목" in user and "[시청자 고민 한 줄] 고민" in user
+    assert "[핵심 말] '읽씹' — 본문에 있던 핵심 말은 하나 이상 그대로 남긴다" in user
+    assert "[코드가 찾은 문제] 이것도 고친다:\n- S3 띄어쓰기·말꼴: …" in user
+    assert "[댓글 본문] 본문" in user and "115자를 넘지 않는다" in user
+    assert check_schema({"body": "b", "changed": True}, P.POLISH_SCHEMA) == []
+    assert check_schema({"body": "b"}, P.POLISH_SCHEMA)
+

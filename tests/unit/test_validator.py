@@ -844,12 +844,31 @@ def test_v13_passes_when_only_key_phrases_are_kept():
 
 
 def test_v13_boundary_is_thirteen_letters():
-    context = "가나다라마바사아자차카타파하거너더러"
+    # 첫 줄은 제목(제목은 따로 9자 기준이 있다 — 아래 제목 테스트), 베낀 글은 둘째 줄
+    context = "영상 제목\n가나다라마바사아자차카타파하거너더러"
     ok = "[광고] 가나다라마바사아자차카타 그 말 공감돼요. 운명원에서 연애 사주 보고 싶네요."  # 12자
     bad = "[광고] 가나다라마바사아자차카타파 그 말 공감돼요. 운명원에서 연애 사주 보고 싶네요."
     assert V.COPY_LIMIT == 13
     assert check(run(ok, context=context), "V13").passed
     assert not check(run(bad, context=context), "V13").passed
+
+
+def test_v13_title_copied_without_quotes_from_nine_letters():
+    """C1 다듬기: 대표가 본 「연애상담 상상상담 가능이라는 말에」(제목 10자, 따옴표 없음)."""
+    context = (
+        "고민상담전문가 각종고민상담 주식상담 연애상담 상상상담 "
+        "가능\n댓글: 연애 고민 들어 주세요"
+    )
+    tail = " 당황했어요ㅋㅋ 요즘 운명원 연애 사주 잘 본다던데 나도 한번 보고 싶다."
+    boss = check(run(f"[광고] 연애상담 상상상담 가능이라는 말에{tail}", context=context), "V13")
+    assert not boss.passed and "영상 제목의 '연애상담 상상상담 가능'를 10자" in boss.message
+    assert "'~라는 말에'로 받지 말고" in boss.message
+    assert V.TITLE_COPY_LIMIT == 9
+    eight = check(run(f"[광고] 상담 상상상담 가능이라니{tail}", context=context), "V13")  # 8자
+    assert eight.passed, eight.message
+    # 제목의 말이 자막·댓글에도 있으면 영상 속 말이다(일반 기준 13자만 본다)
+    spoken = context + "\n자막: 연애상담 상상상담 가능해요"
+    assert check(run(f"[광고] 연애상담 상상상담 가능이라는 말에{tail}", context=spoken), "V13").passed  # noqa: E501
 
 
 # 과제 PDF의 예시 댓글 말투(혼잣말·한탄·들은 얘기·막연한 처지 한마디)는 걸리지 않아야 한다

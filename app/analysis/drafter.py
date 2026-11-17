@@ -29,6 +29,15 @@ C1(2026-11-17, 과제 예시처럼 자연스럽게)
   근거를 글에서 찾았는데, 이제 초안이 근거를 글자 그대로 옮기지 않으므로 글자 하나만 고쳐도 V6이
   걸렸다.
 
+C1 다듬기(2026-11-17, 대표 지시 「초안 더 다듬고」)
+- 규칙 검사를 통과해도 다듬기 검사(`app/analysis/style.py`: 110자 넘음, 바람에 핵심 말, 붙여 쓴 말,
+  같은 영상 앞 초안과 비슷함)에 걸리면 다시 쓸 차례가 남았을 때 한 번 더 쓰게 한다. 마지막 차례면
+  통과한 글을 그대로 둔다(다듬기 검사는 승인을 막지 않는다).
+- [다른 댓글 만들기]: 같은 영상 앞 초안의 핵심 말·운명원 꺼내는 말을 피하게 한다.
+- 다듬기 단계(`polish`): 통과한 초안을 모델에게 한 번 더 보여 말이 안 되는 문장·틀린 조사와
+  띄어쓰기·억지로 끼운 말만 고치게 하고 다시 검사한다. 고친 글이 검사에 걸리거나 다듬기 검사의
+  문제가 늘면 원래 글을 쓴다. 마지막 만들기의 과정은 `last_run`에 남는다(모델 비교용).
+
 7단계: 분석·초안 생성·승인을 작업 기록(`runs`)에 남긴다(`ledger`를 넣었을 때). 해낸 것은 info,
 오류로 멈춘 것은 failure와 사유. V11의 이전 글에는 게시한 댓글(다른 영상)도 들어간다.
 """
@@ -36,6 +45,7 @@ C1(2026-11-17, 과제 예시처럼 자연스럽게)
 from __future__ import annotations
 
 import json
+import time
 import unicodedata
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -43,7 +53,7 @@ from pathlib import Path
 from typing import Any
 
 from app import db
-from app.analysis import analyzer
+from app.analysis import analyzer, style
 from app.analysis.analyzer import Analysis, Evidence
 from app.analysis.checking import CheckService
 from app.analysis.context import ContextService
@@ -56,6 +66,8 @@ from app.youtube.quota import Clock
 from app.youtube.url_parser import is_video_id
 
 MAX_ATTEMPTS = 3
+# 다듬기 단계를 쓸지(실제 모델로 잰 결과는 docs/MODEL_EVAL.md 「C1 다듬기」)
+POLISH_DRAFTS = False
 DraftStatus = str  # 'draft' | 'approved' | 'superseded'
 
 _QUOTES = "'\"‘’“”"
@@ -134,6 +146,7 @@ class DraftService:
         max_attempts: int = MAX_ATTEMPTS,
         ledger: Ledger | None = None,
         disclose_default: bool = True,
+        polish: bool = POLISH_DRAFTS,
     ) -> None:
         self.context = context
         self.checks = checks
@@ -144,6 +157,8 @@ class DraftService:
         self.max_attempts = max_attempts
         self.ledger = ledger
         self.disclose_default = bool(disclose_default)  # R3: 설정의 「광고 표기 기본값」
+        self.polish = bool(polish)
+        self.last_run: dict[str, Any] = {}  # 마지막 초안 만들기의 과정(시도별 글·다듬기)
 
     @property
     def rules(self):
@@ -260,6 +275,8 @@ class DraftService:
             raise
         if draft.passed:
             reason = f"규칙 검사 통과 · {draft.attempts}번째 시도"
+            if self.last_run.get("polish", {}).get("accepted"):
+                reason += " · 다듬음"
         else:
             reason = f"규칙 검사 {len(draft.validation.failures)}개 걸림 · {draft.attempts}번 시도"
         self._record(
@@ -286,6 +303,11 @@ class DraftService:
         previous = self.previous_texts(video_id)
         mine = self.list(video_id)
         avoid_bodies = [d.body for d in mine][:3]
+        # C1 다듬기: [다른 댓글 만들기]는 앞 초안과 다른 핵심 말로(남은 핵심 말이 있을 때)
+        phrases = [k for k in analysis.key_phrases if k]
+        used_before = [k for k in phrases if any(k in style.used_phrases(b, phrases)
+                                                 for b in avoid_bodies)]
+        avoid_phrases = used_before if len(used_before) < len(phrases) else []
         # C1: 말투 유형이 영상마다 이어서 같지 않게(직전 승인 초안), 같은 영상 초안끼리도 다르게
         avoid_tones = [self.last_tone(video_id)] + [d.tone_label for d in mine[:2]]
         tones = prompts.allowed_tones(avoid_tones)
@@ -296,11 +318,14 @@ class DraftService:
             for t in previous
         ]
         # C1 손질 2회차: 운명원 꺼내는 말·끝말·첫 반응이 한 틀로 굳지 않게 덜 쓴 것을 권한다
-        hearsay = prompts.hearsay_choices(rules.brand, previous)
-        endings = prompts.ending_choices(previous)
+        hearsay = prompts.hearsay_choices(rules.brand, previous, avoid=avoid_bodies)
+        endings = prompts.ending_choices(previous, avoid=avoid_bodies)
         used_openings = [prompts.opening_sentence(t, disclosure=rules.disclosure) for t in previous]
 
-        best: tuple[int, str, str, Validation, int] | None = None  # (실패 수, 글, 말투, 검사, 차례)
+        # (실패 수, 다듬기 문제 수, 글, 말투, 검사, 차례, 다듬기 문제)
+        best: tuple[int, int, str, str, Validation, int, list[str]] | None = None
+        run: dict[str, Any] = {"attempts": [], "polish": {}}
+        self.last_run = run
         failure_lines: list[str] = []
         previous_body = ""
         attempts = 0
@@ -324,6 +349,7 @@ class DraftService:
                 previous_body=previous_body,
                 avoid_bodies=avoid_bodies,
                 used_closings=used_closings,
+                avoid_phrases=avoid_phrases,
             )
             try:
                 data = llm.generate_json(
@@ -348,16 +374,28 @@ class DraftService:
                 disclose=disclose, key_phrases=analysis.checked_phrases, concern=analysis.concern,
             )
             fails = len(validation.failures)
-            if best is None or fails < best[0]:
-                best = (fails, text, tone, validation, attempt)
-            if validation.passed:
-                first_passed = attempt == 1
+            issues = self._style(text, mark, analysis.key_phrases, avoid_bodies)
+            run["attempts"].append(
+                {"body": text, "failures": validation.failure_lines(), "issues": issues}
+            )
+            if best is None or (fails, len(issues)) < best[:2]:
+                best = (fails, len(issues), text, tone, validation, attempt, issues)
+            if validation.passed and attempt == 1:
+                first_passed = True
+            if validation.passed and not issues:
                 break
-            failure_lines = validation.failure_lines()
+            # 규칙 검사에 걸렸으면 그 문구로, 통과했지만 어색하면 다듬기 검사 문구로 다시 쓴다
+            failure_lines = validation.failure_lines() + issues
             previous_body = body
 
         assert best is not None
-        _, text, tone, validation, _ = best
+        _, _, text, tone, validation, _, issues = best
+        if validation.passed and self.polish:
+            text, validation = self._polish(
+                llm, video_id, text, validation, issues, analysis=analysis, evidence=evidence,
+                mark=mark, disclose=disclose, previous=previous, avoid_bodies=avoid_bodies,
+                max_body=max_body, run=run,
+            )
         now = self._now()
         with db.session(self.db_path) as conn:
             conn.execute(
@@ -388,6 +426,61 @@ class DraftService:
             )
             draft_id = int(cur.lastrowid)
         return self.get(draft_id)
+
+    def _style(
+        self, text: str, mark: str, key_phrases: Sequence[str], earlier: Sequence[str]
+    ) -> list[str]:
+        return style.style_issues(
+            text, brand=self.rules.brand, disclosure=mark, key_phrases=key_phrases,
+            earlier=earlier,
+        )
+
+    def _polish(
+        self, llm: LLMClient, video_id: str, text: str, validation: Validation,
+        issues: list[str], *, analysis: Analysis, evidence: Evidence, mark: str, disclose: bool,
+        previous: Sequence[str], avoid_bodies: Sequence[str], max_body: int,
+        run: dict[str, Any],
+    ) -> tuple[str, Validation]:
+        """통과한 초안을 한 번 더 다듬는다. 고친 글이 더 나쁘면(검사 실패·문제 늘어남) 원래 글."""
+        rules = self.rules
+        body = toggle_disclosure(text, mark, False) if mark else text
+        info: dict[str, Any] = {"before": text, "issues_before": issues, "accepted": False}
+        run["polish"] = info
+        try:
+            title = self.context.current(video_id).video.video.title
+        except AppError:
+            title = ""
+        started = time.monotonic()
+        try:
+            data = llm.generate_json(
+                system=prompts.polish_system(brand=rules.brand, disclosure=rules.disclosure),
+                user=prompts.polish_user(
+                    body=body, title=title, concern=analysis.concern,
+                    key_phrases=analysis.key_phrases, issues=issues, max_body=max_body,
+                ),
+                schema=prompts.POLISH_SCHEMA,
+                temperature=prompts.POLISH_TEMPERATURE,
+                max_tokens=prompts.POLISH_MAX_TOKENS,
+            )
+        except AppError as exc:
+            info.update(seconds=round(time.monotonic() - started, 1), error=exc.message)
+            return text, validation
+        info["seconds"] = round(time.monotonic() - started, 1)
+        new_body = clean_body(data.get("body"), rules.disclosure)
+        new_text = with_disclosure(new_body, mark)
+        info["after"] = new_text
+        if not new_body or new_text == text:
+            return text, validation
+        checked = self.checks.check(
+            video_id, new_text, previous_texts=previous, evidence_quote=evidence.quote,
+            disclose=disclose, key_phrases=analysis.checked_phrases, concern=analysis.concern,
+        )
+        new_issues = self._style(new_text, mark, analysis.key_phrases, avoid_bodies)
+        info.update(failures_after=checked.failure_lines(), issues_after=new_issues)
+        if not checked.passed or len(new_issues) > len(issues):
+            return text, validation
+        info["accepted"] = True
+        return new_text, checked
 
     def list(self, video_id: str) -> list[Draft]:
         """그 영상의 초안들(최신이 위)."""
