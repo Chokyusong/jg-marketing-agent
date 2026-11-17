@@ -1031,3 +1031,12 @@ def test_v10_does_not_read_eonjeilji_as_best():
     ok = V14_HEAD + "운명원 연애 사주 잘 본다던데 제 인연이 언제일지 한번 보고 싶다."
     assert check(run(ok), "V10").passed
     assert not check(run(V14_HEAD + "운명원이 제일 잘 본다던데 한번 보고 싶다."), "V10").passed
+
+
+def test_v14_plural_topic_marker_is_not_hearsay():
+    # 실제 초안에서 찾음: 「순애남들은」의 '들은'을 들은 얘기로 읽으면 안 된다
+    text = ("[광고] 순애남들은 이런 여자를 좋아한다니 내 스타일이 궁금해져요. "
+            "운명원 연애 사주 한번 보고 싶네요.")
+    assert not check(run(text), "V14").passed
+    heard = V14_HEAD + "주변에서 들은 얘기로는 운명원이 연애 사주로 유명하대요. 한번 보고 싶네요."
+    assert check(run(heard), "V14").passed
