@@ -196,6 +196,9 @@ function render(state) {
   const posting = Boolean(job && !job.finished) || state.jobBusy; // 게시 중에는 글을 바꾸지 않는다
   input.disabled = !state.selectedId || posting
     || Boolean(state.run && state.run.videoId === state.selectedId && !['done', 'error'].includes(state.run.phase));
+  // 2026-11-18 「다듬는 중」: 잠긴 글 상자에 규칙 검사를 통과한 초안이 들어 있다. 읽을 수 있게 덜 흐리게
+  $('draft-edit').classList.toggle('is-reviewing', Boolean(input.disabled && state.run
+    && state.run.videoId === state.selectedId && state.run.phase === 'review'));
   const v = resultFor(state);
   const fresh = v && v.text === input.value;
   const checked = Boolean(fresh && v.result.passed);

@@ -174,7 +174,8 @@ def test_rising_list_fits_and_blocks_posting(fit_app):
     """R4: [뜨기 직전 영상] 목록(줄마다 「시간당 n회」)과 고른 영상의 ③ 막힘이 한 화면에 들어간다.
 
     목록은 지어낸 검색 응답에 뜨기 직전 표시만 덧붙여 돌려준다(가짜, 실제 유튜브를 부르지 않는다).
-    ②칸 자막 줄은 자동 읽기가 막혀 있어(tests/conftest.py) 「자막을 읽지 못해 …」 문구로 잰다.
+    ②칸 자막 줄은 자동 읽기가 자막 없음으로 답해(tests/conftest.py)
+    「자료 부족: 자막이 없고 …」 문구로 잰다.
     """
     base = fit_app["base"]
 
@@ -203,9 +204,11 @@ def test_rising_list_fits_and_blocks_posting(fit_app):
             "'뜨기 직전 영상은 초안까지만 만듭니다')")
         assert page.is_disabled("#job-primary")
         # 2026-11-18: 예전 「자막을 읽지 못해 제목과 설명으로 대신합니다」. 이 시험 영상은
-        # 설명·댓글도 짧아 자료 상태가 「자료 부족」(덧붙임: 자료 상태 셋)
+        # 설명·댓글도 짧아 자료 상태가 「자료 부족」(덧붙임: 자료 상태 셋).
+        # 화면 손질(2026-11-18): 영상에 자막이 없으면 까닭 괄호 없이 「자막이 없고」
+        # (예전 「자막을 읽지 못했고(…)」)
         analyze = page.text_content("#col-analyze")
-        assert "자료 부족: 자막을 읽지 못했고(" in analyze and "제목만 읽었습니다" in analyze
+        assert "자료 부족: 자막이 없고 설명·댓글도" in analyze and "제목만 읽었습니다" in analyze
         for w, h in sorted(FULL):
             _check_one(measure(page, w, h), f"뜨기 직전 {w}x{h}", True)
         assert errors == []

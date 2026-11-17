@@ -107,6 +107,9 @@ async function run(videoId, { another = false, analysis = null } = {}) {
     let draft = await api.createDraft(videoId, { another, disclose: discloseOn(), review: false });
     if (!live()) return;
     if (draft.review && draft.review.status === 'pending') {
+      // 2026-11-18: 규칙 검사를 통과한 초안을 먼저 보여 준다(읽을 수 있게). 「다듬는 중」 동안 글 상자와
+      // [댓글 달기]·[다른 댓글 만들기]는 지금처럼 잠겨 있다(isRunning). 검수가 글을 바꾸면 아래에서 바꾼다
+      loadDraft(draft);
       setRun({ phase: 'review' });
       try {
         draft = await api.reviewDraft(draft.id);

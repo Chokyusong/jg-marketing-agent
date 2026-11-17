@@ -139,9 +139,12 @@ function videoRow(video, selected) {
   const body = el('span', { class: 'vid-body' }, [
     titleNode(video.title), // 끝의 #태그는 흐리게(원문은 title 속성에 그대로)
     el('span', { class: 'video-meta', text: video.channel_title || '' }),
-    el('span', { class: 'video-meta' }, [
-      day ? el('b', { class: 'vid-day', text: day }) : null,
-      [ago, formatViews(video.view_count)].filter(Boolean).map((t) => ` · ${t}`).join(''),
+    // 2026-11-18: 좁은 칸(1366)에서 배지가 「자막 …」으로 잘렸다. 날짜 줄 글만 말줄임하고 배지는 그대로 둔다
+    el('span', { class: 'video-meta has-badge' }, [
+      el('span', { class: 'meta-text' }, [
+        day ? el('b', { class: 'vid-day', text: day }) : null,
+        [ago, formatViews(video.view_count)].filter(Boolean).map((t) => ` · ${t}`).join(''),
+      ]),
       transcriptBadge(video),
     ]),
     video.rising ? el('span', { class: 'rising-line' }, [

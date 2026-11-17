@@ -40,21 +40,26 @@ export function transcriptLine(ctx) {
     return `자동으로 읽은 자막 ${n(ctx.transcript_chars)}자${label}`;
   }
   if (ctx.transcript_source === 'unofficial') return `비공식 조회 자막 ${n(ctx.transcript_chars)}자`;
-  // 2026-11-18 자료가 얇은 영상: 자막이 없으면 무엇만 읽었는지와 초안이 밋밋할 수 있다는 것을 알린다
+  // 2026-11-18 자료가 얇은 영상: 자막이 없으면 무엇만 읽었는지와 초안이 밋밋할 수 있다는 것을 알린다.
+  // 영상에 자막이 없으면(없음·주인이 꺼 둠·비어 있음) 그냥 「자막이 없어」. 자막이 있을 텐데 읽지 못했으면
+  // (막힘·시간 초과·연결 문제 등) 까닭을 괄호로 따로 말한다
+  const failed = ctx.transcript_reason && ctx.transcript_reason !== 'off' && !NO_TRACK.has(ctx.transcript_reason);
   if (ctx.material === 'thin') {
     // 자료 부족: 자막도 없고 설명·댓글도 거의 없어 제목뿐(서버 `context.material_state`)
     const lead = ctx.transcript_reason === 'off' ? '자막 자동 읽기가 꺼져 있고'
-      : ctx.transcript_reason ? `자막을 읽지 못했고(${ctx.transcript_note || '이유 모름'})`
+      : failed ? `자막을 읽지 못했고(${ctx.transcript_note || '이유 모름'})`
         : '자막이 없고';
     return `자료 부족: ${lead} 설명·댓글도 거의 없어 제목만 읽었습니다. ${THIN_NOTE}`;
   }
   if (ctx.transcript_reason === 'off') return `자막 자동 읽기가 꺼져 있어 제목·설명·댓글만 읽었습니다. ${THIN_NOTE}`;
-  if (ctx.transcript_reason) {
+  if (failed) {
     return `자막을 읽지 못해(${ctx.transcript_note || '이유 모름'}) 제목·설명·댓글만 읽었습니다. ${THIN_NOTE}`;
   }
   return `자막이 없어 제목·설명·댓글만 읽었습니다. ${THIN_NOTE}`;
 }
 const THIN_NOTE = '초안이 밋밋할 수 있어요';
+// 영상에 자막 자체가 없는 이유 코드(app/transcript/auto.py REASON_NOTES)
+const NO_TRACK = new Set(['none', 'disabled', 'empty']);
 
 function commentsLine(ctx) {
   if (ctx.comments_disabled) return '댓글이 막힌 영상';
@@ -102,7 +107,10 @@ function render(state) {
     comments.textContent = '–';
   }
 
-  // 넓은 화면에서는 두 줄을 한 줄에 말줄임으로 둔다(2026-11-17). 전체는 마우스를 올리면
+  // 넓은 화면에서는 두 줄을 한 줄에 말줄임으로 둔다(2026-11-17). 전체는 마우스를 올리면.
+  // 2026-11-18: 자막이 없으면 자료 줄이 길어 「자막」 줄이 한 줄을 통째로 쓰고 두 줄까지 줄바꿈한다
+  // (「초안이 밋밋할 수 있어요」까지 보이게. 그래도 넘치면 말줄임)
+  $('context-box').classList.toggle('is-long', Boolean(ctx && ctx.transcript_source === 'none'));
   transcript.title = transcript.textContent;
   comments.title = comments.textContent;
 

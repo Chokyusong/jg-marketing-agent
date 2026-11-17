@@ -316,6 +316,34 @@ def test_context_js_wires_the_three_apis(make_client):
     assert "initContext" in client.get("/static/js/app.js").text
 
 
+def test_screen_touch_ups_after_screenshots(make_client):
+    # 2026-11-18 화면 손질(기획 담당이 스크린샷을 보고 고른 네 가지)
+    client = make_client(key=None)
+    ctx = client.get("/static/js/context.js").text
+    # 영상에 자막이 없으면(없음·주인이 꺼 둠·비어 있음) 까닭 괄호 없이,
+    # 읽기에 실패했을 때만 까닭을 말한다
+    assert "new Set(['none', 'disabled', 'empty'])" in ctx
+    assert "자료 부족: ${lead} 설명·댓글도 거의 없어 제목만 읽었습니다." in ctx
+    assert "'자막이 없고'" in ctx
+    assert "자막을 읽지 못해(${ctx.transcript_note" in ctx  # 막힘·시간 초과 등은 그대로
+    assert "classList.toggle('is-long'" in ctx
+    report = client.get("/static/js/report.js").text
+    # 「다듬는 중」 전에 규칙 검사를 통과한 초안을 먼저 보여 준다
+    assert "loadDraft(draft);\n      setRun({ phase: 'review' });" in report
+    assert "is-reviewing" in client.get("/static/js/draft.js").text
+    assert "video-meta has-badge" in client.get("/static/js/discover.js").text
+    css = client.get("/static/css/style.css").text
+    for rule in (".context.is-long #ctx-transcript { grid-column: 2 / -1; display: -webkit-box;",
+                 # 늘어난 높이는 접힌 「자막 직접 넣기」를 「인기 댓글」 줄 오른쪽에 붙여 되찾는다
+                 ".context.is-long > .analysis-inline { display: contents; }",
+                 ".context.is-long > .paste:not([open]) { grid-row: 2; grid-column: 3;",
+                 "-webkit-line-clamp: 2;", ".checks-review.is-warn { flex: 1 1 100%;",
+                 ".video-meta.has-badge > .meta-text {", ".tbadge { flex: none;",
+                 ".draft-edit.is-reviewing:has(.draft-input:disabled) { opacity: 0.9; }",
+                 "@media (max-height: 820px) {\n  .draft > .checks { order: 1; }"):
+        assert rule in css, rule
+
+
 def test_version_shows_in_status_bar(page):
     # 버전은 단계가 끝날 때마다 하나씩 올린다. 아래 줄 맨 오른쪽
     bar = _section(page, '<footer class="statusbar"', "</footer>")
