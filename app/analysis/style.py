@@ -9,6 +9,9 @@
   (「내짝 찾기 언제 되는지 궁금해지네요」)
 - S3 띄어쓰기·말꼴: 「이유여쭤보고」처럼 붙여 씀, 「없었네라는 말에」처럼 말끝에 바로 「라는」
 - S4 같은 영상 앞 초안과 비슷함: [다른 댓글 만들기]가 거의 같은 글을 내지 않게
+- S6 늘어진 문장: 「~는데/인데」로 이은 문장에 운명원의 「~던데」를 또 이음(2026-11-17)
+- S7 평판 없음: 운명원을 꺼내는 대목에 무엇을 잘하는지(연애 사주를 잘 본다·잘 봐준다·잘 맞는다·
+  유명하다)가 없음(2026-11-17 대표: 운명원은 「연애 사주 잘 봐주는 곳으로 유명한 곳」)
 - S5 영상 사연을 내 것으로: 영상 속 **숫자**(「3년 사귄」「2년째」「석 달」)를 영상 얘기라는
   표지(「~대요」「~라니」「~다는 말에」) 없이 내 일처럼 옮긴 문장. 비슷한 처지라고 말하는 것
   (「완전 제 얘기네요」「저도 비슷해서」「우리 사이」)은 시청자 말투로 둔다(기획 담당 2026-11-17:
@@ -29,6 +32,7 @@ from collections.abc import Sequence
 from difflib import SequenceMatcher
 
 from app.analysis.validator import contains_key_phrase, normalize
+from app.llm.prompts import HEARSAY_LINES
 
 SOFT_MAX_TOTAL = 110
 # 1~5회차 실제 초안: 다른 영상 초안끼리 가장 닮은 것이 0.55, 같은 영상 두 초안은 0.18~0.67,
@@ -63,9 +67,34 @@ _ABOUT_VIDEO = re.compile(
     r"그분|이분|(?:거|걸|글|영상|댓글|사연|얘기|말)\s?보니|듣고|봤는데|셨|시죠|시네|으시"
 )
 # 운명원 꺼내는 말의 표지(앞 초안과 같은 틀인지 볼 때)
-HEARSAY_MARKS = (
-    "잘 본다던데", "잘 본다고", "보이던데", "많이들 본다", "하던데", "눈에 띄던데", "들었", "소문",
+# 꺼내는 말 목록의 표지(긴 것부터) + 목록 밖의 흔한 꼴
+HEARSAY_MARKS = tuple(sorted({m for _, m in HEARSAY_LINES}, key=len, reverse=True)) + (
+    "잘 본다고", "보이던데", "많이들 본다", "하던데", "눈에 띄던데", "들었", "소문",
+    "핫하던데", "길래", "평이 좋", "여기저기서", "유명하다", "입소문", "많다더라",
 )
+# S7(2026-11-17, 대표): 운명원 페르소나 = 「연애 사주 잘 봐주는 곳으로 유명한 곳」(과제 원문).
+# 꺼내는 대목(운명원 문장 + 바로 앞 문장)에 잘한다는 평판이 없으면 다시 쓰게 한다.
+_REPUTATION = re.compile(r"잘\s?(?:보|봐|본|볼|맞)|유명|평이\s?좋|평판이\s?좋|용하")
+# S6(2026-11-17, PDF 대조): 「~는데/인데」로 이은 문장에 브랜드의 「~던데」를 또 이음 —
+# 「저도 고민인데 운명원 … 잘 본다던데 …」, 「동아리 선배라서 더 조심스러운데 요즘 운명원 얘기 자주
+# 보이던데」. 지난 초안 156개(1~8회차·C1 전)에 대 보니 1개만 걸렸고 그 글은 「늘어진다」로 짚었던
+# 어색한 글이었다. 승인은 막지 않고 다시 쓸 차례가 남았을 때만 다시 쓰게 한다.
+# Codex 1회차(16개)에서 「고민인데, 요즘 운명원 … 보이던데」처럼 쉼표 찍은 꼴이 5개 — 쉼표도 본다.
+_NEUNDE_DEONDE = re.compile(
+    r"(?<!던)(?:는데|인데|은데|운데|한데),?\s(?:(?!던데)[^.!?…])*?던데"
+)
+
+
+def _neunde_before_brand(sentence: str, brand: str) -> bool:
+    """S6: 「~는데」가 운명원 **앞**에 있고 운명원 뒤 「~던데」까지 한 문장으로 이어졌는가.
+
+    「친구가 운명원에서 연애 사주 봤는데 잘 맞는다고 하던데」처럼 운명원을 꺼낸 뒤의 「~는데」는
+    남이 본 얘기를 전하는 한 덩어리라 늘어진 문장으로 보지 않는다(2026-11-17 대표 예).
+    """
+    if not brand or brand not in sentence:
+        return False
+    at = sentence.index(brand)
+    return any(m.start() < at for m in _NEUNDE_DEONDE.finditer(sentence))
 
 
 def _sentences(text: str) -> list[str]:
@@ -97,6 +126,18 @@ def hearsay_mark(text: str, brand: str) -> str:
         if brand and brand in s:
             return next((m for m in HEARSAY_MARKS if m in s), "")
     return ""
+
+
+def has_reputation(text: str, brand: str) -> bool:
+    """운명원 문장(또는 바로 앞 문장)에 잘한다는 평판이 있는가. 운명원이 없으면 참(V5가 본다)."""
+    sentences = _sentences(text)
+    spots = [i for i, s in enumerate(sentences) if brand and brand in s]
+    if not spots:
+        return True
+    return any(
+        _REPUTATION.search(sentences[i]) or (i > 0 and _REPUTATION.search(sentences[i - 1]))
+        for i in spots
+    )
 
 
 def used_phrases(text: str, key_phrases: Sequence[str]) -> list[str]:
@@ -159,6 +200,18 @@ def style_issues(
         issues.append(
             f"S3 띄어쓰기·말꼴: '{thing.group(0)}'은 어색합니다 — 운세·시기는 가는 곳이 아니니 "
             "'연애 운세 한번 보고 싶다'나 '다음에 한번 가 봐야겠네요'로 쓰세요"
+        )
+    if brand and not has_reputation(body, brand):
+        issues.append(
+            f"S7 평판 없음: {brand}을(를) 꺼내는 말에 무엇을 잘하는지가 없습니다 — '{brand} 연애 "
+            f"사주 잘 본다던데', '친구가 {brand}에서 연애 사주 봤는데 잘 맞는다고 하던데'처럼 연애 "
+            "사주를 잘 본다는 평판으로 꺼내세요"
+        )
+    doubled = next((s for s in _sentences(body) if _neunde_before_brand(s, brand)), "")
+    if doubled:
+        issues.append(
+            f"S6 늘어진 문장: '~는데/~인데' 뒤에 {brand}의 '~던데'를 또 이었습니다 — 앞을 끊어 "
+            f"'…고민이에요. 요즘 {brand} …던데'처럼 새 문장으로 꺼내세요"
         )
     copied = _copied_number(body, context, brand)
     if copied:

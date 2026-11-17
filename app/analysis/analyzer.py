@@ -74,6 +74,30 @@ def is_summary_concern(concern: str) -> bool:
     return bool(_SUMMARY_END.search(text) or _SUMMARY_ANY.search(text))
 
 
+# 2026-11-17(PDF 대조, Codex 8영상 시험): 설명란의 채널 홍보·방송 일정 안내(「연애상담 라이브를 매주
+# 한다니」)를 초안이 짚었다. 설명란에만 있는 이런 말은 영상 속 장면이 아니라 근거·핵심 말에서 뺀다.
+# 자막·제목·댓글에도 나오는 말이면 영상 얘기일 수 있어 두다(「매주 만나는데」 같은 사연).
+CHANNEL_PROMO_MARKERS = (
+    "라이브", "생방송", "방송 시간", "방송시간", "본방", "업로드", "매주", "매일 밤", "요일마다",
+    "멤버십", "멤버쉽", "후원", "슈퍼챗", "문의", "인스타", "카카오톡", "카톡", "오픈채팅", "채널",
+    "구독", "알림 설정", "커뮤니티", "비즈니스", "제작", "편집", "섭외", "출연 신청", "상담 신청",
+    "사연 신청", "사연 보내", "보내주세요", "남겨주세요",
+)
+
+
+def is_channel_promo(quote: str, context: VideoContext) -> bool:
+    """설명란에만 있는 채널 홍보·일정 안내 구절인지(자막·제목·댓글에도 있으면 아니다)."""
+    q = normalize(quote)
+    if not q or not any(m in quote for m in CHANNEL_PROMO_MARKERS):
+        return False
+    parts = _Parts.of(context)
+    if not any(q in normalize(t) for t in parts.by_source["description"]):
+        return False
+    src = parts.by_source
+    elsewhere = src["transcript"] + src["title"] + src["comment"]
+    return not any(q in normalize(t) for t in elsewhere)
+
+
 def is_promo(quote: str) -> bool:
     """광고·협찬·이벤트 응모·구독 유도로 보이는 구절인지(근거에서 뺀다)."""
     text = quote.lower()
@@ -196,7 +220,11 @@ def check_evidence(
         hint = str(item.get("source") or "")
         if not quote:
             continue
-        if not quote_in_context(quote, search_text) or is_promo(quote):
+        if (
+            not quote_in_context(quote, search_text)
+            or is_promo(quote)
+            or is_channel_promo(quote, context)
+        ):
             dropped.append(quote)
             continue
         # 자료의 원문 그대로로 바꾼다(문장부호·띄어쓰기가 달라도 같은 말이면)
@@ -213,11 +241,16 @@ def check_evidence(
     return kept[:MAX_EVIDENCE], dropped
 
 
-def check_key_phrases(raw: Any, search_text: str) -> tuple[list[str], list[str]]:
-    """모델이 준 핵심 말 → (쓸 수 있는 것, 버린 것). 광고·협찬 말도 버린다."""
+def check_key_phrases(
+    raw: Any, search_text: str, context: VideoContext | None = None
+) -> tuple[list[str], list[str]]:
+    """모델이 준 핵심 말 → (쓸 수 있는 것, 버린 것). 광고·협찬·설명란 채널 홍보 말도 버린다."""
     items = [_clean(x, 60) for x in raw] if isinstance(raw, list) else []
     items = [x for x in items if x]
-    kept = [p for p in usable_key_phrases(items, search_text) if not is_promo(p)]
+    kept = [
+        p for p in usable_key_phrases(items, search_text)
+        if not is_promo(p) and not (context is not None and is_channel_promo(p, context))
+    ]
     kept_n = {normalize(p) for p in kept}
     dropped = [x for x in items if normalize(x.strip("'\"‘’“”「」#")) not in kept_n]
     return kept[:MAX_KEY_PHRASES], dropped
@@ -268,7 +301,7 @@ class _Reading:
 
 def _read(data: dict[str, Any], context: VideoContext, search_text: str) -> _Reading:
     evidence, dropped = check_evidence(data.get("evidence"), context, search_text)
-    phrases, dropped_phrases = check_key_phrases(data.get("key_phrases"), search_text)
+    phrases, dropped_phrases = check_key_phrases(data.get("key_phrases"), search_text, context)
     return _Reading(data, evidence, dropped, phrases, dropped_phrases)
 
 

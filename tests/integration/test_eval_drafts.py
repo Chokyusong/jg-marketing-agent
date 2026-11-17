@@ -109,7 +109,8 @@ def test_eval_runs_the_real_pipeline_with_fake_llm(tmp_db_path, fake_llm):
               "한번 보고 싶어요.")
     # C1: 자료를 13자 이상 이어서 옮기지 않는다(V13)
     good_b = ("같은 식당, 같은 카페에서 데이트가 끝난다는 말에 공감했어요. "
-              "요즘 운명원 얘기 자주 보이던데 연애 흐름을 짚어 보고 싶네요.")  # 굳은 틀(셈 확인용)
+              "요즘 운명원 연애 사주 잘 본다고 평이 좋던데 연애 흐름을 짚어 보고 "
+              "싶네요.")  # 굳은 틀(셈 확인용)
     llm = fake_llm([analysis,
                     {"body": "연애 사주 상담을 받아 보세요.", "used_quote": "",
                      "tone_label": "조언형"},

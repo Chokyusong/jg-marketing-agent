@@ -322,8 +322,8 @@ class DraftService:
             for t in previous
         ]
         # C1 손질 2회차: 운명원 꺼내는 말·끝말·첫 반응이 한 틀로 굳지 않게 덜 쓴 것을 권한다
-        hearsay = prompts.hearsay_choices(rules.brand, previous, avoid=avoid_bodies)
-        endings = prompts.ending_choices(previous, avoid=avoid_bodies)
+        hearsay = prompts.hearsay_choices(rules.brand, previous, n=3, avoid=avoid_bodies)
+        endings = prompts.ending_choices(previous, n=3, avoid=avoid_bodies)
         used_openings = [prompts.opening_sentence(t, disclosure=rules.disclosure) for t in previous]
 
         try:  # S5(영상 숫자를 내 것으로)를 볼 영상 자료 글

@@ -614,7 +614,10 @@ def test_long_context_is_fast_enough():
 # ---------------------------------------------------------------- 전해 들은 말(V10)
 # 5단계에는 "잘 본다던데" 같은 평판도 V10으로 막았다. 2026-11-17 시청자 말투로 전환하면서 과제 PDF의
 # 예("잘 본다던데")와 brand.facts("잘 봐주는 곳으로 알려져 있다")에 맞춰 가벼운 평판은 허용하고,
-# 맞힌다는 효능(용하다·잘 맞는다·정확하다)만 남의 말로 옮겨도 막는다.
+# 맞힌다는 효능(용하다·잘 맞는다·정확하다)만 남의 말로 옮겨도 막았다.
+# 2026-11-17(대표, 운명원 페르소나 = 「연애 사주 잘 봐주는 곳으로 유명한 곳」): 「잘 맞는다고
+# 하던데」「잘 맞는대요」「다 맞힌다더라」처럼 **들은 얘기 꼴의 평판은 통과**로 바꿨다. 「용하다」
+# 「정확하다」「100%」「무조건」은 들은 얘기라도 막는다(아래 두 테스트).
 
 
 @pytest.mark.parametrize(
@@ -628,13 +631,22 @@ def test_v10_allows_light_reputation(phrase):
 
 @pytest.mark.parametrize(
     "phrase",
-    ["운명원 용하대요", "운명원이 용하다고 들었어요", "다들 잘 맞는다더라고요",
-     "잘 맞는다고 하던데요", "정확하다고들 해요", "연애운 잘 맞는대요", "다 맞힌다더라"],
+    ["운명원 용하대요", "운명원이 용하다고 들었어요", "정확하다고들 해요",
+     "100% 맞는대요", "무조건 맞는다던데", "제일 잘 본다던데"],
 )
 def test_v10_catches_hearsay_accuracy_claims(phrase):
     v10 = check(run(f"{GOOD} {phrase}"), "V10")
     assert not v10.passed, phrase
     assert "효능·최상급" in v10.message
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    ["다들 잘 맞는다더라고요", "잘 맞는다고 하던데요", "연애운 잘 맞는대요", "다 맞힌다더라"],
+)
+def test_v10_allows_relayed_reputation_since_persona(phrase):
+    """2026-11-17(대표): 예전에는 걸렸던 들은 얘기 꼴의 평판 — 이제 통과(위 주석)."""
+    assert check(run(f"{GOOD} {phrase}"), "V10").passed, phrase
 
 
 @pytest.mark.parametrize("text", [

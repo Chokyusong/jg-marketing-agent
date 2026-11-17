@@ -182,7 +182,8 @@ def test_next_video_cannot_reuse_the_last_approved_tone(setup):
     assert "한탄형" not in enum and len(enum) == 3
     # 앞 영상에서 쓴 운명원 꺼내는 말('잘 본다던데')은 이번 권유에서 뒤로 밀린다
     line = next(x for x in user_prompts(llm)[3].splitlines() if "꺼내는 말은" in x)
-    assert "잘 본다던데" not in line
+    # (2026-11-17: 「그렇게 잘 본다던데」 줄이 생겨 따옴표째 본다)
+    assert "'운명원 연애 사주 잘 본다던데'" not in line
     assert "이미 쓴 첫 반응(다른 영상에 승인됨)" in user_prompts(llm)[3]
 
 

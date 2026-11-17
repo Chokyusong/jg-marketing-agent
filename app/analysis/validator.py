@@ -76,9 +76,10 @@ PATTERN_CODES = ("V8", "V9", "V10")
 
 # ---------------------------------------------------------------- 표현 목록(정규식)
 # 과하게 잡는 쪽이 안전하다(걸리면 다시 만들면 된다). 다만 정상 표현("공감돼요", "상담받아
-# 보세요")과 시청자 말투의 의향·가벼운 평판("저도 한번 보고 싶네요", "요즘 많이 보이던데",
-# "잘 본다던데")은 걸리지 않게 한다 — 테스트로 확인한다. 막는 것은 써 본 척(V8), 지어낸 애인
-# 이야기(V9), 효능 단정(V10)이다(2026-11-17 시청자 말투 전환, 과제 PDF 기준).
+# 보세요")과 시청자 말투의 의향·들은 평판("저도 한번 보고 싶네요", "잘 본다던데", "잘 맞는다고
+# 하던데", "친구가 … 봤는데 잘 맞는다고 하던데")은 걸리지 않게 한다 — 테스트로 확인한다.
+# 막는 것은 써 본 척(V8), 지어낸 애인 이야기(V9), 효능 단정(V10)이다(2026-11-17 시청자 말투
+# 전환, 과제 PDF 기준).
 
 LINK_PATTERNS: tuple[str, ...] = (
     r"https?",
@@ -144,21 +145,66 @@ CLAIM_PATTERNS: tuple[str, ...] = (
     r"(?<![0-9])1\s?(?:등|위)",
     r"넘버\s?원",
     r"정확(?:하|히|한|도|해)",
-    r"잘\s?(?:맞혀|맞춰|맞히|맞추|맞췄|맞더)",
+    r"잘\s?(?:맞혀|맞춰|맞히|맞추|맞췄|맞더)",  # 들은 얘기 꼴이면 통과(아래 REPUTATION_PATTERNS)
     r"신통",
     r"효과",
     r"효험",
-    # 맞힌다는 효능은 남의 말로 옮겨도 막는다("잘 맞는대요", "용하대요"). 가벼운 평판("잘
-    # 본다던데", "유명하던데", "요즘 많이 보이던데")은 과제 PDF의 예와 brand.facts("잘 봐주는
-    # 곳으로 알려져 있다")에 맞춰 허용한다(2026-11-17 시청자 말투 전환).
+    # 「용하다」는 남의 말로 옮겨도 막는다("용하대요").
     r"(?<![가-힣])용하",
+    # 평판(운명원 페르소나 = 「연애 사주 잘 봐주는 곳으로 유명한 곳」, 과제 원문, 2026-11-17 대표):
+    # 아래 셋은 **들은 얘기 꼴이면 통과**(「잘 맞는다고 하던데」「잘 맞는대요」「잘 본다던데」),
+    # 내가 단정하면 실패(「잘 맞아요」「운명원은 잘 맞혀요」「잘 봐요」「잘 보는 곳이에요」).
+    # 들은 얘기인지는 `REPUTATION_PATTERNS` + `_relayed_claim`이 본다.
     r"잘\s?맞(?:는다|는대|아요|아서|더|대)",
     r"(?:맞는|맞힌|맞춘)\s?(?:대요|대서|대더라|다네요|다니까|다던데|다더라)",
-    # C1: 들은 얘기 꼴("잘 본다던데", "그렇게 잘 본다고 하던데")은 되고 내 단정("잘 봐요", "잘 보는
-    # 곳이에요")은 막는다. brand.facts의 "잘 봐주는 곳으로 알려져"는 걸리지 않는다
     r"잘\s?(?:봐요|봐서|봅니다|보더라|보시더라|보네요|봐\s?주(?:어요|더라|십니다|네요))",
     r"잘\s?(?:보는|봐\s?주는)\s?(?:곳|데)(?:이에요|예요|입니다|이야|야|이죠)",
 )
+
+# 들은 얘기 꼴이면 넘어가는 평판 표현(V10). 「무조건」「100%」「정확」「최고」「용하」는 들은 얘기도
+# 막는다(과제 금지: 확인할 수 없는 효능 단정).
+REPUTATION_PATTERNS: frozenset[str] = frozenset({
+    r"잘\s?(?:맞혀|맞춰|맞히|맞추|맞췄|맞더)",
+    r"잘\s?맞(?:는다|는대|아요|아서|더|대)",
+    r"(?:맞는|맞힌|맞춘)\s?(?:대요|대서|대더라|다네요|다니까|다던데|다더라)",
+    r"잘\s?(?:봐요|봐서|봅니다|보더라|보시더라|보네요|봐\s?주(?:어요|더라|십니다|네요))",
+    r"잘\s?(?:보는|봐\s?주는)\s?(?:곳|데)(?:이에요|예요|입니다|이야|야|이죠)",
+})
+# 남이 써 본 얘기를 전하면 넘어가는 이용 표현(V8): 「친구가 운명원에서 연애 사주 봤는데 잘 맞는다고
+# 하던데」. 「후기」「소름」「덕분에」「예약했」「직접」「실제로」「맞더라」는 그대로 막는다.
+RELAY_PATTERNS: frozenset[str] = frozenset({
+    r"봤는데",
+    r"봐\s?봤",
+    r"받아\s?봤",
+    r"받았는데",
+    r"받았어",
+    r"받고\s?왔",
+    r"다녀\s?왔",
+    r"다녀\s?온",
+    r"갔다\s?왔",
+    r"가\s?봤",
+    r"써\s?봤",
+    r"이용해\s?봤",
+    r"이용했",
+    r"상담\s?받(?!\s?아\s?보(?:세요|시|셔|실|고\s?싶)|을\s?수|으실|으러\s?오|기)",
+    r"맞췄",
+    r"맞추더",
+    r"맞히",
+})
+# 전하는 말: 「~다고 하던데」「~대요」「~라더라」「~다던데」「~다는 얘기」「~기로 유명」
+HEARSAY_TAIL = re.compile(
+    r"[다라]\s?고\s?(?:하|들|해|그러)|[다라]고들|[대래](?:요|서|더라|니까)|"
+    r"[다라](?:던데|더라|네요|니까|길래|며|는데)|[다라]는\s?(?:얘기|말|소문|평|글)|"
+    r"[단란]\s?(?:얘기|말|소문|평)|(?:기로|으로|로)\s?유명"
+)
+# 남(써 본 사람): 「친구가」「아는 언니가」「주변에서」「동생이」. 「우리 오빠」는 V9가 본다.
+THIRD_PERSON = re.compile(
+    r"(?<![가-힣])(?:친구|지인|주변|동생|언니|누나|형|동료|선배|후배|엄마|이모|고모|사촌|"
+    r"아는\s?(?:사람|분|언니|동생|형|누나|오빠)|회사\s?사람|친한\s?(?:언니|동생|친구|형|누나))"
+    r"(?:들)?(?:이|가|도|는|분|네|한테서|한테|에서|께서)?(?![가-힣])"
+)
+FIRST_PERSON = re.compile(r"(?<![가-힣])(?:제가|내가|저도|나도|저는|나는|전|난)(?![가-힣])")
+_CLAUSE_END = re.compile(r"[.!?…\n]|(?<=[ㄱ-ㅎㅏ-ㅣ])\s")
 
 BUILTIN_PATTERNS: dict[str, tuple[str, ...]] = {
     "V8": REVIEW_PATTERNS,
@@ -759,6 +805,44 @@ def _quoted_spans(text: str, context_text: str, rules: ValidatorRules) -> list[t
     return spans
 
 
+def _sentence_at(text: str, start: int, end: int) -> tuple[int, int]:
+    """[start, end)를 품은 문장의 범위(마침표류·ㅠㅠ 뒤 띄어쓰기로 자른다)."""
+    left = 0
+    for m in _CLAUSE_END.finditer(text, 0, start):
+        left = m.end()
+    stop = _CLAUSE_END.search(text, end)
+    return left, (stop.start() if stop else len(text))
+
+
+def _relayed_claim(text: str, start: int, end: int) -> bool:
+    """V10 평판 표현이 들은 얘기 꼴인가: 그 말부터 같은 문장 안 몇 자 뒤까지 전하는 말이 있다.
+
+    「잘 맞는다고 하던데」「잘 맞는대요」「잘 맞힌다는 얘기」는 들은 얘기, 「잘 맞아요」「잘 봐요」
+    는 내 단정이다.
+    """
+    _, stop = _sentence_at(text, start, end)
+    window = text[start : min(stop, end + 8)]
+    return bool(HEARSAY_TAIL.search(window))
+
+
+def _relayed_use(text: str, start: int, end: int) -> bool:
+    """V8 이용 표현이 남이 써 본 얘기를 전하는 꼴인가.
+
+    같은 문장에서 그 말 앞에 남(친구·지인·주변·동생·언니 …)이 있고, 그 사이에 나(제가·저도 …)가
+    없고, 그 말 뒤에 전하는 말(~다고 하던데·~대요·~라더라·~다던데)이 있어야 한다.
+    「친구가 운명원에서 연애 사주 봤는데 잘 맞는다고 하던데」는 통과, 「제가 운명원에서 봤는데
+    잘 맞더라고요」「친구랑 같이 봤는데 좋았어요」는 실패.
+    """
+    left, stop = _sentence_at(text, start, end)
+    before = text[left:start]
+    who = list(THIRD_PERSON.finditer(before))
+    if not who:
+        return False
+    if FIRST_PERSON.search(before[who[-1].end():]):
+        return False
+    return bool(HEARSAY_TAIL.search(text[end:stop]))
+
+
 def _pattern_check(
     code: str,
     text: str,
@@ -774,6 +858,16 @@ def _pattern_check(
                 continue
             if any(a <= m.start() and m.end() <= b for a, b in quoted):
                 continue  # 영상 속 말을 따옴표로 그대로 옮긴 구간 안
+            if code == "V10" and pattern.pattern in REPUTATION_PATTERNS and _relayed_claim(
+                text, m.start(), m.end()
+            ):
+                continue  # 들은 평판(「잘 맞는다고 하던데」)
+            if code == "V8" and pattern.pattern in RELAY_PATTERNS and (
+                _relayed_use(text, m.start(), m.end())
+                or (pattern.pattern in (r"맞췄", r"맞추더", r"맞히")
+                    and _relayed_claim(text, m.start(), m.end()))
+            ):
+                continue  # 남이 써 본 얘기를 전함(「친구가 … 봤는데 잘 맞는다고 하던데」)
             hits.append(m.group(0))
     if hits:
         return _check(code, False, f"걸린 말 {_found(hits)} — {hint}")
@@ -897,7 +991,7 @@ HEARSAY_PATTERNS: tuple[str, ...] = (
     r"던데",
     r"[다라]더라",
     r"[다라]고\s?(?:하|들)",
-    r"(?:본|한|좋|있|는|된|많)대(?:요|서|니|더)",
+    r"(?:본|한|좋|있|는|된|많|췄|맞|었|았|였|했|봤|힌|춘)대(?:요|서|니|더)",
     r"소문",
     r"유명",
     r"평판",
@@ -965,8 +1059,8 @@ def _v14_brand_intro(text: str, rules: ValidatorRules) -> CheckResult:
         return _check(
             "V14", False,
             f"'{brand}'이(가) 뜬금없이 나옵니다 — 그 문장이나 바로 앞 문장에서 "
-            f"'요새 {brand} 연애 사주 그렇게 잘 본다던데', '주변에서 {brand} 얘기 자주 하던데'처럼 "
-            "들은 얘기로 꺼내세요",
+            f"'요새 {brand} 연애 사주 그렇게 잘 본다던데', '주변에서 {brand} 연애 사주 잘 "
+            "본다고들 하던데'처럼 들은 얘기로 꺼내세요",
         )
     return _check(
         "V14", False,

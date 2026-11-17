@@ -42,7 +42,7 @@ GOOD_BODY = (
 GOOD_CLOSING = "운명원 연애 사주 잘 본다던데 이번 인연은 오래 갈지 알면 좋겠어요."
 GOOD_BODY_2 = (
     "기대치 차이라는 말에 뜨끔했어요. 연애만 하면 마음 속도가 엇갈리는 편이라... "
-    "요즘 운명원 얘기 자주 보이던데 제 인연은 언제쯤인지 물어보고 싶네요."
+    "요즘 운명원 연애 사주 잘 본다고 평이 좋던데 제 인연은 언제쯤인지 물어보고 싶네요."
 )
 NO_BRAND = (
     "하루에 한 번 연락 갖고 싸웠다는 댓글에 공감해요. 연애 사주 상담을 한번 받아 보고 싶네요."
@@ -51,7 +51,7 @@ NO_BRAND_TAG = "하루에 한 번 연락 갖고 싸웠다는 댓글에 공감해
 MANY_FAILS = "운명원 최고! www.example.com #연애"
 OTHER_BODY = (
     "썸 타다 끝나는 게 제 전문이라 웃프네요ㅋㅋ 하루에 한 번 연락도 어려운 1인... "
-    "운명원에서 연애 사주 많이들 본다던데 이번 썸은 연애로 갈지 궁금해지네요."
+    "운명원이 연애 쪽으로 유명하다던데 이번 썸은 연애로 갈지 궁금해지네요."
 )
 
 
@@ -386,7 +386,7 @@ def test_human_edit_is_checked_again(setup):
     assert broken["edited_by_human"] is True and broken["attempts"] == 1
     fixed_text = (
         "[광고] 하루에 한 번 연락 때문에 다툰 적 있다는 댓글에 공감했어요. "
-        "요즘 운명원 얘기 자주 보이던데 연애 사주 한번 보고 싶네요."
+        "요즘 운명원 연애 사주 잘 본다고 평이 좋던데 연애 사주 한번 보고 싶네요."
     )
     fixed = client.patch(f"/api/drafts/{made['id']}", json={"body": fixed_text}).json()
     assert fixed["passed"] is True and fixed["body"] == fixed_text

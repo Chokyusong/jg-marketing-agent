@@ -6,6 +6,7 @@ C1(2026-11-17)에서 다시 썼다: 좋은 예 4개(말투가 서로 다름)·�
 
 import pytest
 
+from app.analysis.style import style_issues
 from app.analysis.validator import ASSIGNMENT_SAMPLE, ValidatorRules, contains_key_phrase, validate
 from app.llm import prompts as P
 from app.llm.base import check_schema
@@ -30,9 +31,12 @@ def check_example(ex: P.Example):
 
 def test_four_good_and_four_bad_examples():
     # C1: 말투가 서로 다른 좋은 예 4개, 나쁜 예 4개(써 본 척 · 효능 단정 · 길게 베끼기 ·
-    # 뜬금없는 운명원 — 대표가 본 초안과 같은 꼴, V14)
-    assert len(P.GOOD_EXAMPLES) == 4 and len(P.BAD_EXAMPLES) == 4
+    # 뜬금없는 운명원 — 대표가 본 초안과 같은 꼴, V14).
+    # 2026-11-17(대표, 운명원 페르소나): 나쁜 예 5번째 — 평판 없이 꺼낸 「요즘 운명원 얘기 자주
+    # 보이던데」(S7)
+    assert len(P.GOOD_EXAMPLES) == 4 and len(P.BAD_EXAMPLES) == 5
     assert "운명원에서 연애 사주를 한번 보고 싶어요" in P.BAD_EXAMPLES[3].body
+    assert "요즘 운명원 얘기 자주 보이던데" in P.BAD_EXAMPLES[4].body
     assert len(P.BAD_EXAMPLE_FAILS) == len(P.BAD_EXAMPLES)
 
 
@@ -62,19 +66,24 @@ BAD_CASES = list(zip(P.BAD_EXAMPLES, P.BAD_EXAMPLE_FAILS, strict=True))
 @pytest.mark.parametrize(("ex", "codes"), BAD_CASES)
 def test_bad_examples_fail_the_real_checks(ex, codes):
     result = check_example(ex)
-    assert not result.passed
     failed = {c.code for c in result.failures}
+    # S로 시작하는 것은 다듬기 검사(승인은 막지 않고 다시 쓰게 한다, 2026-11-17 S7)
+    failed |= {i[:2] for i in style_issues(ex.body, brand="운명원", disclosure="[광고]")}
     assert codes <= failed, (codes, result.failure_lines())
+    if not any(c.startswith("S") for c in codes):
+        assert not result.passed
 
 
 def test_examples_follow_the_viewer_persona():
     # 좋은 예는 써 본 척 없이 의향·궁금함으로 끝나고, 운명원은 들은 얘기로 꺼낸다
-    intents = ("보고 싶", "물어보고 싶", "궁금해지", "여쭤보고 싶", "가 봐야겠")
+    intents = ("보고 싶", "물어보고 싶", "궁금해지", "궁금하네", "여쭤보고 싶", "가 봐야겠")
     for ex in P.GOOD_EXAMPLES:
         assert any(word in ex.body for word in intents), ex.body
         assert ex.body.count("운명원") == 1
-    # C1-V14: 네 예 모두 들은 얘기로 꺼내고, 그 평판 표현이 서로 다르다
-    hearsay = ("잘 본다던데", "많이 보이던데", "얘기 많이 하던데", "그렇게 잘 본다고 하던데")
+    # C1-V14: 네 예 모두 들은 얘기로 꺼내고, 그 평판 표현이 서로 다르다.
+    # 2026-11-17(대표, 운명원 페르소나): 모두 연애 사주를 잘 본다는 평판이고 하나는 친구가 본 얘기
+    hearsay = ("잘 보기로 유명하다던데", "잘 맞는다고 하던데", "잘 본다고들 하던데",
+               "그렇게 잘 본다고 하던데")
     used = [next(h for h in hearsay if h in ex.body) for ex in P.GOOD_EXAMPLES]
     assert len(set(used)) == 4, used
     # 좋은 예는 자료를 13자 이상 이어서 옮기지 않는다(V13)
@@ -98,16 +107,18 @@ def test_draft_system_states_the_rules():
         "너는 이 영상을 방금 본 시청자다",
         "① 영상 반응",
         "② 내 처지 한마디",
-        "③ 운명원을 **들은 얘기**로 꺼내고 내 고민에 맞춘 바람",
+        "③ 운명원을 **연애 사주를 잘 본다는 평판**(들은 얘기)으로 꺼내고 내 고민에 맞춘 바람",
         "④ 짧은 생각으로 마무리",
         "'ㅠㅠ', 'ㅋㅋ', '...' 같은 댓글 표기를 써도 된다",
         "'~하는 방법이 궁금해서'",
         "길게 그대로 옮기지 않는다. 핵심 말만 그대로 쓰고",
         "운명원에서 실제로 상담받은 것처럼 쓰지 않는다(지어낸 후기 금지)",
-        "'상담받고 왔는데', '맞더라고요'",
-        "'봤는데', '소름'",
+        "'상담받고 왔는데', '제가 봤는데', '맞더라고요'",
+        "**남이 본 얘기를 전하는 것**('친구가 … 봤는데 잘 맞는다고 하던데')은 된다",
+        "'예약했어요', '소름'",
         "의향까지만 쓴다",
-        "'요즘 많이 보이던데', '잘 본다던데' 같은 가벼운 평판(들은 얘기)까지만",
+        "'잘 본다던데', '잘 봐준다고 하던데', '잘 맞는다고 하던데', '유명하다던데' 같은 **들은 "
+        "평판**까지만",
         "'무조건', '제일', '최고', '확실', '정확하다'",
         "'운명원'라는 이름은 정확히 한 번 쓴다",
         "'제 남친', '제 여친', '우리 오빠' 같은 지어낸 애인 이야기는 쓰지 않는다",
@@ -219,7 +230,9 @@ def test_analysis_prompt_asks_for_a_question_shaped_concern_and_key_phrases():
     assert "'~하는 방법', '~분석', '~에 대한 내용', '~특징' 같은 영상 요약으로 쓰지 않는다" in user
     assert "- key_phrases: 이 영상에서만 나올 **핵심 말** 3~6개" in user
     assert "**글자 그대로 있는** 짧은 말(2~10자)" in user
-    assert "광고·협찬·채널 홍보 말은 넣지 않는다" in user
+    # 2026-11-17: 설명란의 채널 홍보·방송 일정 안내도 넣지 않는다
+    assert "광고·협찬·채널 홍보·방송 일정 안내 말(설명란의 '연애상담 라이브'" in user
+    assert "넣지 않는다" in user
 
 
 def test_analysis_retry_note_names_every_problem():
@@ -331,22 +344,25 @@ def test_draft_user_lists_used_closings_and_bodies_to_avoid():
 
 
 def test_hearsay_and_ending_choices_prefer_the_least_used():
+    # 2026-11-17(대표, 운명원 페르소나): 목록이 연애 사주 평판 꼴로 바뀌었다
     assert P.hearsay_choices("운명원", []) == [
-        "운명원 연애 사주 잘 본다던데", "요즘 운명원 얘기 자주 보이던데",
+        "운명원 연애 사주 잘 본다던데", "요새 운명원이 연애 사주를 그렇게 잘 본다던데",
     ]
     used = ["[광고] 운명원 연애 사주 잘 본다던데 한번 보고 싶다.",
-            "[광고] 요즘 운명원 얘기 자주 보이던데 궁금해지네요."]
+            "[광고] 요새 운명원이 연애 사주를 그렇게 잘 본다던데 궁금해지네요."]
     assert P.hearsay_choices("운명원", used) == [
-        "운명원에서 연애 사주 많이들 본다던데", "주변에서 운명원 얘기 종종 하던데",
+        "운명원이 연애 사주를 잘 봐준다고 하던데", "운명원이 연애 사주 잘 보기로 유명하다던데",
     ]
     # C1 다듬기: 딱딱한 「여쭤보고 싶네요」는 뺐다
     assert "여쭤보고 싶네요" not in P.WISH_ENDINGS
     assert P.ending_choices([]) == ["한번 보고 싶다", "다음에 한번 가 봐야겠네요"]
     assert P.ending_choices(used, n=1) == ["다음에 한번 가 봐야겠네요"]
     # 같은 영상 앞 초안에 쓴 것은 덜 쓴 것보다도 뒤로 간다
-    mine = ["[광고] 주변에서 운명원 얘기 종종 하던데 다음에 한번 가 봐야겠네요."]
+    mine = ["[광고] 운명원이 연애 사주를 잘 봐준다고 하던데 다음에 한번 가 봐야겠네요."]
     assert P.hearsay_choices("운명원", used, avoid=mine) == [
-        "운명원에서 연애 사주 많이들 본다던데", "요즘 운명원 얘기가 자꾸 눈에 띄던데",
+        "운명원이 연애 사주 잘 보기로 유명하다던데", "친구가 운명원에서 연애 사주 봤는데 잘 "
+        "맞는다고 "
+        "하던데",
     ]
     assert P.ending_choices([], n=1, avoid=["…한번 보고 싶다."]) == ["다음에 한번 가 봐야겠네요"]
 
@@ -363,9 +379,11 @@ def test_draft_user_suggests_hearsay_endings_and_lists_used_openings():
         brand="운명원", hearsay=["요즘 운명원 얘기 자주 보이던데"], endings=["궁금해지네요"],
         used_openings=["기대치 차이라는 말에 뜨끔했어요."] * 2,
     )
-    assert "운명원을 꺼내는 말은 이번에 이런 식으로(낱말은 조금 바꿔도 된다): " in text
+    # 2026-11-17: 목록은 권유일 뿐(목록에 없는 자연스러운 말도 된다)
+    assert "운명원을 꺼내는 말은 이번에 이런 식으로(권유일 뿐이다 — " in text
     assert "'요즘 운명원 얘기 자주 보이던데'" in text
-    assert "바람의 끝말은 이번에 이런 식으로: '궁금해지네요'" in text
+    assert ("바람의 끝말은 이번에 이런 식으로(목록에 없는 자연스러운 말도 된다): "
+            "'궁금해지네요'") in text
     assert "이미 쓴 첫 반응(다른 영상에 승인됨) — 이 틀로 시작하지 말 것:" in text
     assert text.count("- 기대치 차이라는 말에 뜨끔했어요.") == 1
     plain = P.draft_user(analysis=ANALYSIS, quote="q", source="comment", min_body=35,

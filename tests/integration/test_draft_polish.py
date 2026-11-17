@@ -45,8 +45,8 @@ STUFFED = (  # S2: 운명원 뒤의 바람에 핵심 말('하루에 한 번 연�
     "되는지 물어보고 싶어요."
 )
 GLUED = (  # S3: 「이유여쭤보고」
-    "기대치 차이라는 말에 뜨끔했어요. 요즘 운명원 얘기 자주 보이던데 자꾸 싸우는 이유여쭤보고 "
-    "싶네요."
+    "기대치 차이라는 말에 뜨끔했어요. 요즘 운명원 연애 사주 잘 본다고 평이 좋던데 "
+    "자꾸 싸우는 이유여쭤보고 싶네요."
 )
 LONG = (  # S1: 표기까지 110자 넘음(120자 한도 안)
     "하루에 한 번 연락 갖고 싸웠다는 댓글 보니 남 일 같지 않네요ㅠㅠ 저도 연락 문제로 늘 마음 졸이는 "  # noqa: E501
@@ -117,7 +117,9 @@ def test_another_draft_must_differ_from_the_earlier_one(setup):
     assert f"- [광고] {GOOD_BODY}" in prompt
     assert "앞 초안에 쓴 핵심 말('하루에 한 번 연락') 말고 다른 핵심 말로 시작한다" in prompt
     hearsay = next(x for x in prompt.splitlines() if x.startswith("운명원을 꺼내는 말은"))
-    assert "잘 본다던데" not in hearsay  # 앞 초안이 쓴 꺼내는 말은 권하지 않는다
+    # 앞 초안이 쓴 꺼내는 말은 권하지 않는다(2026-11-17: 「그렇게 잘 본다던데」 줄이 생겨 따옴표째
+    # 본다)
+    assert "'운명원 연애 사주 잘 본다던데'" not in hearsay
     assert "- S4 앞 초안과 비슷함: 같은 영상의 앞 초안과 100% 같습니다" in retry
 
 
@@ -131,7 +133,8 @@ def test_same_hearsay_as_the_earlier_draft_is_written_again(setup):
     services.drafts.generate(VID)
     second = services.drafts.generate(VID)
     assert second.body == f"[광고] {GOOD_BODY_2}"
-    assert "운명원을 앞 초안과 같은 말('잘 본다던데')로 꺼냈습니다" in user_prompts(llm)[3]
+    # 2026-11-17: 1번 줄 표시를 「사주 잘 본다던데」로 좁혔다
+    assert "운명원을 앞 초안과 같은 말('사주 잘 본다던데')로 꺼냈습니다" in user_prompts(llm)[3]
 
 
 # ---------------------------------------------------------------- 다듬기 단계

@@ -71,14 +71,16 @@ def test_missing_config_file_is_clear_error(tmp_path):
 
 def test_brand_facts_and_extra_patterns_from_repo_config(clean_env, tmp_path):
     settings = load_settings(env_path=tmp_path / "없음.env")
-    assert settings.brand_facts == ("운명원은 연애 사주 상담을 하는 곳이다",)  # D4 기본값
+    # 2026-11-17(대표): 기본값을 과제 원문의 운명원 소개로 바꿨다
+    # (예전 D4 「운명원은 연애 사주 상담을 하는 곳이다」)
+    assert settings.brand_facts == ("운명원은 연애 사주를 잘 봐주는 곳으로 유명하다",)
     assert settings.validator_extra_patterns == ()
 
 
 def test_brand_facts_missing_uses_default_and_empty_list_means_none(make_config):
     path = make_config({"brand": {"other": 1}})
     assert load_settings(path, env_path=None, environ={}).brand_facts == (
-        "운명원은 연애 사주 상담을 하는 곳이다",
+        "운명원은 연애 사주를 잘 봐주는 곳으로 유명하다",
     )
     path = make_config({"brand": {"facts": []}})
     assert load_settings(path, env_path=None, environ={}).brand_facts == ()

@@ -25,7 +25,8 @@ def test_settings_shows_rules_profiles_model_and_limits(make_client, tmp_path):
     assert data["version"] == "0.9.0" and data["stage"] == 9
     assert data["comment"] == {"min_chars": 40, "max_chars": 120, "disclosure": "[광고]",
                                "brand": "운명원", "own_video_count": 0}
-    assert data["brand_facts"] == ["운명원은 연애 사주 상담을 하는 곳이다"]
+    assert data["brand_facts"] == ["운명원은 연애 사주를 잘 봐주는 곳으로 "
+        "유명하다"]  # 2026-11-17 과제 원문 소개로 바꿈
     assert data["daily_max_comments"] == 10
     assert [p["name"] for p in data["profiles"]] == ["유튜브1", "유튜브2", "유튜브3"]
     assert [p["folder"] for p in data["profiles"]] == ["profile-1", "profile-2", "profile-3"]

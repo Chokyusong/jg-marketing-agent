@@ -48,7 +48,10 @@ DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 DEFAULT_OLLAMA_MODEL = "qwen3.8:27b"
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # D4 기본값(PLAYBOOK 2절): 대표가 정하지 않으면 이 한 줄만 운명원에 대한 사실로 쓴다
-DEFAULT_BRAND_FACTS = ("운명원은 연애 사주 상담을 하는 곳이다",)
+# 2026-11-17(대표): 과제 원문 「운명원 — 연애 사주 잘 봐주는 곳으로 유명한 곳」에 맞춘다
+DEFAULT_BRAND_FACTS = ("운명원은 연애 사주를 잘 봐주는 곳으로 유명하다",)
+# 예전 기본값. 사용자 설정에 이 값이 그대로 남아 있으면(바꾼 적 없이 저장만 한 것) 새 기본값
+OLD_DEFAULT_BRAND_FACTS = (("운명원은 연애 사주 상담을 하는 곳이다",),)
 # 7단계: 과제 설정 예시의 프로필 이름(화면 이름. 폴더 이름은 profile-1… — app/ops/profiles.py)
 DEFAULT_PROFILES = ("유튜브1", "유튜브2", "유튜브3")
 POST_TARGETS = ("sandbox", "youtube")  # 게시 대상: 통제된 테스트 페이지 / 실제 유튜브(사람이 게시)
@@ -255,6 +258,14 @@ def _clean(value: str | None) -> str | None:
     return value or None
 
 
+def forget_old_defaults(values: dict[str, Any]) -> dict[str, Any]:
+    """사용자 설정에 남은 예전 기본값을 지운다(그 칸은 새 기본값을 따른다). 고친 값은 둔다."""
+    facts = values.get("brand.facts")
+    if isinstance(facts, list) and tuple(str(f).strip() for f in facts) in OLD_DEFAULT_BRAND_FACTS:
+        return {k: v for k, v in values.items() if k != "brand.facts"}
+    return values
+
+
 def _brand_facts(brand: Any) -> tuple[str, ...]:
     """`brand.facts`(문장 목록). 항목이 없으면 D4 기본값 한 줄, 빈 목록이면 사실 없음."""
     if not isinstance(brand, dict) or "facts" not in brand:
@@ -412,6 +423,7 @@ def load_settings(
     store = source.store() if use_user else None
     if user_values is None:
         user_values = store.read_values() if store is not None else {}
+    user_values = forget_old_defaults(user_values)
     rules = apply_overlay(base_rules, user_values)
 
     discover_raw = rules.get("discover") or {}

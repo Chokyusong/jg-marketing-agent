@@ -59,7 +59,7 @@ def test_run_and_table_with_fake_llm(tmp_db_path, fake_llm):
     good_a = (f"'{quote_a}'라는 말이 오래 남네요. 운명원 연애 사주 잘 본다던데 "
               "한번 보고 싶어요.")
     good_b = ("같은 식당, 같은 카페에서 데이트가 끝난다는 말에 공감했어요. "
-              "요즘 운명원 얘기 자주 보이던데 연애 흐름을 짚어 보고 싶네요.")
+              "요즘 운명원 연애 사주 잘 본다고 평이 좋던데 연애 흐름을 짚어 보고 싶네요.")
     llm = fake_llm([analysis,
                     {"body": "연애 사주 상담을 받아 보세요.", "used_quote": "",
                      "tone_label": "조언형"},
