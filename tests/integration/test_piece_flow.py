@@ -102,7 +102,8 @@ def test_ai_review_rewrite_keeps_the_same_pieces(setup):
                {"ok": True, "problems": []}])
     d = services.drafts.generate(VID)
     reviewed = services.drafts.review(d.id)
-    first, rewrite = users(llm)[1], users(llm)[2]
-    assert "이어짐이 갑작스러움" in rewrite
-    assert piece_line(first) == piece_line(rewrite)
+    asks = [u for u in users(llm) if HEAD in u]
+    first = asks[0]
+    rewrite = next(u for u in asks if "AI 검수: 이어짐이 갑작스러움" in u)
+    assert piece_line(first) == piece_line(rewrite), (d.body, piece_line(rewrite))
     assert reviewed.review_status == "rewritten"

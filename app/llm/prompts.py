@@ -608,13 +608,14 @@ def pieces_of(text: str, brand: str, *, rng: random.Random | None = None) -> Pie
     if hear < 0:
         return None
 
-    def longest(found: set[int], options: Sequence[str]) -> str:
-        return max((options[i] for i in found), key=len)
+    def longest(found: set[int], options: Sequence[str], part: str) -> str:
+        # 맞춤법만 다른 둘(「연애사주」「연애 사주」)은 함께 찾히므로 글에 그대로 있는 꼴을 먼저
+        return max((options[i] for i in found), key=lambda o: (o in part, len(o)))
 
     return Pieces(
-        time=longest(times, LEAD_TIMES), love=longest(loves, LEAD_LOVES),
-        how=longest(hows, LEAD_HOWS) if hows else "", verb=verb, hear=hear,
-        when=longest(whens, END_WHENS), action=longest(actions, END_ACTIONS),
+        time=longest(times, LEAD_TIMES, lead), love=longest(loves, LEAD_LOVES, lead),
+        how=longest(hows, LEAD_HOWS, lead) if hows else "", verb=verb, hear=hear,
+        when=longest(whens, END_WHENS, end), action=longest(actions, END_ACTIONS, end),
     )
 
 

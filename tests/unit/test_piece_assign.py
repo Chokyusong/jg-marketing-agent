@@ -108,8 +108,8 @@ def test_pieces_are_read_back_from_the_text():
         pieces = P.assign_pieces(BRAND, shown, rng=rng)
         text = _text(pieces)
         back = P.pieces_of(text, BRAND)
-        assert back is not None and back.marks() == pieces.marks(), (pieces, back)
-        assert P.fold(back.love) == P.fold(pieces.love)
+        # 맞춤법까지 그대로 읽어 낸다(「연애사주」·「연애 사주」, AI 검수 뒤 같은 배정)
+        assert back == pieces, (pieces, back)
         assert P.assign_pieces(BRAND, shown, keep=back) is back  # 다시 쓸 때 같은 배정
         shown.insert(0, text)
     assert P.pieces_of("[광고] 운명원 얘기 없음", BRAND) is None
