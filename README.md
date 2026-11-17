@@ -19,7 +19,17 @@
 | AI 하나 | 아래 「AI 붙이는 세 길」 중 하나: 구독 중인 프로그램(Codex·Claude Code), API 키(ChatGPT·Claude·Gemini·Grok), 이 PC의 [Ollama](https://ollama.com)(기본 모델 `qwen3.8:27b`) |
 | 유튜브 API 키 | 영상을 불러올 때 씁니다. 프로그램 설정 화면에 넣습니다 |
 
-**설치 (처음 한 번, PowerShell)**
+Python 3.12와 Google Chrome은 먼저 설치해 둡니다(설치 파일이 Python을 대신 설치하지 않습니다).
+
+**설치와 실행 — 두 단계**
+
+1. 코드를 받습니다: `git clone https://github.com/Chokyusong/jg-marketing-agent.git` 또는 GitHub 페이지의 **Code → Download ZIP**을 받아 압축을 풉니다(폴더 이름에 한글·띄어쓰기가 있어도 됩니다).
+2. 폴더의 **`JG-Marketing-Agent.cmd`를 더블클릭**합니다. 처음 한 번은 까만 창이 뜨고 키를 하나 누르면 필요한 패키지를 설치합니다(2~3분, 인터넷 필요. 받는 것은 `requirements.txt`의 패키지뿐). 끝나면 주소창 없는 프로그램 창이 뜨고, 다음부터는 더블클릭하면 바로 뜹니다. 창을 닫으면 끝납니다.
+
+Python 3.12를 찾지 못하면 받는 곳(python.org, `winget install Python.Python.3.12`)을 알려 주고 멈춥니다. 설치만 따로 다시 하려면 `Install.cmd`를 더블클릭합니다(이미 준비됐으면 「이미 준비됨」, 빠진 패키지가 있으면 그것만 다시 받습니다).
+
+<details>
+<summary>직접 설치하려면 (PowerShell)</summary>
 
 ```powershell
 git clone https://github.com/Chokyusong/jg-marketing-agent.git
@@ -29,7 +39,7 @@ py -3.12 -m venv .venv
 ollama pull qwen3.8:27b        # Ollama를 쓸 때만
 ```
 
-**실행**: 폴더의 **`JG-Marketing-Agent.cmd`를 더블클릭**합니다. 주소창 없는 프로그램 창이 뜨고, 창을 닫으면 끝납니다.
+</details>
 
 처음 켜면 작업 화면 위에 **「시작 준비」** 상자가 보입니다. 세 줄이 모두 초록이 되면 상자가 사라집니다.
 

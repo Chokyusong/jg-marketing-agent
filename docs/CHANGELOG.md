@@ -7,6 +7,15 @@
 
 ## 새 변경 (README를 줄인 뒤)
 
+### 2026-11-18 받아서 더블클릭 한 번 설치
+
+- 심사자가 코드를 받아(`git clone` 또는 Code → Download ZIP) **`JG-Marketing-Agent.cmd`를 더블클릭 한 번** 하면 된다. `.venv`가 없으면 「처음 실행입니다 … 계속하려면 아무 키나」를 보이고 설치한 뒤 프로그램 창을 연다. `.venv`가 있으면 예전처럼 바로 창을 연다.
+- 설치만 따로: 저장소 맨 위 `Install.cmd`(실제 일은 `scripts/install.ps1`). Python 3.12+를 `py -3.12` → `py -3.13` → PATH의 `python`(3.12 이상일 때만) 순서로 찾고, `.venv`를 만들고 `pip install -r requirements.txt`. 이미 준비됐으면 「이미 준비됨」, `.venv`는 있는데 패키지가 빠졌으면 pip만 다시. 크롬이 없으면 「댓글을 달려면 Google Chrome이 필요합니다」 경고만 하고 계속한다.
+- Python을 못 찾으면 「Python 3.12가 필요합니다」와 python.org·`winget install Python.Python.3.12`를 알려 주고 멈춘다(종료 코드 2). **Python을 대신 설치하지 않고, 내려받는 것은 requirements.txt의 패키지뿐이다.** pip가 실패하면 한 줄로 까닭과 다시 하는 법(종료 코드 1).
+- 한글 문구는 `scripts/install_messages.txt`(UTF-8)에 두고 `.ps1`·`.cmd`는 ASCII로 둔다(Windows PowerShell 5.1). 문구는 한국어 Windows 콘솔(cp949)에 있는 글자만 쓴다. 자동 시험용 스위치 `-NoPause -NoLaunch`.
+- 테스트: `tests/unit/test_install_scripts.py`(ASCII·CRLF·문구 cp949·쓰는 키가 다 있음·파이썬 찾는 순서·파이썬 설치/다른 내려받기 명령 없음·실행 파일이 설치를 부름), `tests/integration/test_install_run.py`(한글·띄어쓰기 경로의 빈 폴더에서 파이썬 없음 → 2와 한글 안내, `Install.cmd`·`JG-Marketing-Agent.cmd` 둘 다 / 이 폴더에서 「이미 준비됨」 → 0, `.venv` 그대로). 실행 파일 테스트(`test_desktop.py`)는 그대로 통과(설명 줄에 `pip install -r requirements.txt`를 남김).
+- README 「1. 실행하기」를 두 단계로 줄이고 예전 명령 세 줄은 「직접 설치하려면」 아래에 접어 둠. API·화면은 그대로.
+
 ### 2026-11-18 제출 전 다듬기
 
 - 자모 표기 뒤 마침표(「현실적이네ㅋㅋ.」「답답하다 ㅠㅠ.」, 18개 중 3개): AI가 쓴 초안을 받는 자리(`drafter.clean_body`, 초안·다듬기)에서 ㅋ·ㅠ·ㅜ·ㅎ 바로 뒤의 마침표 하나를 지운다. 말줄임 「...」은 그대로, 사람이 고쳐 쓴 글에는 손대지 않는다. 프롬프트 말투 줄에도 한 줄.

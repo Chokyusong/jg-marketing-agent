@@ -1,0 +1,27 @@
+# -*- coding: utf-8 -*-
+# scripts/install.ps1 이 보여 주는 안내 문구(키=문구). install.ps1은 ASCII로 두고(AGENTS.md: PowerShell
+# 5.1은 BOM 없는 UTF-8 한글을 깨뜨린다) 한글은 이 파일에서 UTF-8로 읽는다. 문구는 한국어 Windows 기본
+# 콘솔(cp949)에 있는 글자만 쓴다(tests/unit/test_install_scripts.py가 확인한다). {0}은 그 자리에 들어갈 값.
+title=JG 마케팅 에이전트 · 설치
+first_run=처음 실행입니다. 필요한 패키지를 설치합니다(2~3분, 인터넷 필요).
+press_key=계속하려면 아무 키나 누르세요. 그만두려면 이 창을 닫으세요.
+press_key_end=아무 키나 누르면 이 창이 닫힙니다.
+looking_python=Python을 찾는 중…
+python_found=Python {0} 찾음: {1}
+python_missing=Python 3.12가 필요합니다. 이 PC에서 Python 3.12 이상을 찾지 못했습니다.
+python_get_page=받는 곳: https://www.python.org/downloads/ (설치할 때 「Add python.exe to PATH」를 켜 주세요)
+python_get_winget=또는 PowerShell에서 한 줄: winget install Python.Python.3.12
+python_then=Python을 설치한 뒤 이 파일을 다시 더블클릭하세요. 이 설치 파일은 Python을 대신 설치하지 않습니다.
+python_too_old=찾은 Python은 {0}입니다. 3.12 이상이 필요합니다.
+already_ready=이미 준비됨: .venv와 필요한 패키지가 모두 있습니다.
+venv_making=.venv(이 폴더 전용 파이썬 환경)를 만드는 중…
+venv_failed=.venv를 만들지 못했습니다. 폴더에 쓰기 권한이 있는지 확인하고 다시 실행하세요.
+venv_exists=.venv는 있지만 패키지가 빠져 있습니다. 패키지만 다시 설치합니다.
+pip_installing=requirements.txt의 패키지를 내려받아 설치하는 중…(2~3분)
+pip_failed=패키지를 설치하지 못했습니다. 인터넷 연결을 확인한 뒤 이 파일을 다시 더블클릭하세요(받은 것은 그대로 두고 빠진 것만 다시 받습니다).
+check_failed=설치는 끝났지만 프로그램을 불러오지 못했습니다. 이 파일을 다시 더블클릭해 주세요.
+chrome_missing=주의: Google Chrome을 찾지 못했습니다. 댓글을 달려면 Google Chrome이 필요합니다(https://www.google.com/chrome/). 설치는 계속합니다.
+done=설치가 끝났습니다. 다음부터는 JG-Marketing-Agent.cmd를 더블클릭하세요.
+launching=프로그램 창을 엽니다.
+only_requirements=내려받는 것은 requirements.txt의 패키지뿐입니다(다른 프로그램·브라우저·AI는 받지 않습니다).
+elapsed=걸린 시간: {0}초

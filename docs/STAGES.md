@@ -88,6 +88,8 @@ FastAPI 앱, 읽기 전용 3열 화면, `/api/health`, 테스트 2개.
 - [x] 개발 PC에서 창 한 번 띄워 봄(2번 모니터, 확인용 환경 변수 `JG_DESKTOP_WINDOW_POS`): 자체 창에 화면이 그려지고 `/api/status`까지 불림 → 창을 닫자 서버 종료, python·WebView2 프로세스 남지 않음. 한글 이름 폴더에서 실행해도 같음
 - [x] 브라우저로 여는 임시 `run-dashboard.cmd`는 지웠다. `scripts/run.ps1`은 개발용으로 그대로
 - [ ] 대표 확인: `JG-Marketing-Agent.cmd` 더블클릭 → 창이 화면 가운데에 뜨고 [영상 찾기] 동작 → "YouTube에서 보기"가 기본 브라우저로 열림 → 창 닫기 → 작업 관리자에 남는 python 없음. 이미 떠 있을 때 한 번 더 더블클릭하면 "이미 실행 중" 알림
+- [x] 받아서 더블클릭 한 번 설치(2026-11-18, 기획 세션 전달): `.venv`가 없으면 `JG-Marketing-Agent.cmd`가 `scripts/install.ps1 -FirstRun`을 불러 Python 3.12+ 찾기 → `.venv` → `pip install -r requirements.txt` → 창 열기. 설치만 따로 `Install.cmd`. Python은 대신 설치하지 않음(못 찾으면 받는 곳 안내, 종료 코드 2), 크롬 없으면 경고만, 이미 준비됐으면 「이미 준비됨」, 패키지만 빠졌으면 pip만. 한글 문구는 `scripts/install_messages.txt`(cp949 콘솔 글자만). 테스트 `test_install_scripts.py`(단위)·`test_install_run.py`(파이썬 없음·이미 준비됨 실제 실행). 한글·띄어쓰기 경로에 `git clone`해 실제 설치 한 번: `JG-Marketing-Agent.cmd -NoPause -NoLaunch` → 「처음 실행입니다」 … 「Python 3.12 찾음」 … 「설치가 끝났습니다」 39초(이 PC는 pip 캐시가 있어 빠름), `import app.desktop` 됨, 다시 실행 「이미 준비됨」 0.6초, 패키지 하나를 지우고 실행 → pip만 3초. 기존 테스트 변경 없음.
+- [ ] 사람 확인: Python이 아예 없는 PC, ZIP으로 받은 폴더에서 더블클릭 한 번
 - 알아 둘 것: `.cmd`는 cmd.exe가 열기 때문에 더블클릭하면 콘솔 창이 잠깐 나타났다가 바로 닫힐 수 있다(`.cmd`는 pythonw를 띄우고 곧바로 끝난다. 개발 중에는 숨긴 채로 실행해 직접 보지는 못했다). 이것까지 없애려면 11단계 실행 파일(.exe)로 묶는다
 
 ### [-] 4단계 — Ollama 연동
