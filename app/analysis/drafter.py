@@ -678,7 +678,7 @@ class DraftService:
         self._last_shown = shown[0] if shown else ""
         system = sp.story_system(
             brand=rules.brand, disclosure=rules.disclosure, facts=self.brand_facts,
-            sample=ASSIGNMENT_SAMPLE,
+            sample=ASSIGNMENT_SAMPLE, min_body=base["min_body"], max_body=base["max_body"],
         )
         return SimpleNamespace(
             **base, system=system, schema=sp.story_schema(),

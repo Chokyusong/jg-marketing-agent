@@ -125,6 +125,7 @@ REVIEW_OK = {"ok": True, "problems": []}
 STORY_REVIEW_OK = {
     "same_topic": True, "comment_topic": "", "one_voice": True, "flow": True,
     "specific_link": True, "link_reason": "영상의 고민에서 이어짐", "break_at": "", "drift": "",
+    "brand_natural": True, "brand_issue": "",
     "natural_ad": True, "ok": True, "problems": [],
 }
 

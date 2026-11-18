@@ -281,7 +281,7 @@ def test_story_system_is_the_prompt_the_boss_gave():
                  "## 작성 후 검토", "## 출력",
                  "핵심 연애 고민을 한 줄로 정리", "구체적인 장면이나 말을 하나 이상",
                  "인기 댓글의 사연은 영상에서 직접 말한 내용처럼 표현하지 않는다",
-                 "기승전결은 네 개의 문장이 아니라 생각의 흐름이다",
+                 "이것은 생각의 흐름이지 문장 구조가 아니다",
                  "말투·관점·문장 수·잇는 말·끝말은 자유다", "지어낸 후기는 절대 작성하지 않는다",
                  "앞에서 등장하지 않은 인물이나 관계를 끝에서 갑자기 언급하지 않는다",
                  "억지 연결 문장은 작성하지 않는다",
@@ -292,9 +292,13 @@ def test_story_system_is_the_prompt_the_boss_gave():
                  "사실상 동일한 경우만 피한다", "그대로 복사하지 않는다",
                  "운명원이 뜬금없이 등장하지 않는가", "댓글 전체를 처음부터 다시 작성한다",
                  # 대표 지시서(2026-11-18): 생각이 발전하는 과정
-                 "생각이 발전하는 한 줄기 이야기다", "그 반응에서 자라난 생각이나 궁금증",
+                 "생각이 발전하는 한 줄기 이야기다", "그 고민 때문에 사주로 무엇을 알고 싶어졌는가",
                  "답을 문장이나 따로 된 칸으로 내지 않는다",
-                 "왜 그 궁금증에서 운명원 연애 사주가 떠올랐는가",
+                 "왜 그 알고 싶은 것 때문에 운명원 연애 사주가 떠올랐는가",
+                 # 2026-11-18 대표: 영상 반응 → 사주에 관심을 갖게 된 이유 → 운명원은 흐름이다
+                 "사주에 관심을 갖게 된 이유",
+                 "운명원 연애 사주를 떠올리게 되는 자연스러운 이유가 글 안에 있어야 한다",
+                 "이유 없이 바로 운명원 얘기로 넘어가지 않는다",
                  "설명할 수 없다면, 그 댓글은 처음부터 다시 쓴다",
                  "다른 연애 영상 댓글에 그대로 붙여도 말이 되는 막연한 것",
                  # 2026-11-18 대표 지시서 3: 가상 관점·고민은 자유, 전해 들은 경위도 된다
@@ -358,7 +362,8 @@ def test_story_user_shows_the_raw_material():
 
 def test_story_user_gives_only_the_setting_length():
     user = _user(mark_len=0, max_body=120, min_body=40)
-    assert "[작성 조건]\n본문 글자 수: 40~120자" in user
+    assert ("[작성 조건]\n본문 글자 수: 40~120자(넘으면 버려진다). 권장: 공백 포함 "
+            "90~105자쯤.") in user
     assert "광고 표기는 프로그램에서 별도로 추가한다." in user
 
 
@@ -400,7 +405,7 @@ def test_story_review_asks_for_the_four_context_judgments():
     assert system != rv.review_system(brand="운명원")
     assert set(rv.STORY_REVIEW_SCHEMA["required"]) == {
         "same_topic", "comment_topic", "one_voice", "flow", "specific_link", "link_reason",
-        "break_at", "drift", "natural_ad", "ok", "problems"}
+        "brand_natural", "brand_issue", "break_at", "drift", "natural_ad", "ok", "problems"}
 
 
 def test_story_review_user_gives_topic_source_and_transcript():
@@ -555,3 +560,70 @@ def test_story_made_up_result_and_direct_use_still_fail():
     assert not _check(told, "V14").passed
     used = _run(lead + "운명원에서 연애 사주 봤는데 진짜 다 맞았어요")
     assert not _check(used, "V8").passed
+
+
+def test_story_gives_a_target_below_the_limit():
+    # 2026-11-18 대표: 120자 한도인데 첫 글이 모두 127~184자 — 목표는 상한보다 낮게, 본보기
+    # 길이는 따라 하지 않게, 처음부터 짧게(문장 수는 자유)
+    # 같은 날 대표: 설정 40~120자가 기준, 90~105자는 권장 목표로만(강제 범위가 아니다)
+    assert SP.story_target(min_body=40, max_body=120) == (90, 105)
+    assert SP.story_target(min_body=40, max_body=45) == (40, 40)  # 하한 밑으로 내리지 않는다
+    system = SP.story_system(brand="운명원", disclosure="[광고]", facts=[])
+    for word in ("글자 수는 설정된 40~120자다(넘으면 버려진다)",
+                 "공백 포함 90~105자쯤을 권장한다",
+                 f"이 예시는 {len(ASSIGNMENT_SAMPLE)}자로 우리 한도보다 길다",
+                 "길이는 따라 하지 않는다", "대개 두세 문장이면 맞는다", "문장 수는 자유다",
+                 "길게 쓴 뒤 줄이지 않는다", "완성된 댓글 본문(권장 공백 포함 90~105자)",
+                 "## 작성 후 검토", "## 출력"):
+        assert word in system, word
+    assert "우리 한도보다 길다" not in SP.story_system(
+        brand="운명원", disclosure="[광고]", facts=[], sample="짧은 본보기")
+    user = _user()
+    assert "본문 글자 수: 40~120자(넘으면 버려진다). 권장: 공백 포함 90~105자쯤." in user
+    assert "115자" not in user
+
+
+def test_story_brand_sentence_must_read_as_plain_korean():
+    # 2026-11-18 대표: 「운명원 연애 사주가 잘 본다던데」(주어·서술어), 「보고 싶네요, 잘
+    # 본다던데요」(덧붙임), 지어낸 능력(「미련인지 … 볼 수 있다니」)을 검수가 짚고 쓰는 프롬프트에
+    # 원칙만 적는다(끝말·표현을 정해 주지 않는다)
+    system = SP.story_system(brand="운명원", disclosure="[광고]", facts=[])
+    for word in ("주어와 서술어가 맞아야 하고", "들은 말을 문장 끝에 따로 덧붙이지 않는다",
+                 "주어진 사실에 없는 능력도 지어내지 않는다", "내 바람",
+                 "글자 수는 body의 본문만 센다",
+                 "영상의 구체적인 장면과 생각의 연결은 지우지 않는다"):
+        assert word in system, word
+    review = rv.story_review_system(brand="운명원")
+    for word in ("brand_natural", "brand_issue", "주어와 서술어가 안 맞거나",
+                 "보고 싶네요, 잘 본다던데요", "맞혀 준다", "'잘 본다던데' 자체는 문제가 아니고"):
+        assert word in review, word
+    base = {"same_topic": True, "comment_topic": "미련", "one_voice": True, "flow": True,
+            "specific_link": True, "link_reason": "염탐이 미련인지 궁금", "break_at": "",
+            "drift": "", "natural_ad": True, "ok": True, "problems": [],
+            "brand_natural": True, "brand_issue": "", "has_reason": True}
+    assert rv.parse_story(base)[0] and rv.parse_story(base).checks["missing"] == []
+    bad = rv.parse_story({**base, "brand_natural": False,
+                          "brand_issue": "그 마음이 미련인지 운명원 연애 사주에서 볼 수 있다니"
+                                         " — 지어낸 능력"})
+    assert not bad[0] and bad[1][0].startswith("운명원 문장이 어색함: 그 마음이 미련인지")
+    assert rv.missing_fields({k: v for k, v in base.items() if k != "brand_natural"}) == [
+        "brand_natural"]
+    line = SP.SHORTEN_LINE.format(brand="운명원")
+    assert "지우지 말고" in line and "영상 내용을 길게 옮긴 곳" in line
+
+
+def test_story_review_puts_the_boss_criterion_first():
+    # 2026-11-18 대표: 가장 중요한 기준은 하나 — 운명원 직전 생각이 왜 이 영상에서 나왔는지
+    # 자연스럽게 이해되는가(link_reason, 설명 못 하면 빈 글 → 걸림). 새 판정 칸은 더하지 않는다
+    review = rv.story_review_system(brand="운명원")
+    head = review[:review.index("- same_topic")]
+    assert "가장 중요한 기준(대표)" in head and "link_reason" in head
+    assert ("운명원을 언급하기 직전의 생각이 왜 이 영상 내용에서 나왔는지 자연스럽게 "
+            "이해되는가") in head
+    assert "이유 없이 바로 운명원 얘기로 넘어갔으면" in head
+    assert "has_reason" not in review
+    assert list(rv.STORY_REVIEW_SCHEMA["properties"])[0] == "link_reason"
+    assert review.index('{"link_reason"') > 0  # 답 모양도 link_reason부터
+    system = SP.story_system(brand="운명원", disclosure="[광고]", facts=[])
+    for gone in ("최근에 쓴 끝맺음", "「~한번 봐야겠네요」", "한 문장\n", "115자"):
+        assert gone not in system, gone

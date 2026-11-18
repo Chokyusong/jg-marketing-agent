@@ -70,7 +70,8 @@ def test_story_is_the_default_and_assigns_no_writer(setup):
     assert "[글쓴이]" not in user
     assert "이번 초안의 운명원 대목" not in user and "잇는 한 문장" not in user
     system = llm.calls[1]["kwargs"]["system"]
-    assert "기승전결" in system and ASSIGNMENT_SAMPLE in system
+    # 2026-11-18 대표: 영상 반응 → 사주에 관심을 갖게 된 이유 → 운명원은 생각의 흐름(문장 구조 아님)
+    assert "사주에 관심을 갖게 된 이유" in system and ASSIGNMENT_SAMPLE in system
     assert user.startswith("[영상 자료]")  # 자막·제목·설명·인기 댓글을 직접 읽는다
     assert "writer" not in services.drafts.last_run
     assert not hasattr(services.drafts.stored_analysis(VID), "topic_group")
@@ -205,6 +206,7 @@ def test_validate_api_uses_story_v14(setup):
 
 FULL = {"same_topic": True, "comment_topic": "연락 문제", "one_voice": True, "flow": True,
         "specific_link": True, "link_reason": "연락 다툼에서 오래 갈지 궁금해짐", "break_at": "",
+        "brand_natural": True, "brand_issue": "",
         "drift": "", "natural_ad": True, "ok": True, "problems": [], "_raw": True}
 
 

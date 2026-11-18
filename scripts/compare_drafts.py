@@ -299,11 +299,12 @@ def context_counts(ds: Sequence[dict[str, Any]]) -> dict[str, str]:
 
     checked = [x for x in ds if x.get("context")]
     n = len(checked)
-    # 판정 여섯 칸이 다 온 초안(처음 답 기준 · 남은 글의 답 기준) — 2026-11-18 대표 지시서
+    # 판정 칸이 다 온 초안(처음 답 기준 · 남은 글의 답 기준) — 2026-11-18 대표 지시서(여섯 칸 +
+    # brand_natural)
     full_first = sum(not first(x).get("missing") for x in checked)
     full_last = sum(not x["context"].get("missing") for x in checked)
     return {
-        "판정 여섯 칸 다 옴(처음 · 남은 글)": f"{full_first} · {full_last}/{n}",
+        "판정 칸 다 옴(처음 · 남은 글)": f"{full_first} · {full_last}/{n}",
         "맥락: 벗어난 문장(처음 → 남음)":
             f"{sum(bool(first(x).get('drift')) for x in checked)} → "
             f"{sum(bool(x['context'].get('drift')) for x in checked)}/{n}",
@@ -319,6 +320,12 @@ def context_counts(ds: Sequence[dict[str, Any]]) -> dict[str, str]:
         "맥락: 억지 연결(처음 → 남음)":
             f"{sum(first(x).get('natural_ad') is False for x in checked)} → "
             f"{sum(x['context'].get('natural_ad') is False for x in checked)}/{n}",
+        "맥락: 운명원 직전 생각 설명 못 함(처음 → 남음)":
+            f"{sum(first(x).get('link_reason') == '' for x in checked)} → "
+            f"{sum(x['context'].get('link_reason') == '' for x in checked)}/{n}",
+        "맥락: 운명원 문장 어색·지어낸 능력(처음 → 남음)":
+            f"{sum(first(x).get('brand_natural') is False for x in checked)} → "
+            f"{sum(x['context'].get('brand_natural') is False for x in checked)}/{n}",
         "맥락: 끝 궁금증 막연(처음 → 남음)":
             f"{sum(first(x).get('specific_link') is False for x in checked)} → "
             f"{sum(x['context'].get('specific_link') is False for x in checked)}/{n}",
