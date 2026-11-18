@@ -2,7 +2,8 @@
 AI에 돌리는 `scripts/review_cases.py`를 **가짜**로만 시험한다(인터넷·AI 없음).
 
 진짜 검수 AI로 돌리는 것은 사람이 스크립트로 한다(--db 앱 DB 사본). 기대: 테라 7·9·10·15·17은
-통과, 8·21·22는 걸림(사주를 꺼내려고 지어낸 궁금증 — 용기 낼 때 · 표현 방식).
+통과, 8·21·22는 걸림(사주를 꺼내려고 지어낸 궁금증 — 용기 낼 때 · 표현 방식). 대표 기준
+예시(2026-11-18)도 통과.
 """
 
 from __future__ import annotations
@@ -24,7 +25,10 @@ def test_fixture_holds_the_eight_cases_the_boss_picked():
     assert data["brand"] == "운명원"
     cases = {c["case"]: c for c in data["cases"]}
     assert sorted(n for n, c in cases.items() if c["expect"] == "pass") == sorted(
-        ["terra-7", "terra-9", "terra-10", "terra-15", "terra-17"])
+        ["boss-example", "terra-7", "terra-9", "terra-10", "terra-15", "terra-17"])
+    # 대표 기준 예시(2026-11-18)는 terra-7·8과 같은 영상, 대표가 쓴 그대로
+    assert cases["boss-example"]["video_id"] == cases["terra-7"]["video_id"]
+    assert "저도 비슷한상황이라" in cases["boss-example"]["body"]
     assert sorted(n for n, c in cases.items() if c["expect"] == "flag") == sorted(
         ["terra-8", "terra-21", "terra-22"])
     for c in cases.values():

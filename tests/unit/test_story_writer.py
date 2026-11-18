@@ -270,8 +270,8 @@ def _user(**kw):
 
 
 def _system():
-    return SP.story_system(brand="운명원", disclosure="[광고]", facts=FACTS,
-                           sample=ASSIGNMENT_SAMPLE)
+    # 앱과 같이 참고 예시를 따로 주지 않는다(대표 기준 예시, 2026-11-18)
+    return SP.story_system(brand="운명원", disclosure="[광고]", facts=FACTS)
 
 
 def test_story_system_is_the_prompt_the_boss_gave():
@@ -289,7 +289,7 @@ def test_story_system_is_the_prompt_the_boss_gave():
                  "들은 평판으로 꺼내고", "요새·요즘·친구한테 듣기로 같은 말을",
                  "보고 싶은 마음으로 이어지게 맺는다",
                  "보고 싶어지도록", "따옴표로 옮기지 않고 내 말로 풀어 쓴다",
-                 "사실상 동일한 경우만 피한다", "그대로 복사하지 않는다",
+                 "사실상 동일한 경우만 피한다", "문장·끝말을 그대로 옮기지 않는다",
                  "운명원이 뜬금없이 등장하지 않는가", "댓글 전체를 처음부터 다시 작성한다",
                  # 대표 지시서(2026-11-18): 생각이 발전하는 과정
                  "생각이 발전하는 한 줄기 이야기다",
@@ -302,7 +302,9 @@ def test_story_system_is_the_prompt_the_boss_gave():
                  "가상의 연애 고민·처지를 정해 써도 된다", "## 피해야 할 흐름",
                  "중간 문장 조각은 따로 만들지 않는다", "\"concern\"", "연애 사주를 잘 봐주는"):
         assert word in system, word
-    assert ASSIGNMENT_SAMPLE in system  # 참고 예시는 과제 예시 하나
+    # 참고 예시는 대표의 기준 예시 하나(2026-11-18) — 과제 예시는 V11이 베꼈는지만 본다
+    assert SP.BOSS_SAMPLE.format(brand="운명원") in system
+    assert ASSIGNMENT_SAMPLE not in system
 
 
 def test_removed_rules_are_not_in_the_prompt():
@@ -327,7 +329,12 @@ def test_removed_rules_are_not_in_the_prompt():
                  "왜 그 알고 싶은 것 때문에", "답을 문장이나 따로 된 칸으로 내지 않는다",
                  "사주에 관심을 갖게 된 이유", "이유 없이 바로 운명원 얘기로 넘어가지 않는다",
                  "생각이 이어지는 방향", "서로 잘 맞는 관계인지는 궁금할 수 있겠구나",
-                 "끝의 궁금증"):
+                 "끝의 궁금증",
+                 # 끝을 「인연」으로 몰던 착지점 목록(2026-11-18 테라 22개 중 19개)
+                 "인연·궁합·연애운·때 쪽이면", "인연이라는 게 있나 싶다",
+                 # 대표 기준 예시로 바꾸며 고친 말(해설 말투·관점 문구) · 예전 대표 본보기
+                 "공감과 생각이 자연스럽게 이어지는 댓글", "글쓴이의 관점이 처음부터 끝까지",
+                 "자연스럽게 생각이 이어지는 방식만 참고한다", "날짜부터 잡는다니 괜히 설레네요"):
         assert gone not in system and gone not in user, gone
 
 
@@ -336,11 +343,9 @@ def test_story_prompts_do_not_push_one_formula_or_invented_curiosity():
     # 사주를 꺼내려고 지어낸 궁금증(#8 용기 낼 때, #21·22 표현 방식)을 문구로 막는다. 문장 조각·
     # 말투 순환은 더하지 않는다. 광고 표기·허위 후기 금지·대표 기준 문장은 그대로
     system = _system()
-    for word in ("영상에 대한 감상·공감·생각을 먼저", "「궁금해졌다」가 아니어도 된다",
-                 "내 연애가 떠올랐다, 인연이라는 게 있나 싶다, 나라면 어떨까",
+    for word in ("영상 내용과 내 감정·고민이 자연스럽게 맞닿게", "「궁금해졌다」가 아니어도 된다",
+                 "내 연애가 떠올랐다, 나라면 어떨까",
                  "대화 요령, 말하는 법, 용기 낼 시점 같은 실용적인 답",
-                 "인연·궁합·연애운·때 쪽이면 그 얘기로",
-                 "영상의 고민에 대한 내 생각을 말한 뒤 운명원을 담백하게 꺼낸다",
                  "앞의 생각이 운명원 연애 사주를 보고 싶은 마음으로 이어지게 맺는다",
                  "사주로 볼 일이 아닌 것을 사주에서 알아보겠다는 말은 없는가",
                  "운명원을 언급하기 직전의 생각이 왜 이 영상 내용에서 나왔는지 설명할 수 없다면",
@@ -362,6 +367,40 @@ def test_story_prompts_do_not_push_one_formula_or_invented_curiosity():
     assert "사주에 관심을 갖게 된 이유" not in review
     assert not hasattr(SP, "BOSS_EXAMPLE") and not hasattr(SP, "PLAN_FIELDS")
     assert not hasattr(SP, "STORY_TARGET")
+
+
+def test_story_prompt_uses_the_boss_example_as_a_voice_not_a_template():
+    # 2026-11-18 대표가 확정한 기준 예시: 영상을 해설·분석하는 사람이 아니라 영상을 보고 자기 고민이
+    # 떠오른 사람의 대화체. 운명원을 떠올린 까닭은 설명 문장 없이 앞 이야기에서 느껴지게. 예시는
+    # 문장별로 쪼개 강제하지 않는다(목소리와 흐름만). 새 단계·말투 순환·고정 문장은 더하지 않는다
+    system = _system()
+    example = SP.BOSS_SAMPLE.format(brand="운명원")
+    assert example.startswith("매일 연락하면서 취향까지 기억해 주면")
+    # 대표가 쓴 그대로(띄어쓰기 포함)
+    assert "저도 비슷한상황이라" in example and "사주라도 봐야되나 싶네요" in example
+    assert system.count(example) == 1
+    for word in ("영상을 해설하거나 분석하는 사람이 아니라 영상을 보고 자기 연애 고민이 떠오른 "
+                 "시청자 한 사람으로 말한다",
+                 "잘 정리된 설명문이나 광고 카피가 아니라 자연스러운 대화체로 쓴다",
+                 "왜 떠올랐는지 설명하는 문장을 따로 더하지 않아도 앞 이야기에서 자연스럽게 "
+                 "느껴지면 된다",
+                 "대표가 정한 기준 예시다. 문장·끝말을 그대로 옮기지 않는다. 화자의 목소리와 "
+                 "생각이 흘러가는 방식만 참고한다",
+                 "영상을 해설하는 말투가 아니라, 처음부터 끝까지 고민이 떠오른 한 사람의 "
+                 "대화체인가",
+                 # 그대로 두는 것
+                 "사주로 볼 일이 아닌 것", "주어와 서술어가 맞아야 하고",
+                 "주어진 사실에 없는 능력도 지어내지 않는다", "지어낸 후기는 절대 작성하지 않는다",
+                 "운명원을 언급하기 직전의 생각이 왜 이 영상 내용에서 나왔는지 설명할 수 없다면"):
+        assert word in system, word
+    # 예시 문구를 따로 끝말·꺼내는 말로 주지 않는다(예시 안에만 있다)
+    for phrase in ("사주라도 봐야되나", "비슷한상황이라", "잘본다던데"):
+        assert system.count(phrase) == 1, phrase
+    for gone in ("이번 말투", "다섯 조각", "scene", "wonder", "## 단계"):
+        assert gone not in system, gone
+    # 다른 브랜드 이름이면 예시도 그 이름으로
+    other = SP.story_system(brand="하늘원", disclosure="[광고]", facts=[])
+    assert "요새 하늘원이 연애사주" in other
 
 
 def test_story_schema_asks_for_the_concern_first():
@@ -604,13 +643,18 @@ def test_story_gives_a_target_below_the_limit():
     system = SP.story_system(brand="운명원", disclosure="[광고]", facts=[])
     for word in ("글자 수는 설정된 40~120자다(넘으면 버려진다)",
                  "공백 포함 90~105자쯤을 권장한다",
-                 f"이 예시는 {len(ASSIGNMENT_SAMPLE)}자로 우리 한도보다 길다",
-                 "길이는 따라 하지 않는다", "대개 두세 문장이면 맞는다", "문장 수는 자유다",
+                 # 기준 예시(115자)는 한도 안이지만 권장보다 길다(2026-11-18)
+                 "이 예시는 권장 길이보다 길다. 길이는 따라 하지 않는다",
+                 "대개 두세 문장이면 맞는다", "문장 수는 자유다",
                  "길게 쓴 뒤 줄이지 않는다", "완성된 댓글 본문(권장 공백 포함 90~105자)",
                  "## 작성 후 검토", "## 출력"):
         assert word in system, word
-    assert "우리 한도보다 길다" not in SP.story_system(
-        brand="운명원", disclosure="[광고]", facts=[], sample="짧은 본보기")
+    assert "우리 한도보다 길다" not in system
+    longer = SP.story_system(brand="운명원", disclosure="[광고]", facts=[],
+                             sample=ASSIGNMENT_SAMPLE)
+    assert f"이 예시는 {len(ASSIGNMENT_SAMPLE)}자로 우리 한도보다 길다" in longer
+    short = SP.story_system(brand="운명원", disclosure="[광고]", facts=[], sample="짧은 본보기")
+    assert "우리 한도보다 길다" not in short and "권장 길이보다 길다" not in short
     user = _user()
     assert "본문 글자 수: 40~120자(넘으면 버려진다). 권장: 공백 포함 90~105자쯤." in user
     assert "115자" not in user
