@@ -1117,3 +1117,29 @@ def test_v14_plural_topic_marker_is_not_hearsay():
     heard = (V14_HEAD + "요즘 주변에서 들은 얘기로는 운명원이 연애 사주로 유명하대요. 저도 한번 "
              "가 보려고요.")
     assert check(run(heard), "V14").passed
+
+
+# 2026-11-18 대표 시연 초안 「을이 되지 말고라니」: 말하다 만 자막 토막과 어미를 바꾼 핵심 말
+
+
+@pytest.mark.parametrize(
+    "phrase", ["을이 되지 말고", "기갑부터 잡고", "연락이 없어서", "보고 싶은데"]
+)
+def test_cut_fragment_is_not_a_key_phrase(phrase):
+    assert V.is_cut_fragment(phrase)
+    assert not V.key_phrase_ok(phrase, V.normalize(f"영상 자막 {phrase} 다음 말"))
+
+
+@pytest.mark.parametrize("phrase", ["자존심이 아니라 겁", "석 달", "최고", "읽씹", "복종남"])
+def test_whole_phrases_are_not_cut_fragments(phrase):
+    assert not V.is_cut_fragment(phrase)
+
+
+def test_key_phrase_may_change_its_ending():
+    phrase = "을이 되지 말고"
+    body = "편한 연애냐 설레는 연애냐에서 을이 되지 마라는 말이 와닿네요"
+    assert V.contains_key_phrase(body, phrase)
+    assert V.contains_key_phrase("을이 되지 말라는 말이 제일 와닿네요", phrase)
+    assert not V.contains_key_phrase("을이 되는 건 싫네요", phrase)
+    # 예전 기준(끝 한 글자)은 그대로
+    assert V.contains_key_phrase("연락하는 게 무섭네요", "연락하면")

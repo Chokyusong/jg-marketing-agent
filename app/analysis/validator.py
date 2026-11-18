@@ -508,13 +508,27 @@ def is_common_word(phrase: str) -> bool:
     return not n or n in COMMON_WORDS or _strip_particle(n) in COMMON_WORDS
 
 
+# 2026-11-18(대표 시연 초안 「을이 되지 말고라니」): 자동 자막에서 말하다 만 토막을 핵심 말로 뽑으면
+# 초안이 그 끝에 어미를 바로 붙였다. 두 낱말 이상이고 마지막 낱말이 이어 주는 끝으로 끝나면 뺀다.
+CUT_ENDINGS = ("고", "서", "면", "는데", "은데", "지만", "니까", "려고", "도록", "거나")
+
+
+def is_cut_fragment(phrase: str) -> bool:
+    """말하다 만 토막인가(「을이 되지 말고」「기갑부터 잡고」).
+
+    한 낱말(「최고」「사고」)은 보지 않는다.
+    """
+    words = unicodedata.normalize("NFC", phrase or "").split()
+    return len(words) >= 2 and len(words[-1]) >= 2 and words[-1].endswith(CUT_ENDINGS)
+
+
 def key_phrase_ok(phrase: str, context_n: str, rules: ValidatorRules | None = None) -> bool:
-    """핵심 말로 쓸 수 있는가: 정리 후 2~10자, 흔한 낱말 하나가 아님, 표기·브랜드가 아님,
-    영상 자료(정리한 글)에 그대로 있음."""
+    """핵심 말로 쓸 수 있는가: 정리 후 2~10자, 흔한 낱말 하나가 아님, 말하다 만 토막이 아님,
+    표기·브랜드가 아님, 영상 자료(정리한 글)에 그대로 있음."""
     n = normalize(phrase)
     if not (MIN_KEY_PHRASE_CHARS <= len(n) <= MAX_KEY_PHRASE_CHARS):
         return False
-    if is_common_word(phrase):
+    if is_common_word(phrase) or is_cut_fragment(phrase):
         return False
     if rules is not None:
         for marker in (rules.brand, rules.disclosure):
@@ -564,16 +578,20 @@ def derive_key_phrases(
 
 
 def contains_key_phrase(body: str, phrase: str) -> bool:
-    """글에 핵심 말이 들어 있는가(정리한 글로). 4자 이상인 말은 끝 한 글자가 달라도 된다
-    ('연락하면' → '연락하는'). 그때 남은 말이 흔한 낱말이면 안 된다."""
+    """글에 핵심 말이 들어 있는가(정리한 글로). 끝 한 글자가 달라도 되고('연락하면' → '연락하는'),
+    끝 두 글자(어미)가 달라도 된다('을이 되지 말고' → '을이 되지 마라'). 남은 말이 4자 이상이고
+    흔한 낱말이 아니어야 한다."""
     body_n = normalize(body)
     n = normalize(phrase)
     if not n:
         return False
     if n in body_n:
         return True
-    stem = n[:-1]
-    return len(n) >= 4 and stem in body_n and stem not in COMMON_WORDS
+    for cut in (1, 2):
+        stem = n[:-cut]
+        if len(stem) >= (3 if cut == 1 else 4) and stem in body_n and stem not in COMMON_WORDS:
+            return True
+    return False
 
 
 # ---------------------------------------------------------------- 규칙별 검사
@@ -715,7 +733,8 @@ def _v7_key_phrases(
         shown = ", ".join(f"'{_clip(p, 12)}'" for p in phrases[:4])
         return _check(
             "V7", False,
-            f"이 영상의 핵심 말({shown})이 글에 없습니다 — 이 중 하나 이상을 그대로 넣으세요",
+            f"이 영상의 핵심 말({shown})이 글에 없습니다 — 이 중 하나 이상을 넣으세요"
+            "(풀이말은 끝을 바꿔도 됩니다)",
         )
     # 2026-11-18: 해시태그 낱말은 핵심 말로 뽑지 않는다(제목에서 #태그를 빼고, 자료에 #태그 말고
     # 그대로 있는 말만)

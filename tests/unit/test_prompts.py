@@ -194,7 +194,10 @@ ANALYSIS = {"topic": "권태기", "concern": "설레지 않는데 계속 만나�
 def test_draft_user_includes_key_phrases_scene_tone_and_failures():
     first = P.draft_user(analysis=ANALYSIS, quote="각자 휴대폰만 봐요", source="transcript",
                          min_body=35, max_body=115, key_phrases=["휴대폰만", "권태기"])
-    assert "[핵심 말] '휴대폰만', '권태기' — 이 중 하나 이상을 글자 그대로 넣는다" in first
+    assert (
+        "[핵심 말] '휴대폰만', '권태기' — 이 중 하나 이상을 넣는다(풀이말은 끝을 바꿔도 된다)"
+        in first
+    )
     assert "[짚을 장면] '각자 휴대폰만 봐요' (출처: 자막) — 이 장면·말을 내 말로 짚는다" in first
     assert "35~115자" in first and "75~105자를 목표로" in first
     # 2026-11-17 다섯 조각: 운명원 대목이 길어 영상 반응은 한 문장으로
@@ -653,3 +656,13 @@ def test_intent_reason_takes_go_sipeo_form():
 def test_draft_system_says_no_period_right_after_jamo():
     assert ("'ㅋㅋ', 'ㅠㅠ', 'ㅎㅎ' 바로 뒤에는 마침표를 찍지 않는다('현실적이네ㅋㅋ.' ✗ → "
             "'현실적이네ㅋㅋ')") in SYSTEM
+
+
+def test_prompts_reject_cut_fragments_and_glued_endings():
+    """2026-11-18: 분석은 말하다 만 토막을 핵심 말로 뽑지 않는다.
+
+    초안은 잘라 온 말에 어미를 붙이지 않는다.
+    """
+    system, user = P.analysis_messages("영상 자료")
+    assert "말하다 만 자막 토막('을이 되지 말고'" in system + user
+    assert "('말고라니' ✗)" in SYSTEM

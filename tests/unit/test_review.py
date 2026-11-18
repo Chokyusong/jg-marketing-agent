@@ -124,3 +124,14 @@ def test_system_lists_what_is_not_a_problem_with_the_mistaken_examples():
     # 분명한 문제만 거짓, 애매하면 참
     assert "**분명한 문제만 false**다" in system and "애매하면 true다" in system
     assert "영상과 **반대**되는 말" in system
+
+
+def test_system_flags_glued_endings_and_loose_bridges():
+    """2026-11-18 「을이 되지 말고라니」·따로 노는 잇는 문장이 통과했다.
+
+    1·2·3번은 애매해도 거짓.
+    """
+    text = R.review_system(brand="운명원")
+    assert "말고라니" in text
+    assert "1·2·3번(문법·뜻·앞뒤 이어짐)은 걸리는 곳이 보이면 false" in text
+    assert "툭 놓인 혼잣말이면 3번에 걸린다" in text
