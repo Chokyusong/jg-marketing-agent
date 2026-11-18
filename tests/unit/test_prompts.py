@@ -31,6 +31,12 @@ def test_analysis_prompt_asks_for_a_question_shaped_concern_and_key_phrases():
     assert "넣지 않는다" in user
 
 
+def test_analysis_prompt_skips_opening_remarks_as_evidence():
+    _, system = P.analysis_messages("[제목] t")  # 근거 지시는 요청 글에 있다
+    assert "영상을 여는 소개·진행 말" in system
+    assert "영상 속 사람이 털어놓는 고민·마음, 그 고민에 대한 조언이나 풀이" in system
+
+
 def test_analysis_retry_note_names_every_problem():
     note = P.analysis_retry_note(
         ["지어낸 말"], summary_concern="남자 심리 분석", dropped_phrases=["연애", "없는 말"]
