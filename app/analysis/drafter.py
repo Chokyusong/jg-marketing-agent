@@ -205,6 +205,16 @@ def pick_voice(
 
 
 RECENT_BODIES = 3  # 요청 글에 넣는 「다른 영상에 최근 단 댓글」 수(2026-11-18)
+RECENT_SITUATIONS = 8  # 그 아래 「이미 쓴 처지」 수(12회차: 본문 셋만으로는 처지가 겹쳤다)
+
+
+def situation_of(review_json: str | None) -> str:
+    """초안 `review_json`에 남긴 처지(AI가 적은 `situation`). 없거나 못 읽으면 빈 글."""
+    try:
+        data = json.loads(review_json or "{}")
+    except ValueError:
+        return ""
+    return str(data.get("situation") or "") if isinstance(data, dict) else ""
 
 
 def saying_of(body: str, brand: str) -> int | None:
@@ -441,6 +451,7 @@ class DraftService:
             fails = len(validation.failures)
             run["attempts"].append({
                 "body": text, "mood": data["mood"], "wish": data["wish"],
+                "situation": data["situation"],
                 "used_quote": data["used_quote"], "failures": validation.failure_lines(),
             })
             if best is None or fails < best[0]:
@@ -455,7 +466,8 @@ class DraftService:
         _, _, text, data, validation = best
         quote = data["used_quote"] or evidence.quote
         source = self._source_of(video_id, quote) or evidence.source
-        extra = {"wish": data["wish"], "basis": evidence.to_dict(), "said": kit["said"]}
+        extra = {"wish": data["wish"], "basis": evidence.to_dict(), "said": kit["said"],
+                 "situation": data["situation"]}
         now = self._now()
         with db.session(self.db_path) as conn:
             conn.execute(
@@ -510,9 +522,11 @@ class DraftService:
         )
         used_quotes_ = list(dict.fromkeys(d.evidence_quote for d in others if d.evidence_quote))
         used_wishes = list(dict.fromkeys(d.wish for d in others if d.wish))
-        bodies = [toggle_disclosure(d["body"] or "", rules.disclosure, False)
-                  for d in self._recent_elsewhere(video_id)]
+        rows = self._recent_elsewhere(video_id)
+        bodies = [toggle_disclosure(d["body"] or "", rules.disclosure, False) for d in rows]
         recent_bodies = list(dict.fromkeys(b for b in bodies if b))[:RECENT_BODIES]
+        recent_situations = list(dict.fromkeys(
+            s for d in rows if (s := situation_of(d["review_json"]))))[:RECENT_SITUATIONS]
         said = said or pick_saying(self.rng, rules.brand, recent_bodies)
         system = prompts.draft_system(
             brand=rules.brand, facts=self.brand_facts, voice=voice.voice, heard=voice.heard,
@@ -522,6 +536,7 @@ class DraftService:
             "llm": self._llm(), "video_id": video_id, "system": system, "title": title,
             "concern": concern, "material": material, "used_quotes": used_quotes_,
             "used_wishes": used_wishes, "recent_bodies": recent_bodies, "said": said,
+            "recent_situations": recent_situations,
             "evidence": evidence, "disclose": disclose,
             "mark": rules.disclosure if disclose else "",
             "previous": self.previous_texts(video_id),
@@ -536,6 +551,7 @@ class DraftService:
             title=kit["title"], concern=kit["concern"], material=kit["material"],
             used_quotes=kit["used_quotes"], used_wishes=kit["used_wishes"],
             recent_bodies=kit.get("recent_bodies", ()),
+            recent_situations=kit.get("recent_situations", ()),
             previous_body=previous_body, failure_lines=failure_lines,
         )
         raw = kit["llm"].generate_json(
@@ -548,6 +564,7 @@ class DraftService:
             "body": body,
             "mood": " ".join(str(raw.get("mood") or "").split())[:20],
             "wish": " ".join(str(raw.get("wish") or "").split())[:80],
+            "situation": " ".join(str(raw.get("situation") or "").split())[:60],
             "used_quote": " ".join(str(raw.get("used_quote") or "").split()).strip(_QUOTES),
         }
         text = with_disclosure(body, kit["mark"])
@@ -650,7 +667,8 @@ class DraftService:
         quote = data["used_quote"] or evidence.quote
         new = {
             "text": text, "validation": validation, "wish": data["wish"],
-            "tone_label": voice.label(data["mood"]), "evidence_quote": quote,
+            "situation": data["situation"], "tone_label": voice.label(data["mood"]),
+            "evidence_quote": quote,
             "evidence_source": self._source_of(draft.video_id, quote) or evidence.source,
         }
         second = ask(text)
@@ -679,9 +697,11 @@ class DraftService:
             if "kept" in result:
                 result = {**result, "kept": False}
         old = draft.review or {}
-        keep = {k: old[k] for k in ("wish", "basis") if k in old}
+        keep = {k: old[k] for k in ("wish", "basis", "said", "situation") if k in old}
         if new is not None:
             keep["wish"] = new["wish"]
+            if new.get("situation"):
+                keep["situation"] = new["situation"]
         raw = json.dumps({**result, **keep}, ensure_ascii=False)
         trace = (before, after, int(review_ms), int(rewrite_ms))
         with db.session(self.db_path) as conn:
@@ -858,7 +878,7 @@ class DraftService:
         운명원 말하기·들은 경로를 영상마다 겹치지 않게 하려고 쓴다(2026-11-18)."""
         with db.session(self.db_path) as conn:
             return conn.execute(
-                "SELECT body, tone_label FROM drafts WHERE video_id IS NOT ? "
+                "SELECT body, tone_label, review_json FROM drafts WHERE video_id IS NOT ? "
                 "ORDER BY id DESC LIMIT ?",
                 (video_id, limit),
             ).fetchall()

@@ -266,6 +266,7 @@ def test_pick_saying_avoids_what_other_videos_just_used():
               "운명원 연애 사주 잘 본다던데 가봐야겠어요"]
     assert [D.saying_of(b, "운명원") for b in recent] == [2, 1]
     assert D.saying_of("연애 사주 하면 운명원이라고들 하던데", "운명원") == 3
+    assert D.saying_of("연애 사주는 운명원이라던데", "운명원") == 3  # 12회차 소넷
     assert D.saying_of("요새 운명원이 연애 사주 잘 보는 걸로 핫하던데", "운명원") == 0
     assert D.saying_of("그냥 가봐야지", "운명원") is None
     for _ in range(30):
@@ -290,3 +291,22 @@ def test_system_carries_the_picked_saying():
     assert "잘 봐주는 곳으로 유명하다" not in text
     others = [s.format(brand="운명원") for s, _ in P.SAYINGS if not s.startswith("연애 사주 하면")]
     assert not any(o in text for o in others)
+
+
+def test_user_text_lists_situations_used_on_other_videos():
+    """12회차: 본문 셋만 보여 주면 처지가 겹쳤다(11개 중 「흐지부지」 4) → 이미 쓴 처지를 짧게."""
+    user = P.draft_user(title="t", concern="c", material=["- (자막) q"],
+                        recent_bodies=["요즘 운명원이 연애 사주 잘 본다던데 가봐야지"],
+                        recent_situations=["썸만 타다 흐지부지됨", "", "늘 기다리는 쪽"])
+    assert "- 다른 영상 댓글에 이미 쓴 처지: 썸만 타다 흐지부지됨 / 늘 기다리는 쪽\n" in user
+    assert "이미 쓴 처지와 같은 낱말(예: 흐지부지)도 쓰지 않는다." in user
+    assert "이미 쓴 처지" not in P.draft_user(
+        title="t", concern="c", material=["- (자막) q"], recent_bodies=["가봐야지"])
+
+
+def test_situation_of_reads_the_saved_situation():
+    assert D.situation_of('{"situation": "늘 기다리는 쪽", "wish": "w"}') == "늘 기다리는 쪽"
+    assert D.situation_of('{"wish": "w"}') == ""
+    assert D.situation_of(None) == "" and D.situation_of("깨진") == ""
+    assert "situation" in P.DRAFT_SCHEMA["properties"]
+    assert "situation" not in P.DRAFT_SCHEMA["required"]  # 없으면 빈 글로(가짜 답·옛 답)

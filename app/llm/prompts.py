@@ -177,7 +177,7 @@ SAYINGS = (
     ("{brand}이 연애 사주 잘 보는 걸로 핫하다", ("핫",)),
     ("{brand}이 연애 사주를 잘 본다", ("잘 본", "잘본", "잘 봐", "잘봐")),
     ("{brand}이 연애 사주로 유명하다", ("유명",)),
-    ("연애 사주 하면 {brand}이다", ("하면 {brand}", "하면{brand}")),
+    ("연애 사주 하면 {brand}이다", ("하면 {brand}", "하면{brand}", "사주는 {brand}")),
 )
 
 # 근거가 인기 댓글일 때만 [쓰는 법]에 넣는 줄
@@ -228,8 +228,9 @@ DRAFT_SCHEMA: JSONSchema = {
         "body": {"type": "string"},
         "wish": {"type": "string"},
         "used_quote": {"type": "string"},
+        "situation": {"type": "string"},
     },
-    "required": ["mood", "body", "wish", "used_quote"],
+    "required": ["mood", "body", "wish", "used_quote"],  # situation은 있으면 쓴다(12회차)
 }
 
 
@@ -291,7 +292,8 @@ def draft_system(
         "",
         '출력(JSON): {"mood": "네 기분 한 낱말", "body": "댓글 본문", '
         '"wish": "본문에 쓴, 사주로 보고 싶은 궁금증 그대로", '
-        '"used_quote": "[짚을 내용]에서 네가 짚은 구절 그대로"}',
+        '"used_quote": "[짚을 내용]에서 네가 짚은 구절 그대로", '
+        '"situation": "본문에 쓴 네 처지 그대로"}',
     ]
     return "\n".join(lines)
 
@@ -325,6 +327,7 @@ def draft_user(
     used_quotes: Sequence[str] = (),
     used_wishes: Sequence[str] = (),
     recent_bodies: Sequence[str] = (),
+    recent_situations: Sequence[str] = (),
     previous_body: str = "",
     failure_lines: Sequence[str] = (),
 ) -> str:
@@ -348,11 +351,15 @@ def draft_user(
                 + " — 이 영상에 맞는 다른 궁금증이 있으면 그쪽으로"
             )
     bodies = [b for b in recent_bodies if b]
-    if bodies:  # 2026-11-18 대표: 모두 같으면 안 된다. 9회차: 끝 쪽에 둬야 지킨다
+    situations = [s for s in recent_situations if s]
+    if bodies or situations:  # 2026-11-18 대표: 모두 같으면 안 된다. 9회차: 끝 쪽에 둬야 지킨다
         parts.append("[다른 영상에 최근 단 댓글]")
         parts += [f"- {b}" for b in bodies]
+        if situations:  # 12회차: 본문만 보여 주면 처지가 겹쳤다(11개 중 「흐지부지」 4)
+            parts.append("- 다른 영상 댓글에 이미 쓴 처지: " + " / ".join(situations))
+        same_word = " 이미 쓴 처지와 같은 낱말(예: 흐지부지)도 쓰지 않는다." if situations else ""
         parts.append("- 이 댓글들과 처지(네 연애가 어떤지)·궁금증·운명원 얘기·끝말이 겹치지 않게, "
-                     "다른 걸로 쓴다.")
+                     "다른 걸로 쓴다." + same_word)
     if previous_body or failure_lines:
         parts.append("[다시 쓰기]")
         if previous_body:
