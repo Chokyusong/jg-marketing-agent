@@ -37,7 +37,7 @@ FACT_EXTRA_CHARS = 3  # V10: 걸린 말 앞뒤로 이만큼 더 brand.facts와 �
 _FIND_MIN = 2  # find_evidence: 정리 후 이보다 짧은 겹침은 구절로 치지 않는다
 
 CHECK_NAMES: dict[str, str] = {
-    "V1": "길이 40~120자 · 한 줄",
+    "V1": "길이 40~120자 · 한 줄 · 한글",
     "V2": "링크 없음",
     "V3": "해시태그 없음",
     "V4": "홍보 표기 맨 앞",
@@ -564,12 +564,17 @@ def _length_without_mark(text: str, mark: str) -> int:
     return len(text)
 
 
+_FOREIGN = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]")  # 가나·한자
+
+
 def _v1_length(text: str, rules: ValidatorRules) -> CheckResult:
     n = _length_without_mark(text, rules.disclosure)
     lo, hi = rules.min_chars, rules.max_chars
     problems: list[str] = []
     if "\n" in text or "\r" in text:
         problems.append("줄바꿈이 있습니다 — 한 줄로 이어 쓰세요")
+    if _FOREIGN.search(text):  # 22회차: 루나가 가끔 일본어로 썼다(15·21회차)
+        problems.append("일본어·한자가 섞였습니다 — 한글로만 쓰세요")
     if n < lo:
         problems.append(f"{n}자로 짧습니다({lo}~{hi}자, 표기 빼고) — {lo - n}자 이상 늘리세요")
     elif n > hi:

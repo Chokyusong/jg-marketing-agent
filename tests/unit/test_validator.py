@@ -135,6 +135,15 @@ def test_v1_boundaries_fail(n, word):
     assert f"{n}자" in v1.message and word in v1.message and "1자" in v1.message
 
 
+def test_v1_fails_japanese_or_chinese_letters():
+    """22회차: 루나가 가끔 댓글을 일본어로 썼다(「ありがとう만으론」, 통째 일본어)."""
+    base = sized(60)
+    assert check(run(base), "V1").passed
+    for bad in ("ありがとう", "運命", "刺さる"):
+        v1 = check(run(base[:-len(bad)] + bad), "V1")
+        assert not v1.passed and "일본어·한자가 섞였습니다" in v1.message
+
+
 def test_v1_does_not_count_the_disclosure():
     """대표(2026-11-18): 「[광고]는 빼고 120자」 — 표기와 그 뒤 한 칸은 세지 않는다."""
     text = sized(120)
