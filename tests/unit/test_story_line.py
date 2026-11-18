@@ -191,9 +191,9 @@ def test_s19_same_word_in_the_bridge_and_the_wish():
 
 def test_target_sample_passes_and_reads_as_one_story():
     keys = ["사진 200장"]
-    # 표기를 붙이면 123자로 120자를 넘는다 — 길이 줄의 차례대로 내 처지 한마디부터 빼면 통과
+    # 표기를 붙이면 123자지만 표기는 세지 않아(2026-11-18 대표) 그대로 통과한다
     over = _run(TARGET, context=TARGET_CONTEXT, keys=keys, quote="사진 200장")
-    assert [c.code for c in over.checks if not c.passed] == ["V1"]
+    assert over.passed, over.failure_lines()
     short = TARGET.replace(" 저도 미련 많은 편이라..", "")
     result = _run(short, context=TARGET_CONTEXT, keys=keys, quote="사진 200장")
     assert result.passed, result.failure_lines()

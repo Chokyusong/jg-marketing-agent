@@ -44,9 +44,12 @@ function applyDisclosure(on) {
   if (!on && text.startsWith(mark)) input.value = text.slice(mark.length).trimStart();
 }
 
-// 서버와 같은 셈: NFC로 맞추고 앞뒤 공백을 뺀 코드 포인트 수(표기 포함).
-export function countChars(text) {
-  return [...text.normalize('NFC').trim()].length;
+// 서버와 같은 셈: NFC로 맞추고 앞뒤 공백을 뺀 코드 포인트 수. 홍보 표기와 그 뒤 한 칸은 세지
+// 않는다(2026-11-18 대표: 「[광고]는 빼고 120자」, 규칙 검사 V1과 같다).
+export function countChars(text, mark = '') {
+  let t = text.normalize('NFC').trim();
+  if (mark && t.startsWith(mark)) t = t.slice(mark.length).trimStart();
+  return [...t].length;
 }
 
 // 표기만 있거나 비어 있으면 아직 쓴 글이 없는 것으로 본다(검사하지 않는다).
@@ -77,7 +80,7 @@ function fitHeight() {
 
 function paintCount() {
   const text = $('draft-text').value;
-  const n = countChars(text);
+  const n = countChars(text, disclosure());
   const min = Number(box().dataset.min || 40);
   const max = Number(box().dataset.max || 120);
   const count = $('draft-count');

@@ -657,12 +657,18 @@ class DraftService:
         글쓴이 처지는 정하지 않는다(처지도 AI가 영상을 보고 정한다)."""
         rules = base["rules"]
         shown = [t for t in self.shown_texts() if exclude is None or t != exclude.body]
-        thin, title, context_text = False, "", ""
+        thin, title, context_text, material = False, "", "", ""
         try:
             current = self.context.current(video_id)
             context_text = self.context.search_text(current)
             thin = not current.transcript_text
             title = current.video.video.title
+            # 대표(2026-11-18): AI가 자막(없으면 제목·설명)과 인기 댓글을 직접 읽는다
+            material = sp.material(
+                title=title, description=current.video.video.description or "",
+                transcript=current.transcript_text or "",
+                comments=[cm.text for cm in current.comments],
+            )
         except AppError:
             pass
         self._context_text = context_text
@@ -673,8 +679,8 @@ class DraftService:
             sample=ASSIGNMENT_SAMPLE,
         )
         return SimpleNamespace(
-            **base, system=system, schema=prompts.draft_schema(prompts.TONE_LABELS),
-            shown=shown, thin=thin, title=title,
+            **base, system=system, schema=sp.story_schema(),
+            shown=shown, thin=thin, title=title, material=material,
         )
 
     def _trim_bridge(self, text: str, validation: Validation) -> str:
@@ -697,12 +703,12 @@ class DraftService:
             return sp.story_user(
                 analysis=analysis.to_prompt(), title=kit.title, quote=evidence.quote,
                 source=evidence.source, key_phrases=analysis.key_phrases,
-                mark_len=len(kit.mark) + 1 if kit.mark else 0, max_body=kit.max_body,
+                mark_len=0, max_body=kit.max_body, min_body=kit.min_body,  # 표기는 세지 않는다
                 brand=rules.brand, shown=plain,
                 avoid_bodies=[toggle_disclosure(b, rules.disclosure, False)
                               for b in kit.avoid_bodies],
                 failure_lines=failure_lines, previous_body=previous_body, drop=drop,
-                thin=kit.thin,
+                thin=kit.thin, material_text=kit.material,
             )
         return prompts.draft_user(
             analysis=analysis.to_prompt(),
@@ -740,7 +746,7 @@ class DraftService:
         if self.is_story:  # 이야기 방식: S1·S4·S5·S9·S13만(짜임 검사는 보지 않는다)
             return story.story_issues(
                 text, brand=self.rules.brand, disclosure=self.rules.disclosure,
-                max_total=prompts.SOFT_MAX_DRAFT, earlier=earlier,
+                max_total=self.rules.max_chars, earlier=earlier,
                 shown=[t for t in self._shown if t not in earlier], context=self._context_text,
             )
         return style.style_issues(

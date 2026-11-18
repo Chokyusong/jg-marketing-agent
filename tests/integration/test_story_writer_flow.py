@@ -18,7 +18,7 @@ import pytest
 from test_drafts_api import ANALYSIS, VID, add_youtube, draft
 
 from app.analysis import review as rv
-from app.analysis import story as S
+from app.analysis.validator import ASSIGNMENT_SAMPLE
 from app.errors import AppError, ErrorKind
 from app.llm import story_prompts as SP
 
@@ -70,8 +70,8 @@ def test_story_is_the_default_and_assigns_no_writer(setup):
     assert "[글쓴이]" not in user
     assert "이번 초안의 운명원 대목" not in user and "잇는 한 문장" not in user
     system = llm.calls[1]["kwargs"]["system"]
-    assert "기:" in system and "결:" in system and S.EXAMPLES[0] in system
-    assert all(p in system for p in S.PERSONA_EXAMPLES)
+    assert "기승전결" in system and ASSIGNMENT_SAMPLE in system
+    assert user.startswith("[영상 자료]")  # 자막·제목·설명·인기 댓글을 직접 읽는다
     assert "writer" not in services.drafts.last_run
     assert not hasattr(services.drafts.stored_analysis(VID), "topic_group")
     # 맥락 일치 검증으로 묻는다(네 판단의 스키마·영상 주제)
@@ -104,7 +104,7 @@ def test_brand_in_first_sentence_is_written_again(setup):
     llm = use([ANALYSIS, draft(bad), draft(GOOD)])
     d = services.drafts.generate(VID, review=False)
     assert d.passed and d.attempts == 2
-    assert "첫 문장" in users(llm)[2] and "기승전결은 그대로" in users(llm)[2]
+    assert "첫 문장" in users(llm)[2] and "걸린 항목을 고쳐" in users(llm)[2]
 
 
 def test_three_long_drafts_drop_the_coda_then_the_turn(setup):

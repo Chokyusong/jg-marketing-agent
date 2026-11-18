@@ -171,7 +171,8 @@ def test_draft_system_shows_the_assignment_sample_only_as_a_tone_reference():
 
 
 def test_body_limits_leave_room_for_disclosure():
-    assert P.body_limits(min_chars=40, max_chars=120, disclosure="[광고]") == (35, 115)
+    # 2026-11-18 대표: 표기는 글자 수에 넣지 않는다 — 본문 한도가 곧 40~120자
+    assert P.body_limits(min_chars=40, max_chars=120, disclosure="[광고]") == (40, 120)
     # 표기를 끈 글(내 채널 영상): 본문이 곧 전체
     assert P.body_limits(min_chars=40, max_chars=120, disclosure="") == (40, 120)
 

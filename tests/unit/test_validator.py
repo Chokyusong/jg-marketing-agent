@@ -56,10 +56,12 @@ def check(result: Validation, code: str) -> CheckResult:
 
 
 def sized(n: int) -> str:
-    """정확히 n자(표기 포함)인 글. 근거·브랜드를 담아 V1 말고는 통과하게 만든다."""
-    base = "[광고] 하루에 한 번 연락이면 될까요 운명원"
-    assert len(base) <= n
-    return base + "가" * (n - len(base))
+    """표기를 빼고 정확히 n자인 글(2026-11-18 대표: 「[광고]는 빼고 120자」). 근거·브랜드를 담아
+    V1 말고는 통과하게 만든다."""
+    mark = "[광고] "
+    base = mark + "하루에 한 번 연락이면 될까요 운명원"
+    assert len(base) - len(mark) <= n
+    return base + "가" * (n - (len(base) - len(mark)))
 
 
 # ---------------------------------------------------------------- 전체 모양
@@ -128,7 +130,7 @@ def test_find_evidence_none_when_nothing_shared():
 @pytest.mark.parametrize("n", [40, 120])
 def test_v1_boundaries_pass(n):
     result = run(sized(n))
-    assert result.char_count == n
+    assert result.char_count == n + 5  # char_count는 표기까지 센 전체 길이(V1만 표기를 뺀다)
     assert check(result, "V1").passed
 
 
@@ -139,10 +141,20 @@ def test_v1_boundaries_fail(n, word):
     assert f"{n}자" in v1.message and word in v1.message and "1자" in v1.message
 
 
+def test_v1_does_not_count_the_disclosure():
+    """대표(2026-11-18): 「[광고]는 빼고 120자」 — 표기와 그 뒤 한 칸은 세지 않는다."""
+    text = sized(120)
+    assert len(text) == 125  # 표기 「[광고] 」 5자 + 본문 120자
+    result = run(text)
+    assert check(result, "V1").passed and "120자" in check(result, "V1").message
+    assert not check(run(sized(121)), "V1").passed
+    assert "표기 빼고" in check(result, "V1").message
+
+
 def test_v1_counts_disclosure_and_ignores_outer_spaces():
     text = sized(40)
     result = run(f"   {text}  \n ")
-    assert result.char_count == 40
+    assert result.char_count == 45
     assert check(result, "V1").passed
 
 
@@ -160,9 +172,9 @@ def test_v1_empty_text_fails():
 
 def test_v1_emoji_and_english_count_by_code_point():
     text = sized(40)[:-2] + "👍A"  # 이모지 1자 + 영문 1자
-    assert run(text).char_count == 40
+    assert run(text).char_count == 45
     skin = sized(40)[:-2] + "👍🏻"  # 피부색이 붙은 이모지는 2자로 센다(엄격한 쪽)
-    assert run(skin).char_count == 40
+    assert run(skin).char_count == 45
 
 
 # ---------------------------------------------------------------- V2 링크 없음

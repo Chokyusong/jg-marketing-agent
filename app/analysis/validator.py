@@ -603,19 +603,26 @@ def _check(code: str, passed: bool, message: str) -> CheckResult:
     return CheckResult(code=code, name=CHECK_NAMES[code], passed=passed, message=message)
 
 
+def _length_without_mark(text: str, mark: str) -> int:
+    """글자 수(홍보 표기와 그 뒤 한 칸은 빼고 센다 — 2026-11-18 대표: 「[광고]는 빼고 120자」)."""
+    if mark and text.startswith(mark):
+        text = text[len(mark):].lstrip()
+    return len(text)
+
+
 def _v1_length(text: str, rules: ValidatorRules) -> CheckResult:
-    n = len(text)
+    n = _length_without_mark(text, rules.disclosure)
     lo, hi = rules.min_chars, rules.max_chars
     problems: list[str] = []
     if "\n" in text or "\r" in text:
         problems.append("줄바꿈이 있습니다 — 한 줄로 이어 쓰세요")
     if n < lo:
-        problems.append(f"{n}자로 짧습니다({lo}~{hi}자, 표기 포함) — {lo - n}자 이상 늘리세요")
+        problems.append(f"{n}자로 짧습니다({lo}~{hi}자, 표기 빼고) — {lo - n}자 이상 늘리세요")
     elif n > hi:
-        problems.append(f"{n}자로 깁니다({lo}~{hi}자, 표기 포함) — {n - hi}자 이상 줄이세요")
+        problems.append(f"{n}자로 깁니다({lo}~{hi}자, 표기 빼고) — {n - hi}자 이상 줄이세요")
     if problems:
         return _check("V1", False, " / ".join(problems))
-    return _check("V1", True, f"{n}자(표기 포함, {lo}~{hi}자) · 한 줄")
+    return _check("V1", True, f"{n}자(표기 빼고, {lo}~{hi}자) · 한 줄")
 
 
 def _v2_links(text: str) -> CheckResult:
@@ -718,8 +725,14 @@ def _v7_key_phrases(
     context_text: str,
     rules: ValidatorRules,
     key_phrases: Sequence[str] | None,
+    *,
+    story: bool = False,
 ) -> CheckResult:
     """C1: 글이 그 영상의 핵심 말을 하나 이상 담았는가.
+
+    이야기 방식(`story`, 2026-11-18 대표: 「영상 속 구체적인 장면이나 말을 하나 이상」)에서는 AI가
+    자료를 직접 읽고 장면을 고르므로, 분석의 핵심 말이 아니어도 영상 자료와 6자 이상 겹치는 말을
+    담으면 통과한다.
 
     핵심 말은 영상 자료에 그대로 있고 흔한 낱말이 아니어야 한다(`usable_key_phrases`). 분석의 핵심
     말이 주어지면 그것만 본다. 목록이 없거나 쓸 수 있는 것이 없으면(예전 분석·분석 전에
@@ -732,6 +745,9 @@ def _v7_key_phrases(
         hits = [p for p in phrases if contains_key_phrase(body, p)]
         if hits:
             return _check("V7", True, f"핵심 말 {_found(hits)} 담음")
+        shared = (find_evidence(body, context_text) or "") if story else ""
+        if len(normalize(shared)) >= MIN_EVIDENCE_CHARS and not is_common_word(shared):
+            return _check("V7", True, f"영상 자료의 말 '{_clip(shared)}' 담음")
         shown = ", ".join(f"'{_clip(p, 12)}'" for p in phrases[:4])
         return _check(
             "V7", False,
@@ -1319,7 +1335,7 @@ def validate(
     facts_n = [normalize(f) for f in brand_facts if f and f.strip()]
 
     v6, quote = _v6_evidence(clean, context_text or "", rules, evidence_quote)
-    v7 = _v7_key_phrases(clean, context_text or "", rules, key_phrases)
+    v7 = _v7_key_phrases(clean, context_text or "", rules, key_phrases, story=story)
     quoted = _quoted_spans(clean, context_text or "", rules)
     checks = (
         _v1_length(clean, rules),

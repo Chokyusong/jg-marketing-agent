@@ -1417,7 +1417,7 @@ export function settingsView(s) {
     aiGroup(s),
     group('댓글 규칙', 'set-comment', [
       numberField('comment.min_chars', '최소 글자 수', { unit: '자' }),
-      numberField('comment.max_chars', '최대 글자 수', { unit: '자 (광고 표기 포함)' }),
+      numberField('comment.max_chars', '최대 글자 수', { unit: '자 (광고 표기 빼고)' }),
       textField('comment.brand', '홍보하는 곳', { maxlength: 30 }),
       factsField(s),
       textField('comment.disclosure', '광고 표기 문구', { maxlength: 20, note: '켜면 댓글이 이 글로 시작합니다' }),

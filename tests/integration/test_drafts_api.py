@@ -285,7 +285,7 @@ def test_draft_passes_on_first_try_and_code_adds_disclosure(setup):
     call = llm.calls[1]["kwargs"]
     assert call["temperature"] == 0.8  # 초안은 높은 온도
     assert "[광고]는 쓰지 않는다" in call["system"]
-    assert f"'{Q_COMMENT}'" in call["user"] and "35~115자" in call["user"]
+    assert f"'{Q_COMMENT}'" in call["user"] and "40~120자" in call["user"]
 
 
 def test_disclosure_written_by_model_is_not_doubled(setup):

@@ -94,13 +94,16 @@ def test_toggle_strips_and_adds_the_label_without_calling_the_model(services):
 def test_toggle_on_that_overflows_shows_as_failing(services):
     services.use([ANALYSIS, draft(GOOD_BODY)])
     d = services.drafts.generate(VID, disclose=False)
+    # 2026-11-18 대표: 표기는 글자 수에 넣지 않는다 — 118자 본문에 표기를 켜도 넘치지 않고,
+    # 본문이 120자를 넘을 때만 걸린다
     long_text = (GOOD_BODY + " 마음이 편해지길 바랄게요" * 10)[:118]
     edited = services.drafts.update_text(d.id, long_text)
     assert edited.disclosed is False and len(edited.body) == 118
     on = services.drafts.set_disclosure(d.id, True)
     assert on.body.startswith("[광고] ") and len(on.body) > 120
-    assert not on.passed and not v1(on.validation).passed  # 글자 수 넘침(표기 포함)
-    assert v4(on.validation).passed
+    assert v1(on.validation).passed and v4(on.validation).passed
+    over = services.drafts.update_text(d.id, "[광고] " + (long_text + " 그렇죠")[:121])
+    assert not over.passed and not v1(over.validation).passed  # 본문 121자
 
 
 def test_toggle_resets_approval(services):

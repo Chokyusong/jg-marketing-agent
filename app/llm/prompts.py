@@ -1443,10 +1443,10 @@ def closing_sentence(body: str, *, brand: str, disclosure: str = "") -> str:
 
 
 def body_limits(*, min_chars: int, max_chars: int, disclosure: str) -> tuple[int, int]:
-    """본문(표기 뺀 것)의 길이 한도. 전체는 '표기 + 한 칸 + 본문'으로 센다(DESIGN 5.3).
-    표기를 끈 글(내 채널 영상, `disclosure=""`)은 본문이 곧 전체다."""
-    extra = len(disclosure) + 1 if disclosure else 0
-    return max(1, min_chars - extra), max_chars - extra
+    """본문(표기 뺀 것)의 길이 한도. 2026-11-18 대표 결정으로 홍보 표기는 글자 수에 넣지 않는다
+    (규칙 검사 V1도 표기를 빼고 센다) — 본문 한도가 곧 `min_chars`~`max_chars`다."""
+    del disclosure  # 예전엔 표기 몫을 뺐다
+    return max(1, min_chars), max_chars
 
 
 def body_target(*, min_body: int, max_body: int, max_chars: int = 120) -> tuple[int, int]:
