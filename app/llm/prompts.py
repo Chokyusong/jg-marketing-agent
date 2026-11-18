@@ -406,8 +406,9 @@ def draft_user(
         if situations:  # 12회차: 본문만 보여 주면 처지가 겹쳤다(11개 중 「흐지부지」 4)
             parts.append("- 다른 영상 댓글에 이미 쓴 처지: " + " / ".join(situations))
         same_word = " 이미 쓴 처지와 같은 낱말(예: 흐지부지)도 쓰지 않는다." if situations else ""
-        parts.append("- 이 댓글들과 처지(네 연애가 어떤지)·궁금증·운명원 얘기·끝말이 겹치지 않게, "
-                     "다른 걸로 쓴다." + same_word)
+        # 19회차: 존댓말 셋이 모두 「~말 와닿아요」 — 첫 반응도 다른 영상 댓글과 겹치지 않게
+        parts.append("- 이 댓글들과 영상 말에 대한 첫 반응·처지(네 연애가 어떤지)·궁금증·운명원 "
+                     "얘기·끝말이 겹치지 않게, 다른 걸로 쓴다." + same_word)
     if previous_body or failure_lines:
         parts.append("[다시 쓰기]")
         if previous_body:

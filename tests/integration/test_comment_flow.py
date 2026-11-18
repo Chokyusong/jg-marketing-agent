@@ -250,8 +250,8 @@ def test_user_text_carries_recent_comments_on_other_videos():
     user = P.draft_user(title="t", concern="c", material=["- (자막) q"],
                         recent_bodies=["요즘 운명원이 연애 사주 잘 본다던데 가봐야지", ""])
     assert ("[다른 영상에 최근 단 댓글]\n- 요즘 운명원이 연애 사주 잘 본다던데 가봐야지\n"
-            "- 이 댓글들과 처지(네 연애가 어떤지)·궁금증·운명원 얘기·끝말이 겹치지 않게, "
-            "다른 걸로 쓴다.") in user
+            "- 이 댓글들과 영상 말에 대한 첫 반응·처지(네 연애가 어떤지)·궁금증·운명원 얘기·끝말이 "
+            "겹치지 않게, 다른 걸로 쓴다.") in user
     # 9회차: 요청 글 끝 쪽(답하라는 말 바로 위)에 둔다
     assert user.index("[다른 영상에 최근 단 댓글]") > user.index("[짚을 내용]")
     assert "[다른 영상에 최근 단 댓글]" not in P.draft_user(
