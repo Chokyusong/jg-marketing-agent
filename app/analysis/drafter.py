@@ -430,6 +430,8 @@ class DraftService:
                 break  # 앞에서 받은 것 중 가장 나은 것을 저장한다
             attempts = attempt
             body = clean_body(data.get("body"), rules.disclosure)
+            if self.is_story:
+                body = sp.drop_quotes(body)
             text = with_disclosure(body, mark)
             tone = str(data.get("tone_label") or "")
             if tone not in prompts.TONE_LABELS:
@@ -698,15 +700,13 @@ class DraftService:
     ) -> str:
         if self.is_story:
             rules = kit.rules
-            plain = [toggle_disclosure(t, rules.disclosure, False) for t in kit.shown
-                     if t not in kit.avoid_bodies]
+            # 2026-11-18 대표: 이미 쓴 댓글을 보여 주면 그 끝말을 정답처럼 따라 쓴다 — 보여 주지
+            # 않고, 똑같은 글인지는 코드(V11·S4)가 뒤에서만 본다
             return sp.story_user(
                 analysis=analysis.to_prompt(), title=kit.title, quote=evidence.quote,
                 source=evidence.source, key_phrases=analysis.key_phrases,
                 mark_len=0, max_body=kit.max_body, min_body=kit.min_body,  # 표기는 세지 않는다
-                brand=rules.brand, shown=plain,
-                avoid_bodies=[toggle_disclosure(b, rules.disclosure, False)
-                              for b in kit.avoid_bodies],
+                brand=rules.brand, shown=(), avoid_bodies=(),
                 failure_lines=failure_lines, previous_body=previous_body, drop=drop,
                 thin=kit.thin, material_text=kit.material,
             )
@@ -866,9 +866,18 @@ class DraftService:
             title = ""
         is_story = self.is_story
         thin: bool | None = None
+        material = ""
         if is_story:
             try:
-                thin = not self.context.current(draft.video_id).transcript_text
+                current = self.context.current(draft.video_id)
+                thin = not current.transcript_text
+                # 2026-11-18: 쓰는 AI와 같은 자료(자막·설명·인기 댓글) — 근거 구절 하나만 보면
+                # 자막의 다른 장면을 「벗어난 문장」으로 잘라 냈다
+                material = sp.material(
+                    title=title, description=current.video.video.description or "",
+                    transcript=current.transcript_text or "",
+                    comments=[cm.text for cm in current.comments],
+                )
             except AppError:
                 thin = None
         system = rv.review_system(brand=rules.brand, story=is_story)
@@ -885,7 +894,8 @@ class DraftService:
                     evidence=draft.evidence_quote, story=is_story,
                     source=prompts.SOURCE_LABELS.get(draft.evidence_source, "")
                     if is_story else "",
-                    topic=analysis.topic if analysis and is_story else "", thin=thin))
+                    topic=analysis.topic if analysis and is_story else "", thin=thin,
+                    material=material))
             except (AppError, ValueError) as exc:
                 info.setdefault("errors", []).append(str(getattr(exc, "message", exc)))
                 return None
@@ -922,6 +932,7 @@ class DraftService:
         finally:
             info["rewrite_ms"] += int((time.monotonic() - started) * 1000)
         body = clean_body(data.get("body") if isinstance(data, dict) else None, rules.disclosure)
+        body = sp.drop_quotes(body)
         text = with_disclosure(body, mark)
         validation = self.checks.check(
             draft.video_id, text, previous_texts=kit.previous, evidence_quote=evidence.quote,

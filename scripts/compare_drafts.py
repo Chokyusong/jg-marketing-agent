@@ -63,7 +63,7 @@ FAKE_YOUTUBE_KEY = "AIza" + "x" * 35  # 가짜 YouTube에만 쓰는 가짜 키(�
 
 def make_settings(
     ai: str, db_path: Path, *, model: str = "", env_file: Path | None = None,
-    timeout: float | None = None, environ: dict[str, str] | None = None,
+    timeout: float | None = None, environ: dict[str, str] | None = None, reasoning: str = "",
 ) -> Settings:
     """앱 설정(config.yaml)에서 글 쓰는 AI만 `ai`로 바꾼 설정.
 
@@ -81,6 +81,8 @@ def make_settings(
             llm = replace(llm, models={**llm.models, ai: model})
     if timeout:
         llm = replace(llm, timeout_seconds=timeout)
+    if reasoning:  # 추론 수준 비교(2026-11-18)
+        llm = replace(llm, reasoning={**llm.reasoning, ai: reasoning})
     return replace(base, llm=llm)
 
 
@@ -403,6 +405,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--out-md", type=Path, default=None)
     p.add_argument("--env-file", type=Path, default=None, help="키를 읽을 .env(값은 찍지 않는다)")
     p.add_argument("--timeout", type=float, default=600.0, help="AI 한 번 기다리는 초")
+    p.add_argument("--reasoning", default="", help="Codex 추론 수준(low·medium·high, 비우면 설정)")
     args = p.parse_args(argv)
     if not args.fixtures and not args.videos:
         p.error("--fixtures나 --videos 중 하나는 있어야 합니다")
@@ -452,7 +455,7 @@ def _compare(
     if args.db is not None:
         _copy_db(args.db, db_path)
     settings = make_settings(args.ai, db_path, model=args.model, env_file=args.env_file,
-                             timeout=args.timeout)
+                             timeout=args.timeout, reasoning=args.reasoning)
     services = build_services(settings, transport=youtube_transport(fixtures), clock=utc_now)
 
     def save(videos: list[dict[str, Any]]) -> None:

@@ -1290,13 +1290,17 @@ def validate(
     - `concern`: 분석의 고민 한 줄(V13: 그대로 길게 옮겼는지 본다)
     - `story`: 이야기 방식(`comment.writer: story`, 2026-11-18 대표 표)이면 코드는 글자 수 ·
       영상 근거 · 운명원 언급 · 허위(후기·사연·효능·지어낸 평판)와 원문 금지(링크·해시태그·
-      영상마다 다르게)·표기만 본다. V12·V13은 「보지 않음」으로 통과, V14는 지어낸 평판만 본다
+      영상마다 다르게)·표기만 본다. V7·V12·V13은 「보지 않음」으로 통과, V14는 지어낸 평판만
+      본다
     """
     clean = unicodedata.normalize("NFC", text or "").strip()
     facts_n = [normalize(f) for f in brand_facts if f and f.strip()]
 
     v6, quote = _v6_evidence(clean, context_text or "", rules, evidence_quote)
-    v7 = _v7_key_phrases(clean, context_text or "", rules, key_phrases, story=story)
+    # 이야기 방식(2026-11-18 대표): 영상 말을 글자 그대로 넣게 하면 따옴표 자국이 남고 제 말로
+    # 풀어 쓴 글이 걸린다 — 영상 근거는 V6, 장면을 맞게 짚었는지는 AI 검수가 본다
+    v7 = (_story_skipped("V7") if story
+          else _v7_key_phrases(clean, context_text or "", rules, key_phrases))
     quoted = _quoted_spans(clean, context_text or "", rules)
     checks = (
         _v1_length(clean, rules),

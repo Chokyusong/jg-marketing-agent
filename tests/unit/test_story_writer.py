@@ -161,6 +161,27 @@ def test_story_v7_accepts_another_real_line_from_the_material():
     assert not _check(_run(text, context=ctx, story=False), "V7").passed  # 조각 맞추기는 그대로
 
 
+def test_story_skips_v7_so_own_words_pass():
+    # 2026-11-18: 영상 말을 글자 그대로 넣게 하면 따옴표 자국이 남고, 제 말로 풀어 쓴 글이 걸렸다
+    # — 이야기 방식은 V7을 보지 않는다(영상 근거는 V6, 장면을 맞게 짚었는지는 AI 검수)
+    text = ("[광고] 사진 한 장만 콕 집어 고맙다고 하면 다음에도 찍어 주고 싶겠네요. 저도 서운한 "
+            "것부터 말하는 편이라 운명원이 연애 사주 잘 본다던데 우리 사이 한번 보고 싶어요")
+    v7 = _check(_run(text), "V7")
+    assert v7.passed and "보지 않음" in v7.message
+    assert not _check(_run(text, story=False), "V7").passed
+
+
+def test_story_review_sees_the_same_material_and_no_set_ending():
+    material = SP.material(title="제목", description="설명", transcript="자막 속 다른 장면",
+                           comments=["인기 댓글"])
+    user = rv.review_user(body="본문", title="제목", story=True, material=material)
+    assert "[영상 자료 — 댓글을 쓴 AI가 본 것과 같다]" in user and "자막: 자막 속 다른 장면" in user
+    assert "자막 속 다른 장면" not in rv.review_user(body="본문", title="제목", material=material)
+    system = rv.story_review_system(brand="운명원")
+    assert "기본 꼴" not in system  # 끝말 한 가지를 정답처럼 굳히던 문장
+    assert "제목·자막·설명·고민 한 줄·근거 구절" in system
+
+
 # ---------------------------------------------------------------- V11(이야기 방식)
 
 CLOSE = "운명원이 연애사주 잘 본다길래 지금 사람이랑 오래 갈 수 있을지 한번 보러 가려구요 진짜로요"
@@ -253,70 +274,94 @@ def _system():
                            sample=ASSIGNMENT_SAMPLE)
 
 
-def test_story_system_says_only_what_the_boss_asked():
+def test_story_system_is_the_prompt_the_boss_gave():
+    # 2026-11-18 대표 「이렇게 해보자」: 붙여 준 시스템 프롬프트 그대로
     system = _system()
-    for word in ("자막, 자막이 없으면 제목·설명, 그리고 인기 댓글", "연애 고민을 먼저 한 줄로 정리",
-                 "시청자 입장에서 기승전결로", "구체적인 장면이나 말을 하나 이상",
-                 "맥락이 이어지게", "연애 사주를 보고 싶어지게", "지어낸 후기는 쓰지 않는다",
-                 "없는 장면이나 발언을 만들어 내지 않는다", "억지로 붙이지 않는다",
-                 "'요새'", "'친구한테 듣기로'", "베끼지 않는다", "\"concern\""):
+    for word in ("## 목표", "## 작성 방법", "## 가장 중요한 원칙", "## 참고 예시",
+                 "## 작성 후 검토", "## 출력",
+                 "핵심 연애 고민을 한 줄로 정리", "구체적인 장면이나 말을 하나 이상",
+                 "인기 댓글의 사연은 영상에서 직접 말한 내용처럼 표현하지 않는다",
+                 "기승전결은 문장을 나누는 고정 공식이 아니다",
+                 "스스로 결정한다", "지어낸 후기는 절대 작성하지 않는다",
+                 "앞에서 등장하지 않은 인물이나 관계를 끝에서 갑자기 언급하지 않는다",
+                 "억지 연결 문장은 작성하지 않는다",
+                 # 대표 확인 뒤 고친 줄(2026-11-18)
+                 "들은 얘기로 꺼내고", "보러 가고 싶은 마음으로 맺는다",
+                 "보고 싶어지도록", "따옴표로 옮기지 않고 내 말로 풀어 쓴다",
+                 "사실상 동일한 경우만 피한다", "그대로 복사하지 않는다",
+                 "운명원이 뜬금없이 등장하지 않는가", "댓글 전체를 자연스럽게 다시 작성한다",
+                 "중간 문장 조각은 따로 만들지 않는다", "\"concern\"", "연애 사주를 잘 봐주는"):
         assert word in system, word
-    assert ASSIGNMENT_SAMPLE in system  # 가장 좋은 본보기는 과제 예시 하나
+    assert ASSIGNMENT_SAMPLE in system  # 참고 예시는 과제 예시 하나
 
 
 def test_removed_rules_are_not_in_the_prompt():
     system, user = _system(), _user()
-    for gone in ("말투 유형", "다섯 조각", "잇는 한 문장", "이번 끝말", "[글쓴이]", "썸만 타다",
+    for gone in ("이번 말투", "다섯 조각", "잇는 한 문장", "이번 끝말", "[글쓴이]", "썸만 타다",
                  "인연·때·궁합 쪽으로", "기:", "여운", "좋은 댓글", "나쁜 댓글", "S5", "S9",
-                 P.BRAND_MODELS[0]):
+                 P.BRAND_MODELS[0],
+                 # 조각 칸(2026-11-18 대표: 그것도 새 조각 강제였다)
+                 "scene", "situation", "wonder", "filler", "네 칸",
+                 # 대표가 고친 글·추임새 목록·글자 수 목표·핵심 말 강제
+                 "요즘 저한테 잘해주는 사람이 있는데", "'요새'", "75~95자쯤", "핵심 말",
+                 # 「연애 사주로 유명한 운명원 … 궁금하네요」를 만든 줄
+                 "관심", "불필요한 추임새", "인연·궁합·타이밍", "곳으로 소개한다",
+                 # 끝말 예시 하나 — 모든 댓글이 그 말로 끝났다(2026-11-18)
+                 "'연애 사주 잘 본다던데'처럼"):
         assert gone not in system and gone not in user, gone
+    assert not hasattr(SP, "BOSS_EXAMPLE") and not hasattr(SP, "PLAN_FIELDS")
+    assert not hasattr(SP, "STORY_TARGET")
 
 
 def test_story_schema_asks_for_the_concern_first():
     schema = SP.story_schema()
     assert list(schema["properties"])[0] == "concern"
     assert schema["required"][0] == "concern" and "body" in schema["required"]
+    # 조각 칸은 없다 — 고민 · 본문 · 근거 · 말투 이름만
+    assert set(schema["properties"]) == {"concern", "body", "used_quote", "tone_label"}
+
+
+def test_quotes_are_dropped_from_the_body():
+    # 대표: 시청자는 영상 속 말을 따옴표로 옮겨 적지 않는다
+    body = "‘다시 얘기할 날만 정하자’는 말이 와닿네요. “그 사람” 마음 'ㅋㅋ'"
+    assert SP.drop_quotes(body) == "다시 얘기할 날만 정하자는 말이 와닿네요. 그 사람 마음 ㅋㅋ"
 
 
 def test_story_user_shows_the_raw_material():
     material = SP.material(title="장거리 연애 1년차", description="연락 문제 사연",
                            transcript="하루에 한 번 연락이면 될까요 " * 300,
                            comments=["저도 그래요ㅠ", "", "연락이 전부는 아니죠"])
-    assert "- 자막: 하루에 한 번" in material and len(material) < SP.MATERIAL_TRANSCRIPT + 600
+    assert "자막: 하루에 한 번" in material and len(material) < SP.MATERIAL_TRANSCRIPT + 600
+    assert material.index("자막:") < material.index("설명:") < material.index("인기 댓글:")
     assert "· 저도 그래요ㅠ" in material and "· 연락이 전부는 아니죠" in material
     user = _user(material_text=material)
-    assert user.startswith("[영상 자료]\n- 제목: 장거리 연애 1년차")
-    assert "[짚을 만한 말] '하루에 한 번 연락'" in user and "하나 이상 넣는다" in user
+    assert user.startswith("[영상 자료]\n제목: 장거리 연애 1년차")
+    assert "[참고할 영상 근거]\n하루에 한 번 연락 (자막)" in user
+    assert "영상에서 실제로 확인되는 내용을 하나 이상 언급하고," in user
     none = SP.material(title="제목만", description="", transcript="", comments=[])
     assert "자막: 없음" in none
 
 
-def test_thin_video_reacts_to_title_or_comments():
-    thin = _user(thin=True)
-    assert "자막이 없다" in thin and "댓글이라고 밝힌다" in thin
-    assert "자막이 없다" not in _user()
-
-
-def test_story_user_counts_without_the_label():
+def test_story_user_gives_only_the_setting_length():
     user = _user(mark_len=0, max_body=120, min_body=40)
-    assert "본문 40~120자(표기는 세지 않는다)" in user and "75~95자쯤" in user
-    assert "표기 몫" not in user
-    assert "표기 몫 5자" in _user(mark_len=5, max_body=115)  # 예전 셈을 넘기면 그대로 알린다
+    assert "[작성 조건]\n본문 글자 수: 40~120자" in user
+    assert "광고 표기는 프로그램에서 별도로 추가한다." in user
 
 
 def test_story_user_shows_earlier_comments():
     earlier = [STORY_OK.replace("[광고] ", ""), "다른 영상에 쓴 글 하나"]
     user = _user(shown=earlier)
-    assert "[이미 쓴 글 — 똑같이 쓰지 않는다]" in user
+    assert "[이미 쓴 댓글 — 전체가 사실상 같은 글만 피한다]" in user
     assert all(f"- {t}" in user for t in earlier)
 
 
 def test_story_user_drop_lines_and_retry():
     assert SP.DROP_LINES[1] in _user(drop=1) and SP.DROP_LINES[2] in _user(drop=2)
     assert SP.DROP_LINES[1] not in _user()
+    assert all("문장" not in line or "짧" in line for line in SP.DROP_LINES)  # 길이만 알린다
     retry = _user(failure_lines=["V1 길이"], previous_body="앞 글")
     assert "[다시 쓰기]" in retry and "앞의 본문(3자): 앞 글" in retry
-    assert "걸린 항목을 고쳐 새 본문을 써라" in retry
+    assert "걸린 항목을 고쳐 댓글 전체를 다시 쓴다" in retry
 
 
 # ---------------------------------------------------------------- 맥락 일치 검증
@@ -329,7 +374,7 @@ def test_story_review_asks_for_the_four_context_judgments():
     system = rv.review_system(brand="운명원", story=True)
     for word in ("same_topic", "comment_topic", "one_voice", "drift", "natural_ad",
                  "뜻", "바꿔치기", "다른 시청자 댓글의 사연", "억지로", "문제가 아닌 것",
-                 "막연한 내 처지", "인연·때·궁합", "분명한 문제만", "기본 꼴이다",
+                 "막연한 내 처지", "인연·때·궁합", "분명한 문제만",
                  "같은 갈래다"):
         assert word in system, word
     assert system != rv.review_system(brand="운명원")
