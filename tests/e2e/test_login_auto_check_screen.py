@@ -17,7 +17,11 @@ from app.browser.login import LoginResult
 
 pytestmark = pytest.mark.e2e
 
-STATUS_LOADED = "document.getElementById('status-youtube').textContent !== '확인 중'"
+# 첫 /api/status 답을 그린 뒤. 답이 오기 전에도 윗줄은 「확인 못 함」을 그려서(아직 모름)
+# 「확인 중」이 아닌 것만 보면 시작 준비 상자를 그리기 전에 읽을 수 있었다(2026-11-18 전체 실행에서
+# 흔들림) — 둘 다 아닐 때까지 기다린다
+STATUS_LOADED = ("!['확인 중', '확인 못 함']"
+                 ".includes(document.getElementById('status-youtube').textContent)")
 LOGIN_STATE = "document.querySelector('#profiles-body .card .login-state').textContent"
 
 

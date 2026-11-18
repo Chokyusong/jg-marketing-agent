@@ -23,7 +23,11 @@ from app.browser.login import HOME_URL, LOGIN_URL, LoginResult
 
 pytestmark = pytest.mark.e2e
 
-STATUS_LOADED = "document.getElementById('status-youtube').textContent !== '확인 중'"
+# 첫 /api/status 답을 그린 뒤. 답이 오기 전에도 윗줄은 「확인 못 함」을 그려서(아직 모름)
+# 「확인 중」이 아닌 것만 보면 시작 준비 상자를 그리기 전에 읽을 수 있었다(2026-11-18 전체 실행에서
+# 흔들림) — 둘 다 아닐 때까지 기다린다
+STATUS_LOADED = ("!['확인 중', '확인 못 함']"
+                 ".includes(document.getElementById('status-youtube').textContent)")
 SETTINGS_LOADED = "document.querySelector('#settings-body .set-group') !== null"
 FOCUSED = "document.activeElement && document.activeElement.id === '{}'"
 LOGIN_STATE = "document.querySelector('#profiles-body .card .login-state').textContent"
@@ -367,6 +371,8 @@ def test_setup_box_recommends_model_and_saves_it(app_no_key, chrome):
         page.goto(base + "/")
         page.wait_for_function(STATUS_LOADED)
         line = "지금 qwen2.5:7b — 추천 모델 qwen3.8:27b로 바꾸기"
+        page.wait_for_function(  # 기다리는 단언(바로 읽지 않는다)
+            "(line) => document.getElementById('setup-ai-state').textContent === line", arg=line)
         assert page.text_content("#setup-ai-state") == line
         assert page.text_content("#setup-ai-btn") == "바꾸기"
         assert page.locator("#setup-ai.is-done").count() == 0
