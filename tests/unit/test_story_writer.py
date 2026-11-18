@@ -274,37 +274,26 @@ def _system():
     return SP.story_system(brand="운명원", disclosure="[광고]", facts=FACTS)
 
 
-def test_story_system_is_the_prompt_the_boss_gave():
-    # 2026-11-18 대표 「이렇게 해보자」: 붙여 준 시스템 프롬프트 그대로
+def test_story_system_keeps_only_what_must_be_in_and_must_not_be_in():
+    # 2026-11-18 대표 「단순화해라」: 누구로 쓰는가 · 꼭 들어갈 것 · 하면 안 되는 것 · 글자 수 ·
+    # 출력만
     system = _system()
-    for word in ("## 목표", "## 작성 방법", "## 가장 중요한 원칙", "## 참고 예시",
-                 "## 작성 후 검토", "## 출력",
-                 "핵심 연애 고민을 한 줄로 정리", "구체적인 장면이나 말을 하나 이상",
-                 "인기 댓글의 사연은 영상에서 직접 말한 내용처럼 표현하지 않는다",
-                 "이것은 생각의 흐름이지 문장 구조가 아니다",
-                 "말투·관점·문장 수·잇는 말·끝말은 자유다", "지어낸 후기는 절대 작성하지 않는다",
-                 "앞에서 등장하지 않은 인물이나 관계를 끝에서 갑자기 언급하지 않는다",
-                 "억지 연결 문장은 작성하지 않는다",
-                 # 대표 확인 뒤 고친 줄(2026-11-18)
-                 "들은 평판으로 꺼내고", "요새·요즘·친구한테 듣기로 같은 말을",
-                 "보고 싶은 마음으로 이어지게 맺는다",
-                 "보고 싶어지도록", "따옴표로 옮기지 않고 내 말로 풀어 쓴다",
-                 "사실상 동일한 경우만 피한다", "문장·끝말을 그대로 옮기지 않는다",
-                 "운명원이 뜬금없이 등장하지 않는가", "댓글 전체를 처음부터 다시 작성한다",
-                 # 대표 지시서(2026-11-18): 생각이 발전하는 과정
-                 "생각이 발전하는 한 줄기 이야기다",
-                 # 2026-11-18 대표(테라 초안 22개): 감상 먼저, 생각이 닿는 자리에서 운명원
-                 "그 생각이 닿는 자리에서 운명원 연애 사주를 꺼낸다", "그 길은 영상마다 다르다",
-                 "사주를 꺼내려고 궁금증을 지어내지 않는다",
-                 "설명할 수 없다면, 그 댓글은 처음부터 다시 쓴다",
-                 "다른 연애 영상 댓글에 그대로 붙여도 말이 되는 막연한 것",
-                 # 2026-11-18 대표 지시서 3: 가상 관점·고민은 자유, 전해 들은 경위도 된다
-                 "가상의 연애 고민·처지를 정해 써도 된다", "## 피해야 할 흐름",
-                 "중간 문장 조각은 따로 만들지 않는다", "\"concern\"", "연애 사주를 잘 봐주는"):
+    for word in ("## 꼭 들어갈 것", "## 하면 안 되는 것", "## 길이", "## 출력",
+                 "이 영상을 방금 본 시청자가 평소 말하듯 쓴다",
+                 "영상을 해설하거나 정리하는 글, 광고 카피처럼 쓰지 않는다",
+                 "영상에 실제로 나온 구체적인 장면이나 말 하나",
+                 "따옴표로 옮기지 않고 내 말로 쓴다",
+                 "운명원과 연애 사주 얘기. 영상을 보고 든 생각과 이어지게 쓴다",
+                 "다른 영상에 그대로 붙여도 되는 말로 꺼내지 않는다",
+                 "인기 댓글의 사연을 영상에서 나온 말처럼 쓰기",
+                 "영상이 다루는 이야기를 다른 고민으로 바꾸기",
+                 # 대표 5(2026-11-18): 실제 겪은 것처럼 보이는 구체적인 사건은 지어내지 않는다
+                 "실제로 겪은 것처럼 보이는 구체적인 사건 지어내기",
+                 "직접 이용하거나 상담받은 것처럼 쓴 후기", "아래 사실에 없는 평판·능력",
+                 "링크·해시태그", "주어와 서술어가 맞는", "\"concern\"", "연애 사주를 잘 봐주는"):
         assert word in system, word
-    # 참고 예시는 대표의 기준 예시 하나(2026-11-18) — 과제 예시는 V11이 베꼈는지만 본다
-    assert SP.BOSS_SAMPLE.format(brand="운명원") in system
     assert ASSIGNMENT_SAMPLE not in system
+    assert len(system) < 1200  # 기준 예시판 3186자 → 단순화판(절반 아래)
 
 
 def test_removed_rules_are_not_in_the_prompt():
@@ -320,7 +309,8 @@ def test_removed_rules_are_not_in_the_prompt():
                  "관심을 갖도록", "관심으로 연결", "불필요한 추임새", "인연·궁합·타이밍",
                  "곳으로 소개한다",
                  # 2026-11-18 대표 지시서 2·3: 가상의 처지를 막던 말 · 추천 경위 금지
-                 "겪지 않은 구체적인 일", "추천해 줬다는 경위를 지어내지",
+                 # (「겪지 않은 구체적인 일」은 대표 5로 뜻이 되돌아왔다 — 위 시험이 새 문구를 본다)
+                 "추천해 줬다는 경위를 지어내지",
                  "지어낸 추천 경위",
                  # 끝말 예시 하나 — 모든 댓글이 그 말로 끝났다(2026-11-18)
                  "'연애 사주 잘 본다던데'처럼",
@@ -334,24 +324,27 @@ def test_removed_rules_are_not_in_the_prompt():
                  "인연·궁합·연애운·때 쪽이면", "인연이라는 게 있나 싶다",
                  # 대표 기준 예시로 바꾸며 고친 말(해설 말투·관점 문구) · 예전 대표 본보기
                  "공감과 생각이 자연스럽게 이어지는 댓글", "글쓴이의 관점이 처음부터 끝까지",
-                 "자연스럽게 생각이 이어지는 방식만 참고한다", "날짜부터 잡는다니 괜히 설레네요"):
+                 "자연스럽게 생각이 이어지는 방식만 참고한다", "날짜부터 잡는다니 괜히 설레네요",
+                 # 2026-11-18 대표 「단순화」: 짜임을 정하던 문구 · 참고 예시 · 사주로 볼 일 금지
+                 "## 목표", "## 작성 방법", "## 가장 중요한 원칙", "## 피해야 할 흐름",
+                 "## 참고 예시", "## 작성 후 검토", "생각이 발전하는 한 줄기 이야기",
+                 "그 생각이 닿는 자리에서", "그 길은 영상마다 다르다", "자기 연애 고민이 떠오른",
+                 "보고 싶은 마음으로 이어지게 맺는다", "보고 싶어지도록", "들은 평판으로 꺼내고",
+                 "요새·요즘·친구한테 듣기로", "사주로 볼 일이 아닌 것", "궁금증을 지어내지 않는다",
+                 "직전의 생각", "가상의 연애 고민·처지를 정해 써도 된다", "대개 두세 문장",
+                 "ㅋㅋ·ㅠㅠ·^^", "저도 비슷한상황이라", "사주라도 봐야되나", "연인으로 이어질 인연",
+                 "기준 예시", "거기서 자라난 생각", "가 보고 싶은 마음까지", "인연", "궁합",
+                 "연애 흐름", "잘 본다던데", "보고 싶"):
         assert gone not in system and gone not in user, gone
 
 
 def test_story_prompts_do_not_push_one_formula_or_invented_curiosity():
-    # 2026-11-18 대표(테라 초안 22개): 「반응 → 저도 궁금 → 운명원에서 보고 싶어요」 한 공식,
-    # 사주를 꺼내려고 지어낸 궁금증(#8 용기 낼 때, #21·22 표현 방식)을 문구로 막는다. 문장 조각·
-    # 말투 순환은 더하지 않는다. 광고 표기·허위 후기 금지·대표 기준 문장은 그대로
+    # 2026-11-18 대표(테라 초안 22개 → 기준 예시판 22개 → 「단순화」): 쓰는 프롬프트에는 짜임도
+    # 참고 예시도 없다. 지어낸 궁금증은 검수가 본다. 광고 표기·허위 후기 금지는 그대로
     system = _system()
-    for word in ("영상 내용과 내 감정·고민이 자연스럽게 맞닿게", "「궁금해졌다」가 아니어도 된다",
-                 "내 연애가 떠올랐다, 나라면 어떨까",
-                 "대화 요령, 말하는 법, 용기 낼 시점 같은 실용적인 답",
-                 "앞의 생각이 운명원 연애 사주를 보고 싶은 마음으로 이어지게 맺는다",
-                 "사주로 볼 일이 아닌 것을 사주에서 알아보겠다는 말은 없는가",
-                 "운명원을 언급하기 직전의 생각이 왜 이 영상 내용에서 나왔는지 설명할 수 없다면",
-                 "지어낸 후기는 절대 작성하지 않는다", "[광고]"):
+    for word in ("직접 이용하거나 상담받은 것처럼 쓴 후기", "[광고]"):
         assert word in system, word
-    for gone in ("이번 말투", "다섯 조각", "scene", "wonder"):
+    for gone in ("이번 말투", "다섯 조각", "scene", "wonder", "예시"):
         assert gone not in system, gone
     review = rv.story_review_system(brand="운명원")
     head = review[:review.index("- same_topic")]
@@ -366,41 +359,20 @@ def test_story_prompts_do_not_push_one_formula_or_invented_curiosity():
     assert "그것만으로는 거짓이 아니다" in review
     assert "사주에 관심을 갖게 된 이유" not in review
     assert not hasattr(SP, "BOSS_EXAMPLE") and not hasattr(SP, "PLAN_FIELDS")
-    assert not hasattr(SP, "STORY_TARGET")
+    assert not hasattr(SP, "STORY_TARGET") and not hasattr(SP, "BOSS_SAMPLE")
 
 
-def test_story_prompt_uses_the_boss_example_as_a_voice_not_a_template():
-    # 2026-11-18 대표가 확정한 기준 예시: 영상을 해설·분석하는 사람이 아니라 영상을 보고 자기 고민이
-    # 떠오른 사람의 대화체. 운명원을 떠올린 까닭은 설명 문장 없이 앞 이야기에서 느껴지게. 예시는
-    # 문장별로 쪼개 강제하지 않는다(목소리와 흐름만). 새 단계·말투 순환·고정 문장은 더하지 않는다
-    system = _system()
-    example = SP.BOSS_SAMPLE.format(brand="운명원")
-    assert example.startswith("매일 연락하면서 취향까지 기억해 주면")
-    # 대표가 쓴 그대로(띄어쓰기 포함)
-    assert "저도 비슷한상황이라" in example and "사주라도 봐야되나 싶네요" in example
-    assert system.count(example) == 1
-    for word in ("영상을 해설하거나 분석하는 사람이 아니라 영상을 보고 자기 연애 고민이 떠오른 "
-                 "시청자 한 사람으로 말한다",
-                 "잘 정리된 설명문이나 광고 카피가 아니라 자연스러운 대화체로 쓴다",
-                 "왜 떠올랐는지 설명하는 문장을 따로 더하지 않아도 앞 이야기에서 자연스럽게 "
-                 "느껴지면 된다",
-                 "대표가 정한 기준 예시다. 문장·끝말을 그대로 옮기지 않는다. 화자의 목소리와 "
-                 "생각이 흘러가는 방식만 참고한다",
-                 "영상을 해설하는 말투가 아니라, 처음부터 끝까지 고민이 떠오른 한 사람의 "
-                 "대화체인가",
-                 # 그대로 두는 것
-                 "사주로 볼 일이 아닌 것", "주어와 서술어가 맞아야 하고",
-                 "주어진 사실에 없는 능력도 지어내지 않는다", "지어낸 후기는 절대 작성하지 않는다",
-                 "운명원을 언급하기 직전의 생각이 왜 이 영상 내용에서 나왔는지 설명할 수 없다면"):
-        assert word in system, word
-    # 예시 문구를 따로 끝말·꺼내는 말로 주지 않는다(예시 안에만 있다)
-    for phrase in ("사주라도 봐야되나", "비슷한상황이라", "잘본다던데"):
-        assert system.count(phrase) == 1, phrase
-    for gone in ("이번 말투", "다섯 조각", "scene", "wonder", "## 단계"):
-        assert gone not in system, gone
-    # 다른 브랜드 이름이면 예시도 그 이름으로
+def test_story_prompt_has_no_example_to_copy():
+    # 2026-11-18 대표: 예시가 하나면 그 꼴을 복제했다(「인연」 22/22) — 참고 예시를 받지 않는다
+    import inspect
+
+    assert "sample" not in inspect.signature(SP.story_system).parameters
     other = SP.story_system(brand="하늘원", disclosure="[광고]", facts=[])
-    assert "요새 하늘원이 연애사주" in other
+    assert "하늘원과 연애 사주 얘기" in other and "운명원" not in other
+    user = _user()
+    assert user.rstrip().endswith("이 영상에 달 댓글 하나를 쓴다.")
+    for gone in ("가 보고 싶은 마음까지", "자연스럽게 이어지는 댓글"):
+        assert gone not in user, gone
 
 
 def test_story_schema_asks_for_the_concern_first():
@@ -427,7 +399,7 @@ def test_story_user_shows_the_raw_material():
     user = _user(material_text=material)
     assert user.startswith("[영상 자료]\n제목: 장거리 연애 1년차")
     assert "[실제 영상 근거 구절]\n하루에 한 번 연락 (자막)" in user
-    assert "영상에서 실제로 확인되는 내용을 하나 이상 언급하고," in user
+    assert "이 영상에 달 댓글 하나를 쓴다." in user
     none = SP.material(title="제목만", description="", transcript="", comments=[])
     assert "자막: 없음" in none
 
@@ -567,7 +539,8 @@ def test_story_shorten_line_only_when_too_long():
     long_retry = _user(failure_lines=["V1 길이: 140자로 깁니다 — 20자 이상 줄이세요"],
                        previous_body="앞 글")
     line = SP.SHORTEN_LINE.format(brand="운명원")
-    assert line in long_retry and "거기서 자라난 생각" in line and "내 처지" not in line
+    assert line in long_retry and "영상 속 장면과 운명원 연애 사주 얘기는" in line
+    assert "내 처지" not in line and "거기서 자라난 생각" not in line
     assert line not in _user(failure_lines=["S4 똑같은 글"], previous_body="앞 글")
     assert line not in _user()
 
@@ -581,7 +554,6 @@ def test_story_user_passes_summary_and_real_quote_together():
     order = [user.index(k) for k in ("[영상 자료]", "[영상 요약]", "[실제 영상 근거 구절]")]
     assert order == sorted(order)
     assert "핵심 연애 고민: 뭐라고 답해야 덜 불안할까" in user
-    assert "ㅋㅋ·ㅠㅠ·^^" in _system()
 
 
 def test_story_review_flags_a_vague_ending_and_missing_link():
@@ -641,20 +613,11 @@ def test_story_gives_a_target_below_the_limit():
     assert SP.story_target(min_body=40, max_body=120) == (90, 105)
     assert SP.story_target(min_body=40, max_body=45) == (40, 40)  # 하한 밑으로 내리지 않는다
     system = SP.story_system(brand="운명원", disclosure="[광고]", facts=[])
-    for word in ("글자 수는 설정된 40~120자다(넘으면 버려진다)",
-                 "공백 포함 90~105자쯤을 권장한다",
-                 # 기준 예시(115자)는 한도 안이지만 권장보다 길다(2026-11-18)
-                 "이 예시는 권장 길이보다 길다. 길이는 따라 하지 않는다",
-                 "대개 두세 문장이면 맞는다", "문장 수는 자유다",
-                 "길게 쓴 뒤 줄이지 않는다", "완성된 댓글 본문(권장 공백 포함 90~105자)",
-                 "## 작성 후 검토", "## 출력"):
+    for word in ("본문은 40~120자다(넘으면 버려진다)",
+                 "처음부터 공백 포함 90~105자쯤으로 간결하게 쓴다",
+                 "광고 표기([광고])는 프로그램이 붙이므로 본문에 쓰지 않는다", "## 출력"):
         assert word in system, word
-    assert "우리 한도보다 길다" not in system
-    longer = SP.story_system(brand="운명원", disclosure="[광고]", facts=[],
-                             sample=ASSIGNMENT_SAMPLE)
-    assert f"이 예시는 {len(ASSIGNMENT_SAMPLE)}자로 우리 한도보다 길다" in longer
-    short = SP.story_system(brand="운명원", disclosure="[광고]", facts=[], sample="짧은 본보기")
-    assert "우리 한도보다 길다" not in short and "권장 길이보다 길다" not in short
+    assert "한도보다 길다" not in system and "권장 길이보다 길다" not in system
     user = _user()
     assert "본문 글자 수: 40~120자(넘으면 버려진다). 권장: 공백 포함 90~105자쯤." in user
     assert "115자" not in user
@@ -665,10 +628,9 @@ def test_story_brand_sentence_must_read_as_plain_korean():
     # 본다던데요」(덧붙임), 지어낸 능력(「미련인지 … 볼 수 있다니」)을 검수가 짚고 쓰는 프롬프트에
     # 원칙만 적는다(끝말·표현을 정해 주지 않는다)
     system = SP.story_system(brand="운명원", disclosure="[광고]", facts=[])
-    for word in ("주어와 서술어가 맞아야 하고", "들은 말을 문장 끝에 따로 덧붙이지 않는다",
-                 "주어진 사실에 없는 능력도 지어내지 않는다", "내 바람",
-                 "글자 수는 body의 본문만 센다",
-                 "영상의 구체적인 장면과 생각의 연결은 지우지 않는다"):
+    # 2026-11-18 대표 「단순화」: 원칙 한 줄과 금지만 남긴다(나머지는 검수 brand_natural이 본다)
+    for word in ("운명원을 말하는 문장도 주어와 서술어가 맞는 자연스러운 한국어로 쓴다",
+                 "아래 사실에 없는 평판·능력(상대의 속마음을 알아낸다 같은 것)"):
         assert word in system, word
     review = rv.story_review_system(brand="운명원")
     for word in ("brand_natural", "brand_issue", "주어와 서술어가 안 맞거나",
