@@ -371,12 +371,33 @@ def test_pick_evidence_ranks_by_the_concern_and_title_not_key_phrases():
 def test_pick_evidence_falls_back_to_the_title_when_transcript_quotes_are_thin():
     ev = [Evidence("억울했겠다", "transcript"),
           Evidence("와, 그럼 처음께 맞았던 거네", "transcript"),
-          Evidence("다시 얘기할 날만 정해 두면", "comment")]
+          Evidence("그래서 그게뭐임", "comment")]
     got = D.pick_evidence(ev, topic=TOPIC, title="은근 끌리는 사람  특징 4가지")
     assert got == Evidence("은근 끌리는 사람 특징 4가지", "title")
+    # 32회차: 얇지 않은 댓글이 있으면 제목보다 댓글
+    ev[-1] = Evidence("다시 얘기할 날만 정해 두면", "comment")
+    assert D.pick_evidence(ev, topic=TOPIC, title="은근 끌리는 사람 특징 4가지") == ev[-1]
     # 인기 댓글 근거만 있는 영상은 예전처럼 댓글(얇아서 뺀 것이 없음)
     only = [Evidence("다시 얘기할 날만 정해 두면 마음이 덜 불안해요", "comment")]
     assert D.pick_evidence(only, topic=TOPIC, title="제목").source == "comment"
+
+
+def test_pick_evidence_prefers_a_concrete_description_or_comment_to_the_title():
+    """32회차: 자막이 없는 영상은 제목만 짚어 얕았다 → 구체적인 설명·댓글을 제목보다 먼저."""
+    title = "매일 연락하는데 왜 사귀자는 말은 없을까"
+    topic = f"애매한 관계 사귀자는 말 {title}"
+    desc = Evidence("매일 연락하고, 내 취향을 기억하고, 다정하게 챙겨주는 사람", "description")
+    ev = [Evidence(title, "title"), desc]
+    assert D.pick_evidence(ev, topic=topic, title=title, rank_by=title) == desc
+    assert D.pick_evidence(ev).source == "title"  # 주제를 안 주면 예전 차례
+    com = Evidence("혼자 메시지를 다시 읽으며 사귀자는 말을 기다린 적 있어요", "comment")
+    assert D.pick_evidence([Evidence(title, "title"), com], topic=topic, title=title) == com
+    # 얇은 댓글(채널 맞장구)만 있으면 제목
+    thin = [Evidence(title, "title"), Evidence("그래서 그게뭐임", "comment")]
+    assert D.pick_evidence(thin, topic=topic, title=title).source == "title"
+    # 자막 근거가 있으면 여전히 자막
+    tr = Evidence("사귀자는 말을 안 하는 데는 이유가 있어요", "transcript")
+    assert D.pick_evidence([desc, tr], topic=topic, title=title) == tr
 
 
 def test_write_line_asks_for_a_quote_that_shows_the_topic():

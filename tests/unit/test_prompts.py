@@ -35,6 +35,8 @@ def test_analysis_prompt_skips_opening_remarks_as_evidence():
     _, system = P.analysis_messages("[제목] t")  # 근거 지시는 요청 글에 있다
     assert "영상을 여는 소개·진행 말" in system
     assert "영상 속 사람이 털어놓는 고민·마음, 그 고민에 대한 조언이나 풀이" in system
+    assert "자막 > 연애 고민·장면을 구체적으로 말하는 댓글·설명 > 제목" in system  # 32회차
+    assert "자막이 없으면 제목만 넣지 말고" in system
 
 
 def test_analysis_retry_note_names_every_problem():
@@ -206,6 +208,7 @@ def test_write_line_asks_to_show_and_empathize_with_the_video_worry():
     s = P.draft_system(brand="운명원", facts=[], voice="반말", heard="요즘 자주 들어서",
                        from_comment=False, said="운명원이 연애 사주를 잘 본다")
     assert "댓글만 읽어도 알 수 있게 한 마디로 짧게 짚는다." in s
+    assert "자막을 글자 그대로 따오지 말고 그 뜻을 짧게 네 말로 옮긴다." in s  # 32회차
     assert "그 말이 네 얘기처럼 와닿은 까닭이 바로 네 처지로 이어지게 쓴다" in s
     assert "공감한다" not in s  # 15회차: 낱말이 새어 나와 「~다는 말 공감돼요」 한 틀이 됐다
     assert "짚은 얘기와 같은 데서" in s

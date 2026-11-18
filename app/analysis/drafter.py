@@ -62,6 +62,9 @@ DraftStatus = str  # 'draft' | 'approved' | 'superseded'
 TONE_SEP = " / "  # tone_label: 말 높임 / 들은 경로 / 기분
 # [짚을 내용]을 고르는 출처 순서(지시서 4절). 댓글은 앞의 셋에 근거가 없을 때만
 EVIDENCE_GROUPS = (("transcript",), ("title", "description"), ("comment",))
+# 32회차(대표 2026-11-19): 자막이 없으면 제목만 짚어 얕았다 → 주제(`topic`)를 주면 구체적인
+# 설명·인기 댓글을 제목보다 먼저 쓴다(얇은 것은 빼므로 채널 홍보·맞장구는 남지 않는다)
+TOPIC_GROUPS = (("transcript",), ("description", "comment"), ("title",))
 
 _QUOTES = "'\"‘’“”"
 # 2026-11-18(기획 담당): 「현실적이네ㅋㅋ.」「답답하다 ㅠㅠ.」 — 사람은 자모 표기 뒤에 마침표를
@@ -269,26 +272,28 @@ def pick_evidence(
     이미 짚은 구절이 아닌 것(모두 짚었으면 그 무리의 첫 것). 근거가 없으면 AppError.
 
     `topic`(분석의 주제·고민·핵심 말·제목)을 주면(2026-11-19): 얇은 구절(`thin_quote`)은 빼고,
-    주제와 많이 겹치는 구절을 먼저 고른다. 자막·제목·설명에 쓸 만한 근거가 없으면 확인된 제목
-    (`title`)을 근거로 쓴다(자막·제목·설명 근거가 있었는데 모두 얇았을 때만 — 인기 댓글 근거만
-    있는 영상은 예전처럼 댓글). 다 얇으면 예전처럼 고른다.
+    주제와 많이 겹치는 구절을 먼저 고른다. 쓸 만한 근거가 하나도 없으면 확인된 제목(`title`)을
+    근거로 쓴다(얇아서 뺀 근거가 있었을 때만). 다 얇고 제목도 없으면 예전처럼 고른다.
 
     `rank_by`(고민 한 줄·제목)를 주면 순서는 그것과 겹치는 만큼으로 정한다(23회차: 핵심 말이
     영상 소개 멘트에서 나오면 「오늘은 ~ 궁합을 맞춰 보려고」 같은 소개 말이 맨 앞에 왔다).
     같으면 `topic`(핵심 말 포함)과 겹치는 만큼으로
-    (25회차: 모두 0이면 모델이 준 첫 것이 엉뚱했다)."""
+    (25회차: 모두 0이면 모델이 준 첫 것이 엉뚱했다).
+
+    32회차: `topic`을 주면 순서는 자막 → 설명·인기 댓글 → 제목(`TOPIC_GROUPS`). 자막이 없는
+    영상에서 제목만 짚으면 「~ 얘기 보니 설레네요」처럼 얕았다."""
     avoid = {normalize(q) for q in avoid_quotes if q}
-    dropped = False  # 자막·제목·설명 근거를 얇아서 뺐는지
-    for group in EVIDENCE_GROUPS:
-        if topic and dropped and group == EVIDENCE_GROUPS[-1] and title.strip():
-            return Evidence(" ".join(title.split()), "title")  # 자막·제목·설명이 다 얇음
+    dropped = False  # 근거를 얇아서 뺐는지
+    for group in TOPIC_GROUPS if topic else EVIDENCE_GROUPS:
         items = sorted((e for e in evidence if e.source in group),
-                       key=lambda e: group.index(e.source))  # 제목 다음 설명(같으면 모델 순서)
+                       key=lambda e: group.index(e.source))  # 무리 안 차례(같으면 모델 순서)
         if topic:
             kept = [e for e in items if not thin_quote(e.quote, topic)]
             dropped = dropped or len(kept) < len(items)
             items = sorted(kept, key=lambda e: (-topic_overlap(e.quote, rank_by or topic),
                                                 -topic_overlap(e.quote, topic)))
+            if group == TOPIC_GROUPS[-1] and not items and dropped and title.strip():
+                return Evidence(" ".join(title.split()), "title")  # 다 얇으면 확인된 제목
         if items:
             fresh = [e for e in items if normalize(e.quote) not in avoid]
             return (fresh or items)[0]
