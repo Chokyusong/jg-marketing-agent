@@ -44,6 +44,8 @@ def fake_codex(calls):
             return cli.RunResult(0, json.dumps(CATALOG), "")
         if req.args[1:] == ["login", "status"]:
             return cli.RunResult(0, "Logged in using ChatGPT", "")
+        if req.args[1:] == ["features", "list"]:  # 2026-11-18: 못 읽으면 0.152.1 이름만 끈다
+            return cli.RunResult(0, "", "")
         state["n"] += 1
         return cli.RunResult(0, json.dumps(ANALYSIS if state["n"] == 1 else DRAFT), "")
 

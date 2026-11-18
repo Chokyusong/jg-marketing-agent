@@ -64,7 +64,8 @@ def test_cli_answers_json(program, label):
     except AppError as exc:
         pytest.fail(f"{label}: {exc.kind} · {exc.message} · {exc.detail}")
     finally:
-        runs = [c for c in calls if c.args[1:] != ["--version"]]
+        # 2026-11-18: Codex 기능 목록(`features list`, 모델을 부르지 않음)도 실행 횟수에서 뺀다
+        runs = [c for c in calls if c.args[1:] not in (["--version"], ["features", "list"])]
         print(f"\n{label}: 실행 {len(runs)}번 · {time.monotonic() - started:.1f}초")
     print(f"{label} 답: {out}")
     assert isinstance(out["summary"], str) and out["summary"]

@@ -53,6 +53,36 @@
   - 서비스 등급: 모델 목록의 `service_tiers`에는 `priority`(「Fast」, "increased usage")만 있고
     「표준」을 뜻하는 값 이름은 문서·목록 어디에도 없다 → 넣지 않는다(설정 파일을 읽지 않으니
     `service_tier`가 비어 표준으로 돈다. 실행 머리말에도 등급 줄이 없다).
+- Codex 0.169.1(2026-11-18 다시 확인, 대표가 GPT-6 계열을 쓰려고 올림) — `codex exec --help`,
+  `codex --help`, `codex features list`, `codex debug prompt-input --help`,
+  https://learn.chatgpt.com/docs/config-file/config-reference
+  - 0.152.1과 같은 인자로 부르면 모델에게 웹 도구(`web__run`)·`view_image`·목표(goal) 도구·MCP 자료
+    읽기·`apply_patch`·하위 에이전트(`collaboration.spawn_agent` 등)가 보였다(기획 담당 확인).
+    웹은 기능 이름이 아니라 설정 키다(`web_search_request`·`web_search_cached`는 deprecated).
+  - 설정 키(공식 설정 참고서, `--config`로 준다 — 없는 키는 무시되고 `--strict-config`일 때만
+    오류): `web_search="disabled"`("disabled to remove the tool"), `agents.enabled=false`
+    ("Enable or disable multi-agent tools"), `skills.include_instructions=false`·
+    `skills.bundled.enabled=false`(스킬 목록·안내를 넣지 않음 — 이 PC 사용자 스킬 목록 2만여 자가
+    매번 들어가고 있었다).
+  - 기능 이름은 **그 PC의 `codex features list`에 있는 것만** 넘긴다(없는 이름은
+    「Unknown feature flag」로 실행이 멈춘다). 0.169.1에서 더 끄는 것: view_image, goals,
+    sleep_tool, code_mode_host, 브라우저·자동화(browser_use_external, browser_use_full_cdp_access,
+    browser_annotation_api, in_app_browser, in_app_local_automation), hooks, 스킬·플러그인
+    (skill_search, skill_mcp_dependency_install, remote_plugin, plugin_sharing), tool_suggest,
+    tool_call_mcp_elicitation. 목록을 못 읽으면 0.152.1에서 확인한 8개만 넘긴다. 목록은 읽었는데
+    명령 실행 기능(shell_tool·unified_exec)이 없으면 끄는 방법을 모르는 판이라 부르지 않는다.
+  - 확인 방법: 모델이 보는 입력을 `codex debug prompt-input`(모델을 부르지 않음, 빈 CODEX_HOME)으로
+    그려 도구 이름을 셌고, 같은 조건으로 실제 호출 5번(gpt-6-luna, 추론 low, 빈 임시 폴더)에
+    「쓸 수 있는 도구 이름을 전부 대고 셸·파일 읽기·apply_patch를 해 봐라」고 물었다.
+    전: apply_patch, clock__curr_time, create_goal, get_goal, update_goal,
+    list_mcp_resource_templates, list_mcp_resources, read_mcp_resource, view_image, web__run
+    (+ 하위 에이전트 도구). 후: 겉 도구는 functions.exec·wait·request_user_input(_async)만,
+    exec 안의 도구(apply_patch, MCP 자료 3개, clock__curr_time)는 code_mode_host를 꺼서 부를 수
+    없다(「code-mode host is disabled」로 실패, 파일 안 생김). code_mode_host를 켜 둔 채로도
+    apply_patch는 「patch rejected: writing is blocked by read-only sandbox」로 막혔다. 웹·목표·
+    이미지·하위 에이전트 도구는 사라졌다. 모델 입력은 66,064자 → 37,471자(prompt-input으로 잼).
+  - code_mode_host를 끄면 stderr에 「Code Mode is unavailable … fail closed」 경고가 찍힌다. 종료
+    코드는 0이고 답은 stdout에 그대로 온다.
 - Claude Code(2.1.312) — `claude --help`, `claude auth status --help`,
   https://code.claude.com/docs/en/headless , https://code.claude.com/docs/en/cli-reference
   - `-p, --print`: 비대화. 표준 입력을 읽는다("cat file | claude -p "query"").
@@ -78,7 +108,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -90,7 +120,8 @@ log = logging.getLogger(__name__)
 VERSION_TIMEOUT_SECONDS = 10.0
 LOGIN_TIMEOUT_SECONDS = 20.0
 MODELS_TIMEOUT_SECONDS = 30.0
-VERSION_CACHE_SECONDS = 300.0
+VERSION_CACHE_SECONDS = 300.0  # 버전·기능 목록을 기억해 두는 시간
+FEATURES_TIMEOUT_SECONDS = 20.0
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
 
 # 명령줄에 넣는 고정 글(영상 자료가 아니다). 영상 자료는 모두 표준 입력으로 간다
@@ -110,6 +141,7 @@ GUARD = (
 # Codex 추론 수준 이름(2026-11-18 이 PC `codex debug models`에 나온 것). 고른 모델이 받는지는
 # 그 모델의 목록으로 화면이 거르고, 이 목록은 저장·명령줄에 넣을 수 있는 이름만 막는다
 REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max", "ultra")
+# 0.152.1에서 확인한 끄는 기능(설치된 판의 기능 목록을 못 읽으면 이것만 넘긴다)
 CODEX_DISABLED_FEATURES = (
     "shell_tool",
     "unified_exec",
@@ -120,6 +152,35 @@ CODEX_DISABLED_FEATURES = (
     "multi_agent",
     "image_generation",
 )
+# 0.169.1에서 더 끄는 기능(2026-11-18). 설치된 판의 `codex features list`에 있는 이름만 넘긴다
+CODEX_MORE_DISABLED_FEATURES = (
+    "view_image",
+    "goals",
+    "sleep_tool",
+    "code_mode_host",
+    "browser_use_external",
+    "browser_use_full_cdp_access",
+    "browser_annotation_api",
+    "in_app_browser",
+    "in_app_local_automation",
+    "hooks",
+    "skill_search",
+    "skill_mcp_dependency_install",
+    "remote_plugin",
+    "plugin_sharing",
+    "tool_suggest",
+    "tool_call_mcp_elicitation",
+)
+# 기능 목록을 읽었는데 이 이름이 없으면 명령 실행을 끄는 방법을 모르는 판이다 → 부르지 않는다
+CODEX_REQUIRED_FEATURES = ("shell_tool", "unified_exec")
+# 설정 키(공식 설정 참고서). 없는 키는 그 판이 무시한다(`--strict-config`일 때만 오류)
+CODEX_SAFETY_CONFIG = (
+    'web_search="disabled"',
+    "agents.enabled=false",
+    "skills.include_instructions=false",
+    "skills.bundled.enabled=false",
+)
+FEATURE_LINE = re.compile(r"^([a-z0-9][a-z0-9_.]*)\s+\S.*\s(?:true|false)\s*$")
 
 
 # ---------------------------------------------------------------- 실행기(테스트는 가짜로 바꾼다)
@@ -200,6 +261,7 @@ class CLISpec:
     login_args: tuple[str, ...] = ()
     login_hint: str = ""  # 로그인 방법 한 줄(화면)
     models_args: tuple[str, ...] = ()  # 모델 목록 명령(없으면 목록을 받아 오지 않는다)
+    features_args: tuple[str, ...] = ()  # 기능 목록 명령(Codex `features list`, 모델을 부르지 않음)
     reasoning: bool = False  # 추론 수준을 명령줄로 줄 수 있는지(Codex `-c model_reasoning_effort=`)
 
 
@@ -212,6 +274,7 @@ SPECS: dict[str, CLISpec] = {
             "명령 창에서 `codex login`을 실행해 로그인합니다(이 앱은 로그인 정보를 읽지 않습니다)."
         ),
         models_args=("debug", "models"),
+        features_args=("features", "list"),
         reasoning=True,
     ),
     "claude": CLISpec(
@@ -224,11 +287,19 @@ SPECS: dict[str, CLISpec] = {
 
 
 def build_args(
-    program: str, exe: str, *, model: str, workdir: str, reasoning: str = ""
+    program: str,
+    exe: str,
+    *,
+    model: str,
+    workdir: str,
+    reasoning: str = "",
+    features: Collection[str] | None = None,
 ) -> list[str]:
     """실행 인자 목록. 영상 자료는 들어가지 않는다(표준 입력으로).
 
-    `reasoning`: Codex 추론 수준(`REASONING_EFFORTS`의 이름만. 다른 글이면 넣지 않는다)."""
+    `reasoning`: Codex 추론 수준(`REASONING_EFFORTS`의 이름만. 다른 글이면 넣지 않는다).
+    `features`: 설치된 Codex의 기능 이름(`codex features list`). 있으면 끄는 기능 가운데 그 판에
+    있는 것만 넘기고, 없으면(못 읽음) 0.152.1에서 확인한 `CODEX_DISABLED_FEATURES`만."""
     if program == "codex":
         args = [
             exe,
@@ -244,8 +315,10 @@ def build_args(
             "-C",
             workdir,
         ]
-        for feature in CODEX_DISABLED_FEATURES:
+        for feature in codex_disabled(features):
             args += ["--disable", feature]
+        for setting in CODEX_SAFETY_CONFIG:  # 추론 수준의 `-c`와 구분해 긴 이름으로
+            args += ["--config", setting]
         if model:
             args += ["-m", model]
         if reasoning in REASONING_EFFORTS:
@@ -277,6 +350,21 @@ def build_args(
             args += ["--model", model]
         return args
     raise ValueError(f"연결하지 않은 프로그램: {program}")
+
+
+def codex_disabled(features: Collection[str] | None) -> list[str]:
+    """넘길 `--disable` 이름. 기능 목록을 읽었으면 그 판에 있는 이름만(없는 이름은 실행이 멈춤)."""
+    if features is None:
+        return list(CODEX_DISABLED_FEATURES)
+    return [f for f in (*CODEX_DISABLED_FEATURES, *CODEX_MORE_DISABLED_FEATURES) if f in features]
+
+
+def parse_feature_list(text: str) -> frozenset[str] | None:
+    """`codex features list` 출력(「이름  단계  true|false」 줄)에서 이름만. 모양이 다르면 None."""
+    names = frozenset(
+        m.group(1) for line in (text or "").splitlines() if (m := FEATURE_LINE.match(line.strip()))
+    )
+    return names or None
 
 
 def stdin_text(system: str, user: str, schema: JSONSchema) -> str:
@@ -354,6 +442,7 @@ class CLIClient(TextJSONLLM):
         self._which = which
         self._temp_root = temp_root
         self._version: tuple[float, str | None] | None = None
+        self._features: tuple[float, frozenset[str] | None] | None = None
 
     # ------------------------------------------------------------ 바깥 호출
 
@@ -411,6 +500,34 @@ class CLIClient(TextJSONLLM):
         self._version = (now, text)
         return text
 
+    def features(self) -> frozenset[str] | None:
+        """설치된 프로그램의 기능 이름(Codex `features list`, 모델을 부르지 않음). 버전처럼 몇 분
+        기억한다. 명령이 없거나 못 읽으면 None(그때는 0.152.1에서 확인한 이름만 끈다)."""
+        if not self.spec.features_args:
+            return None
+        now = time.monotonic()
+        if self._features is not None and now - self._features[0] < VERSION_CACHE_SECONDS:
+            return self._features[1]
+        exe = self.executable()
+        names: frozenset[str] | None = None
+        if exe:
+            workdir = tempfile.mkdtemp(prefix="jg-ai-", dir=self._temp_root)  # 빈 임시 폴더
+            try:
+                res = self._run(
+                    [exe, *self.spec.features_args],
+                    input_text="",
+                    timeout=FEATURES_TIMEOUT_SECONDS,
+                    cwd=workdir,
+                )
+                if res.returncode == 0:
+                    names = parse_feature_list(res.stdout)
+            except (RunTimeout, RunFailed):
+                names = None
+            finally:
+                shutil.rmtree(workdir, ignore_errors=True)
+        self._features = (now, names)
+        return names
+
     def login_status(self) -> bool | None:
         """그 프로그램의 로그인 상태 명령(종료 코드 0 = 로그인됨). 모르면 None."""
         exe = self.executable()
@@ -454,10 +571,27 @@ class CLIClient(TextJSONLLM):
         if problem is not None:
             raise problem
         exe = self.executable() or self.program
+        features = self.features()
+        missing = [f for f in CODEX_REQUIRED_FEATURES if features is not None and f not in features]
+        if missing:  # 명령 실행을 끄는 이름이 없는 판 — 끌 수 없는데 켜 두지 않는다
+            raise AppError(
+                ErrorKind.LLM_SETTINGS_INVALID,
+                detail=self._detail(f"기능 목록에 없음: {', '.join(missing)} ({self.version()})"),
+                message=(
+                    f"설치된 {self.label} 판에서는 명령 실행을 끄는 방법을 확인하지 못해 "
+                    "부르지 않았습니다."
+                ),
+                action="설정 화면의 「AI」에서 다른 AI를 고르거나, 확인된 판으로 바꿔 주세요.",
+            )
         workdir = tempfile.mkdtemp(prefix="jg-ai-", dir=self._temp_root)  # 빈 임시 폴더
         try:
             args = build_args(
-                self.program, exe, model=self.model, workdir=workdir, reasoning=self.reasoning
+                self.program,
+                exe,
+                model=self.model,
+                workdir=workdir,
+                reasoning=self.reasoning,
+                features=features,
             )
             try:
                 res = self._run(

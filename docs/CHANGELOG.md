@@ -7,6 +7,15 @@
 
 ## 새 변경 (README를 줄인 뒤)
 
+### 2026-11-18 Codex 0.169.1 도구 끄기
+
+대표가 Codex 명령줄 프로그램을 0.152.1 → 0.169.1로 올렸다. 같은 인자로 부르니 모델에게 웹 도구(`web__run`)·`view_image`·목표 도구·MCP 자료 읽기·`apply_patch`·하위 에이전트 도구가 보였다(읽기 전용·셸 끔은 그대로였음). 남이 쓴 자막·댓글을 넘기는 자리라 닫았다(DESIGN 5.2.1).
+
+- `app/llm/cli.py`: 설정 키 넷을 늘 `--config`로 — `web_search="disabled"`, `agents.enabled=false`, `skills.include_instructions=false`, `skills.bundled.enabled=false`(공식 설정 참고서로 확인한 키). 끄는 기능 이름은 설치된 판의 `codex features list`에 있는 것만 넘긴다(없는 이름은 Codex가 실행을 멈춘다): 예전 8개 + `view_image`·`goals`·`sleep_tool`·`code_mode_host`·브라우저·자동화·훅·스킬·플러그인 계열 12개(`CODEX_MORE_DISABLED_FEATURES`). 기능 목록은 `CLIClient.features()`가 버전처럼 5분 기억한다(모델을 부르지 않는 명령, 글을 만들 때만 묻는다). 못 읽으면 예전 8개만, 읽었는데 `shell_tool`·`unified_exec`가 없으면 부르지 않는다(`llm_settings_invalid`).
+- 결과(모델이 보는 입력을 `codex debug prompt-input`으로 그려 셈 + 실제 호출 5번): 겉 도구는 `functions.exec`·`wait`·`request_user_input`만 남았고, exec 안의 `apply_patch`·MCP 자료·시각 도구는 `code_mode_host`를 꺼서 부를 수 없다. `code_mode_host`를 켜 둬도 `apply_patch`는 읽기 전용 샌드박스에 막혔다. 웹·목표·이미지·하위 에이전트 도구는 사라졌다. 모델 입력 66,064자 → 37,471자, 호출 한 번 `tokens used` 18,382 → 7,900.
+- 추론 수준: 0.169.1의 `ultra`, gpt-6-luna의 low~max(기본 medium)는 이미 `REASONING_EFFORTS`에 있어 고치지 않았다.
+- 시험: `tests/unit/test_llm_cli.py`에 새 시험 6개(0.169.1 끄기 묶음, 그 판에 있는 이름만, 기능 목록을 못 읽을 때 예전 8개 — 4가지, 명령 실행 이름이 없는 판은 부르지 않음 — 2가지, 기능 목록 기억·설치 확인은 묻지 않음, 목록 읽기). 바꾼 기존 시험(지운 것 없음, 단언은 그대로): `test_llm_cli.py`의 가짜 실행기 `FakeRunner`가 `features list`에 따로 답하고 따로 적게(`feature_calls`), `test_codex_reasoning.py`의 `fake_codex`가 `features list`에 빈 답, `test_live_cli.py`(진짜 호출, 자동 시험에서는 안 돎)의 실행 횟수에서 `features list`를 뺌.
+
 ### 2026-11-18 화면 시험 흔들림 고침(시작 준비 상자)
 
 - 전체 실행에서 `test_setup_box_recommends_model_and_saves_it`가 가끔 떨어졌다(따로 돌리면 통과). 화면 시험 네 파일의 `STATUS_LOADED`가 윗줄 「유튜브 연결」이 「확인 중」이 아니기만 기다렸는데, 첫 `/api/status` 답이 오기 전에도 윗줄은 「확인 못 함」을 그린다 — 그래서 PC가 바쁘면 시작 준비 상자를 그리기 전(아직 「확인 중」)에 읽었다. 이제 「확인 중」「확인 못 함」 둘 다 아닐 때까지 기다리고, 그 시험의 줄은 기다리는 단언으로 읽는다. 화면이 「확인 중」에 멈추는 길은 없었다(답이 오면 같은 순간에 그린다). 시험만 바꿈.
