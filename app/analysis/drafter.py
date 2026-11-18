@@ -65,6 +65,10 @@ EVIDENCE_GROUPS = (("transcript",), ("title", "description"), ("comment",))
 # 32회차(대표 2026-11-19): 자막이 없으면 제목만 짚어 얕았다 → 주제(`topic`)를 주면 구체적인
 # 설명·인기 댓글을 제목보다 먼저 쓴다(얇은 것은 빼므로 채널 홍보·맞장구는 남지 않는다)
 TOPIC_GROUPS = (("transcript",), ("description", "comment"), ("title",))
+# 36회차: 자막이 이보다 짧으면(쇼츠의 첫 질문 한 줄뿐) 자막 근거는 설명·댓글 다음으로
+# — 「우리 잠깐 시간 좀 갖자. 너는 뭐라고 해?」(44자)만 짚어 답이 든 설명·댓글을 놓쳤다
+SHORT_TRANSCRIPT = 100
+SHORT_GROUPS = (("description", "comment"), ("transcript",), ("title",))
 
 _QUOTES = "'\"‘’“”"
 # 2026-11-18(기획 담당): 「현실적이네ㅋㅋ.」「답답하다 ㅠㅠ.」 — 사람은 자모 표기 뒤에 마침표를
@@ -266,7 +270,7 @@ def thin_quote(quote: str, topic: str) -> bool:
 
 def pick_evidence(
     evidence: Sequence[Evidence], avoid_quotes: Sequence[str] = (), *, topic: str = "",
-    title: str = "", rank_by: str = "",
+    title: str = "", rank_by: str = "", short_transcript: bool = False,
 ) -> Evidence:
     """[짚을 내용]의 근거 하나: 자막 → 제목·설명 → 인기 댓글 순으로 근거가 있는 첫 무리에서,
     이미 짚은 구절이 아닌 것(모두 짚었으면 그 무리의 첫 것). 근거가 없으면 AppError.
@@ -281,10 +285,13 @@ def pick_evidence(
     (25회차: 모두 0이면 모델이 준 첫 것이 엉뚱했다).
 
     32회차: `topic`을 주면 순서는 자막 → 설명·인기 댓글 → 제목(`TOPIC_GROUPS`). 자막이 없는
-    영상에서 제목만 짚으면 「~ 얘기 보니 설레네요」처럼 얕았다."""
+    영상에서 제목만 짚으면 「~ 얘기 보니 설레네요」처럼 얕았다.
+
+    36회차: `short_transcript`(자막이 `SHORT_TRANSCRIPT`자 미만)면 설명·인기 댓글 → 자막 → 제목."""
     avoid = {normalize(q) for q in avoid_quotes if q}
     dropped = False  # 근거를 얇아서 뺐는지
-    for group in TOPIC_GROUPS if topic else EVIDENCE_GROUPS:
+    groups = (SHORT_GROUPS if short_transcript else TOPIC_GROUPS) if topic else EVIDENCE_GROUPS
+    for group in groups:
         items = sorted((e for e in evidence if e.source in group),
                        key=lambda e: group.index(e.source))  # 무리 안 차례(같으면 모델 순서)
         if topic:
@@ -292,7 +299,7 @@ def pick_evidence(
             dropped = dropped or len(kept) < len(items)
             items = sorted(kept, key=lambda e: (-topic_overlap(e.quote, rank_by or topic),
                                                 -topic_overlap(e.quote, topic)))
-            if group == TOPIC_GROUPS[-1] and not items and dropped and title.strip():
+            if group == groups[-1] and not items and dropped and title.strip():
                 return Evidence(" ".join(title.split()), "title")  # 다 얇으면 확인된 제목
         if items:
             fresh = [e for e in items if normalize(e.quote) not in avoid]
@@ -479,14 +486,18 @@ class DraftService:
         recent = [v for d in self._recent_elsewhere(video_id) if (v := voice_of(d["tone_label"]))]
         voice = pick_voice(self.rng, avoid=last, recent=recent)
         used = list(dict.fromkeys([*avoid_quotes, *(d.evidence_quote for d in mine)]))
-        title = ""
+        title, transcript = "", ""
         try:
-            title = self.context.current(video_id).video.video.title or ""
+            current = self.context.current(video_id)
+            title = current.video.video.title or ""
+            transcript = current.transcript_text or ""
         except AppError:
             pass
         topic = " ".join([analysis.topic, analysis.concern, *analysis.key_phrases, title])
+        n = len(_letters(prompts.clean_transcript(transcript)))
         evidence = pick_evidence(analysis.evidence, used, topic=topic, title=title,
-                                 rank_by=f"{analysis.concern} {title}")
+                                 rank_by=f"{analysis.concern} {title}",
+                                 short_transcript=0 < n < SHORT_TRANSCRIPT)
         kit = self._kit(video_id, analysis.concern, evidence, voice, disclose, others=mine)
         llm = kit["llm"]
 

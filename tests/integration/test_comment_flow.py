@@ -102,7 +102,9 @@ def test_comment_basis_adds_the_comment_line(setup):
 
 def test_transcript_basis_comes_first_and_has_no_comment_line(setup):
     client, _, use = setup
-    assert client.put(f"/api/videos/{VID}/transcript", json={"text": TRANSCRIPT}).status_code == 200
+    # 36회차: 100자 미만 자막은 설명·댓글 다음이라, 여기서는 보통 길이 자막으로 시험한다
+    long = TRANSCRIPT + "\n1:20 " + "서운한 마음을 어떻게 말해야 할지 오래 고민했어요. " * 3
+    assert client.put(f"/api/videos/{VID}/transcript", json={"text": long}).status_code == 200
     quote = "주말마다 기차를 타고 내려가는 게 점점 지쳐요"
     analysis = dict(ANALYSIS, evidence=[*ANALYSIS["evidence"],
                                         {"quote": quote, "source": "transcript"}])
@@ -399,6 +401,19 @@ def test_pick_evidence_prefers_a_concrete_description_or_comment_to_the_title():
     # 자막 근거가 있으면 여전히 자막
     tr = Evidence("사귀자는 말을 안 하는 데는 이유가 있어요", "transcript")
     assert D.pick_evidence([desc, tr], topic=topic, title=title) == tr
+
+
+def test_pick_evidence_puts_a_short_transcript_after_description_and_comments():
+    """36회차: 쇼츠 자막이 첫 질문 한 줄(44자)뿐인데 그걸 짚어 답이 든 설명·댓글을 놓쳤다."""
+    title = '애인이 "시간 좀 갖자" 할 때 덜 불안해지는 답'
+    topic = f"시간 좀 갖자 덜 불안 {title}"
+    tr = Evidence("우리 잠깐 시간 좀 갔자", "transcript")
+    com = Evidence("다시 얘기할 날만 정해 두면 둘 다 덜 불안해요", "comment")
+    assert D.pick_evidence([tr, com], topic=topic, title=title) == tr  # 긴 자막이면 그대로
+    assert D.pick_evidence([tr, com], topic=topic, title=title, short_transcript=True) == com
+    # 설명·댓글이 없으면 짧은 자막이라도 자막(제목보다 먼저)
+    assert D.pick_evidence([tr, Evidence(title, "title")], topic=topic, title=title,
+                           short_transcript=True) == tr
 
 
 def test_write_line_asks_for_a_quote_that_shows_the_topic():
