@@ -274,7 +274,9 @@ def pick_evidence(
     있는 영상은 예전처럼 댓글). 다 얇으면 예전처럼 고른다.
 
     `rank_by`(고민 한 줄·제목)를 주면 순서는 그것과 겹치는 만큼으로 정한다(23회차: 핵심 말이
-    영상 소개 멘트에서 나오면 「오늘은 ~ 궁합을 맞춰 보려고」 같은 소개 말이 맨 앞에 왔다)."""
+    영상 소개 멘트에서 나오면 「오늘은 ~ 궁합을 맞춰 보려고」 같은 소개 말이 맨 앞에 왔다).
+    같으면 `topic`(핵심 말 포함)과 겹치는 만큼으로
+    (25회차: 모두 0이면 모델이 준 첫 것이 엉뚱했다)."""
     avoid = {normalize(q) for q in avoid_quotes if q}
     dropped = False  # 자막·제목·설명 근거를 얇아서 뺐는지
     for group in EVIDENCE_GROUPS:
@@ -285,7 +287,8 @@ def pick_evidence(
         if topic:
             kept = [e for e in items if not thin_quote(e.quote, topic)]
             dropped = dropped or len(kept) < len(items)
-            items = sorted(kept, key=lambda e: -topic_overlap(e.quote, rank_by or topic))
+            items = sorted(kept, key=lambda e: (-topic_overlap(e.quote, rank_by or topic),
+                                                -topic_overlap(e.quote, topic)))
         if items:
             fresh = [e for e in items if normalize(e.quote) not in avoid]
             return (fresh or items)[0]

@@ -359,6 +359,12 @@ def test_pick_evidence_ranks_by_the_concern_and_title_not_key_phrases():
     got = D.pick_evidence(ev, topic=topic, title=title,
                           rank_by=f"나와 맞는 사람을 만나 결혼할 수 있을까? {title}")
     assert got.quote == "하지원 씨는요 남자 관계를 좋아하지 않아"
+    # 25회차: 고민·제목과 모두 안 겹치면 핵심 말까지 넣은 겹침으로 가른다
+    tie = [Evidence("솔직히 좋았어요 이런 데 올 줄 몰랐어요", "transcript"),
+           Evidence("너무 금사빠여서 또 속도를 못 맞출까 봐", "transcript")]
+    got = D.pick_evidence(tie, topic="금사빠 속도 갈대 같은 마음", title="갈대 같은 마음",
+                          rank_by="갑자기 바뀌는 마음을 믿어도 괜찮을까?")
+    assert got.quote.startswith("너무 금사빠")
 
 
 def test_pick_evidence_falls_back_to_the_title_when_transcript_quotes_are_thin():
