@@ -310,3 +310,46 @@ def test_situation_of_reads_the_saved_situation():
     assert D.situation_of(None) == "" and D.situation_of("깨진") == ""
     assert "situation" in P.DRAFT_SCHEMA["properties"]
     assert "situation" not in P.DRAFT_SCHEMA["required"]  # 없으면 빈 글로(가짜 답·옛 답)
+
+
+# ------------------------------------------------ 2026-11-19 근거 고르기(13회차)
+
+TOPIC = ("은근한 끌림 나는 왜 어떤 사람에게 자꾸 끌리는 걸까? 속얘기 자꾸 눈이 가는 "
+         "은근 끌리는 사람 특징")
+
+
+def test_thin_quotes_are_short_or_off_topic():
+    """짧은 맞장구·감탄, 꽤 짧은데 주제와 겹치는 데가 없는 구절은 얇다(낱말 목록 없이)."""
+    assert D.thin_quote("억울했겠다", TOPIC)  # 너무 짧음
+    assert D.thin_quote("와, 그럼 처음께 맞았던 거네", TOPIC)  # 짧고 주제와 겹침 없음
+    assert not D.thin_quote("자기 속얘기를 조금씩 꺼내 놓는 사람", TOPIC)  # 주제와 겹침
+    # 길면 주제와 겹치지 않아도 얇지 않다(앞뒤 없이도 뜻이 통하는 한 문장)
+    assert not D.thin_quote("하나의 늦은 답장보다 평소와 비교해서 달라졌는지를 보세요", "")
+
+
+def test_pick_evidence_skips_thin_quotes_and_prefers_the_topic():
+    ev = [Evidence("와, 그럼 처음께 맞았던 거네", "transcript"),
+          Evidence("내 얘기를 제대로 들어주는 사람한테 끌린대요", "transcript"),
+          Evidence("자기 속얘기를 조금씩 꺼내 놓는 사람", "transcript")]
+    got = D.pick_evidence(ev, topic=TOPIC, title="은근 끌리는 사람 특징 4가지")
+    assert got.quote == "자기 속얘기를 조금씩 꺼내 놓는 사람"  # 주제와 더 많이 겹침
+    # 주제를 안 주면 예전처럼(모델이 준 차례)
+    assert D.pick_evidence(ev).quote == "와, 그럼 처음께 맞았던 거네"
+
+
+def test_pick_evidence_falls_back_to_the_title_when_transcript_quotes_are_thin():
+    ev = [Evidence("억울했겠다", "transcript"),
+          Evidence("와, 그럼 처음께 맞았던 거네", "transcript"),
+          Evidence("다시 얘기할 날만 정해 두면", "comment")]
+    got = D.pick_evidence(ev, topic=TOPIC, title="은근 끌리는 사람  특징 4가지")
+    assert got == Evidence("은근 끌리는 사람 특징 4가지", "title")
+    # 인기 댓글 근거만 있는 영상은 예전처럼 댓글(얇아서 뺀 것이 없음)
+    only = [Evidence("다시 얘기할 날만 정해 두면 마음이 덜 불안해요", "comment")]
+    assert D.pick_evidence(only, topic=TOPIC, title="제목").source == "comment"
+
+
+def test_write_line_asks_for_a_quote_that_shows_the_topic():
+    text = P.draft_system(brand="운명원", facts=[], voice="존댓말", heard="요즘 자주 들어서",
+                          from_comment=False, said="운명원이 연애 사주를 잘 본다")
+    assert ("맨 위 근거 구절처럼 영상 주제나 연애 고민이 드러나는 말을 짚는다. 앞뒤를 모르면 뜻을 "
+            "알 수 없는 짧은 맞장구·감탄은 짚지 않는다.") in text

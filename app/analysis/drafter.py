@@ -233,16 +233,59 @@ def pick_saying(rng: random.Random, brand: str, recent_bodies: Sequence[str] = (
     return prompts.SAYINGS[rng.choice(idx)][0].format(brand=brand)
 
 
-def pick_evidence(evidence: Sequence[Evidence], avoid_quotes: Sequence[str] = ()) -> Evidence:
+# 2026-11-19 대표: 짧은 맞장구·감탄·앞뒤 없이는 뜻을 모를 구절을 근거로 고르지 않는다.
+# 글자 수만이 아니라 영상 주제·고민과 겹치는지를 본다(낱말 목록은 두지 않는다).
+THIN_CHARS = 8  # 이보다 짧은 구절(한글·영문·숫자 글자 수)은 근거로 쓰기에 얇다
+LONE_CHARS = 14  # 주제·고민과 겹치는 데가 하나도 없으면 이 길이까지는 얇다고 본다
+
+
+def _letters(text: str) -> str:
+    return "".join(ch for ch in text if ch.isalnum())
+
+
+def _pairs(text: str) -> set[str]:
+    t = _letters(text).lower()
+    return {t[i:i + 2] for i in range(len(t) - 1)}
+
+
+def topic_overlap(quote: str, topic: str) -> int:
+    """구절과 영상 주제 글(분석의 주제·고민·핵심 말·제목)이 함께 가진 두 글자 묶음 수."""
+    return len(_pairs(quote) & _pairs(topic)) if topic else 0
+
+
+def thin_quote(quote: str, topic: str) -> bool:
+    """근거로 쓰기에 얇은 구절: 아주 짧거나, 꽤 짧은데 영상 주제·고민과 겹치는 데가 없음."""
+    n = len(_letters(quote))
+    return n < THIN_CHARS or (n < LONE_CHARS and topic_overlap(quote, topic) == 0)
+
+
+def pick_evidence(
+    evidence: Sequence[Evidence], avoid_quotes: Sequence[str] = (), *, topic: str = "",
+    title: str = "",
+) -> Evidence:
     """[짚을 내용]의 근거 하나: 자막 → 제목·설명 → 인기 댓글 순으로 근거가 있는 첫 무리에서,
-    이미 짚은 구절이 아닌 것(모두 짚었으면 그 무리의 첫 것). 근거가 없으면 AppError."""
+    이미 짚은 구절이 아닌 것(모두 짚었으면 그 무리의 첫 것). 근거가 없으면 AppError.
+
+    `topic`(분석의 주제·고민·핵심 말·제목)을 주면(2026-11-19): 얇은 구절(`thin_quote`)은 빼고,
+    주제와 많이 겹치는 구절을 먼저 고른다. 자막·제목·설명에 쓸 만한 근거가 없으면 확인된 제목
+    (`title`)을 근거로 쓴다(자막·제목·설명 근거가 있었는데 모두 얇았을 때만 — 인기 댓글 근거만
+    있는 영상은 예전처럼 댓글). 다 얇으면 예전처럼 고른다."""
     avoid = {normalize(q) for q in avoid_quotes if q}
+    dropped = False  # 자막·제목·설명 근거를 얇아서 뺐는지
     for group in EVIDENCE_GROUPS:
+        if topic and dropped and group == EVIDENCE_GROUPS[-1] and title.strip():
+            return Evidence(" ".join(title.split()), "title")  # 자막·제목·설명이 다 얇음
         items = sorted((e for e in evidence if e.source in group),
                        key=lambda e: group.index(e.source))  # 제목 다음 설명(같으면 모델 순서)
+        if topic:
+            kept = [e for e in items if not thin_quote(e.quote, topic)]
+            dropped = dropped or len(kept) < len(items)
+            items = sorted(kept, key=lambda e: -topic_overlap(e.quote, topic))
         if items:
             fresh = [e for e in items if normalize(e.quote) not in avoid]
             return (fresh or items)[0]
+    if topic:
+        return pick_evidence(evidence, avoid_quotes)  # 다 얇으면 예전처럼
     if evidence:
         return evidence[0]
     raise AppError(ErrorKind.NO_LOVE_CONCERN, detail="근거 구절이 없음")
@@ -423,7 +466,13 @@ class DraftService:
         recent = [v for d in self._recent_elsewhere(video_id) if (v := voice_of(d["tone_label"]))]
         voice = pick_voice(self.rng, avoid=last, recent=recent)
         used = list(dict.fromkeys([*avoid_quotes, *(d.evidence_quote for d in mine)]))
-        evidence = pick_evidence(analysis.evidence, used)
+        title = ""
+        try:
+            title = self.context.current(video_id).video.video.title or ""
+        except AppError:
+            pass
+        topic = " ".join([analysis.topic, analysis.concern, *analysis.key_phrases, title])
+        evidence = pick_evidence(analysis.evidence, used, topic=topic, title=title)
         kit = self._kit(video_id, analysis.concern, evidence, voice, disclose, others=mine)
         llm = kit["llm"]
 
