@@ -184,10 +184,23 @@ def test_transcript_material_shows_the_text_around_the_quote():
     assert P.quote_window("전혀 없는 말입니다요", text) == ""
 
 
+def test_quote_window_finds_quotes_split_by_timestamps():
+    raw = "오늘은 어 아직 미혼인 0:38 분을 가상에 >> 후보 리스트를 1:02:03 놓고 궁합을 봐요"
+    text = P.clean_transcript(raw)
+    assert text == "오늘은 어 아직 미혼인 분을 가상에 후보 리스트를 놓고 궁합을 봐요"
+    assert P.clean_transcript("10:30에 만나요 3:2 비율") == "10:30에 만나요 3:2 비율"
+    around = P.quote_window("아직 미혼인 분을 가상에, 후보 리스트를 놓고", text, width=3)
+    assert around == "… 어 아직 미혼인 분을 가상에 후보 리스트를 놓고 궁합…"
+    lines = P.material_lines(quote="아직 미혼인 분을 가상에 후보 리스트를", source="transcript",
+                             transcript=raw)
+    assert lines[1].startswith("- 그 말 앞뒤 자막: 오늘은 어 아직 미혼인 분을")
+
+
 def test_write_line_asks_to_show_and_empathize_with_the_video_worry():
     s = P.draft_system(brand="운명원", facts=[], voice="반말", heard="요즘 자주 들어서",
                        from_comment=False, said="운명원이 연애 사주를 잘 본다")
-    assert "댓글만 읽어도 보이게 짚고, 거기에 공감한다." in s
+    assert "댓글만 읽어도 보이게 짚고, 거기에 대한 네 마음을 쓴다." in s
+    assert "공감한다" not in s  # 15회차: 낱말이 새어 나와 「~다는 말 공감돼요」 한 틀이 됐다
     assert "짚은 얘기와 같은 데서" in s
 
 

@@ -21,6 +21,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
 from app.llm.base import JSONSchema
@@ -264,7 +265,7 @@ def draft_system(
         "않는다.",
         # 14회차(대표 2026-11-19): 자막에서 찾은 고민·근거를 공감으로 잇는 힘이 약하다
         "- 그 말이 영상에서 무슨 얘기였는지(앞뒤 자막으로 본 고민이나 조언)가 댓글만 읽어도 "
-        "보이게 짚고, 거기에 공감한다.",
+        "보이게 짚고, 거기에 대한 네 마음을 쓴다.",
     ]
     if from_comment:
         lines.append(f"- {COMMENT_LINE}")
@@ -305,15 +306,28 @@ def draft_system(
     return "\n".join(lines)
 
 
+_TIMESTAMP = re.compile(r"(?<![\w:])\d{1,2}(?::\d{2}){1,2}(?![\w:])|>>")
+
+
+def clean_transcript(transcript: str) -> str:
+    """자막 글에서 시간 표시(「0:38」「1:03:48」)와 화자 바뀜 표시(>>)를 지우고 공백을 하나로
+    (15회차: 문장 중간에 끼어 근거 자리를 못 찾았다)."""
+    return " ".join(_TIMESTAMP.sub(" ", transcript).split())
+
+
 def quote_window(quote: str, text: str, width: int = AROUND_CHARS) -> str:
     """정리한 자막(`text`)에서 근거 구절 자리를 찾아 앞뒤 `width`자씩(14회차).
 
-    그대로 없으면 구절 앞쪽을 줄여 가며(8자까지) 찾는다. 못 찾으면 빈 글."""
-    q = " ".join(quote.split())
-    for n in range(len(q), 7, -1):
-        i = text.find(q[:n])
-        if i >= 0:
-            start, end = max(0, i - width), min(len(text), i + len(q) + width)
+    띄어쓰기·문장 부호가 달라도 찾게 글자(낱자·숫자)만으로 대조하고, 그대로 없으면 구절 앞쪽을
+    줄여 가며(6글자까지) 찾는다. 못 찾으면 빈 글."""
+    spots = [i for i, ch in enumerate(text) if ch.isalnum()]
+    letters = "".join(text[i] for i in spots)
+    q = "".join(ch for ch in quote if ch.isalnum())
+    for n in range(len(q), 5, -1):
+        k = letters.find(q[:n])
+        if k >= 0:
+            first, last = spots[k], spots[min(k + len(q), len(spots)) - 1]
+            start, end = max(0, first - width), min(len(text), last + 1 + width)
             return ("…" if start else "") + text[start:end] + ("…" if end < len(text) else "")
     return ""
 
@@ -330,7 +344,7 @@ def material_lines(
     label = SOURCE_LABELS.get(source, source or "자료")
     lines = [f"- ({label}) {quote}"]
     if source == "transcript" and transcript.strip():
-        text = " ".join(transcript.split())
+        text = clean_transcript(transcript)
         around = quote_window(quote, text)
         lines.append(f"- 그 말 앞뒤 자막: {around}" if around
                      else f"- 자막 앞부분: {text[:TRANSCRIPT_CHARS]}")
