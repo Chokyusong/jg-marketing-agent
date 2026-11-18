@@ -37,6 +37,7 @@ def test_analysis_prompt_skips_opening_remarks_as_evidence():
     assert "영상 속 사람이 털어놓는 고민·마음, 그 고민에 대한 조언이나 풀이" in system
     assert "자막 > 연애 고민·장면을 구체적으로 말하는 댓글·설명 > 제목" in system  # 32회차
     assert "자막이 없으면 제목만 넣지 말고" in system
+    assert "앞에 붙은 받아쓰기 군말·말하다 만 토막은 빼고 그 뒤부터 옮긴다." in system  # 37회차
 
 
 def test_analysis_retry_note_names_every_problem():
