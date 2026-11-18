@@ -209,6 +209,8 @@ def test_write_line_asks_to_show_and_empathize_with_the_video_worry():
     assert "그 말이 네 얘기처럼 와닿은 까닭이 바로 네 처지로 이어지게 쓴다" in s
     assert "공감한다" not in s  # 15회차: 낱말이 새어 나와 「~다는 말 공감돼요」 한 틀이 됐다
     assert "짚은 얘기와 같은 데서" in s
+    assert ("- 120자를 넘으면 다시 쓰게 된다. 영상 말은 한 구절로 줄여 짚고, "
+            "처지·궁금증도 한 마디씩.") in s
 
 
 def test_draft_user_first_try_has_only_title_concern_and_material():
