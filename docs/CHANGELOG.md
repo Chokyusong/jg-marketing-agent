@@ -7,6 +7,12 @@
 
 ## 새 변경 (README를 줄인 뒤)
 
+### 2026-11-18 흔들리던 시험 둘 고침(앱)
+
+- 조각 배정(`prompts.assign_pieces`): 같은 영상 앞 초안과 들은 꼴 끝말(`style.hearsay_mark`, S4가 보는 것)이 같아지는 조합을 피한다. 평판 몫이 달라도 「잘 봐준다고 추천하던데」와 통째 꼴 「많이 추천하던데」를 줘 S4로 한 번 더 쓰던 것(고치기 전 배정은 씨앗 600번에 2번 겹침 → 0번). 첫 배정은 들은 꼴 → 다음 평판 차례로, 길이 상한 찾기도 같은 기준으로 거른다. 쓸데없는 다시 쓰기 한 번이 준다. `tests/integration/test_piece_flow.py::test_next_draft_gets_other_pieces_and_never_the_same_lead`가 드물게 떨어지던 까닭.
+- 게시 대기 마감(`browser/jobs.py`): 상태를 「게시 대기」로 바꾸는 같은 잠금 안에서 마감도 정한다(`_event(deadline=)`, `_wait_for`는 그 마감을 받는다). 그 전에는 기다리기 시작할 때 정해, 그 사이에 읽으면 남은 시간이 비었다. 기다리는 시간(`approval_timeout`, 5분)과 확인 방식은 그대로(마감 기준 시각이 DB 한 줄 쓰는 몇 ms 앞당겨질 뿐). `tests/unit/test_browser_jobs.py::test_sandbox_success_walks_every_state_and_marks_posted`가 부하가 클 때 떨어지던 까닭.
+- 시험: 새 `test_piece_assign.py::test_same_video_drafts_never_get_a_hearsay_mark_s4_would_flag`(상한 없음·55·68자 × 알고 싶은 것 꼴 켬/끔, 씨앗 0~199 — 상한 55자는 배정 한 번에 50ms쯤이라 넷에 하나, 0~199 전부는 고칠 때 한 번 돌려 통과), 새 `test_browser_jobs.py::test_awaiting_approval_never_shows_without_a_deadline`(상태를 바꾼 바로 뒤를 일부러 읽음 — 고치기 전 코드에서는 늘 떨어짐). 바꾼 기존 시험(지운 것 없음): `test_piece_flow.py`의 `setup`이 씨앗을 고정(`Random(0)`), `test_next_draft_gets_other_pieces_and_never_the_same_lead`를 씨앗 0·76·123으로(76은 예전에 떨어지던 씨앗).
+
 ### 2026-11-18 Codex 0.169.1 도구 끄기
 
 대표가 Codex 명령줄 프로그램을 0.152.1 → 0.169.1로 올렸다. 같은 인자로 부르니 모델에게 웹 도구(`web__run`)·`view_image`·목표 도구·MCP 자료 읽기·`apply_patch`·하위 에이전트 도구가 보였다(읽기 전용·셸 끔은 그대로였음). 남이 쓴 자막·댓글을 넘기는 자리라 닫았다(DESIGN 5.2.1).

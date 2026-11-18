@@ -197,3 +197,30 @@ def test_representative_samples_still_pass_and_s15_leaves_them_alone():
                     if i.startswith("S15")]
     read = [P.pieces_of(OPEN + m, BRAND) for m in P.BRAND_MODELS]
     assert sum(r is not None for r in read) >= 5
+
+
+@pytest.mark.parametrize("wish", [False, True])
+@pytest.mark.parametrize("cap", [None, P.BRAND_CAP, P.BRAND_CAP_LONG])
+def test_same_video_drafts_never_get_a_hearsay_mark_s4_would_flag(cap, wish):
+    """2026-11-18: 같은 영상 초안 셋을 씨앗 0~199로 배정해 S4가 걸 조합을 한 번도 주지
+    않는다 — 꺼내는 말 통째 같음, 들은 꼴 끝말 같음(「잘 봐준다고 추천하던데」와
+    「많이 추천하던데」). 예전에는 잘한다는 말 몫만 달라도 같은 끝말을 줘 한 번 더 쓰게 했다
+    (test_piece_flow가 드물게 떨어짐 — 고치기 전 배정은 `wish=False`에서 600번에 2번 겹쳤다).
+
+    상한 55자는 길이 상한 찾기가 배정 한 번에 50ms쯤 걸려 씨앗 넷에 하나만
+    (0~199 전부는 고칠 때 한 번 돌려 통과)."""
+    for seed in range(0, 200, 4 if cap == P.BRAND_CAP else 1):
+        rng = random.Random(seed)
+        other = _rotate(4, seed + 1000)  # 다른 영상에서 앞서 보인 초안
+        same: list[str] = []
+        for _ in range(3):
+            kind = P.REASON_WISH if wish else None
+            pieces = P.assign_pieces(BRAND, [*same, *other], avoid=same, rng=rng, wish=wish,
+                                     cap=cap, reason_kind=kind)
+            text = _text(pieces)
+            mark = P.fold(S.hearsay_mark(text, BRAND))
+            lead = P.fold(P.lead_part(text, BRAND))
+            assert mark and mark not in {P.fold(S.hearsay_mark(t, BRAND)) for t in same}, (
+                seed, text, same)
+            assert lead not in {P.fold(P.lead_part(t, BRAND)) for t in [*same, *other]}, seed
+            same.insert(0, text)

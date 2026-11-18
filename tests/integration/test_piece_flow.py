@@ -7,6 +7,7 @@
 가짜 YouTube, 가짜 LLM(정해 준 조각 줄을 읽어 그대로 쓰는 차례가 있다).
 """
 
+import random
 import re
 
 import pytest
@@ -37,6 +38,8 @@ def piece_line(user: str) -> str:
 def setup(mock_http, fixture_json, fake_key, make_client, fake_llm, piece_check_on):
     client = make_client(add_youtube(mock_http(), fixture_json), key=fake_key)
     services = client.app.state.services.get()
+    # 2026-11-18: 조각 배정이 무작위라 씨앗을 고정한다(시험이 무작위에 기대지 않게)
+    services.drafts.rng = random.Random(0)
 
     def use(responses):
         llm = fake_llm(responses)
@@ -86,8 +89,12 @@ def test_following_the_pieces_passes_first_time(setup):
                 if i.startswith("S15")]
 
 
-def test_next_draft_gets_other_pieces_and_never_the_same_lead(setup):
+# 76: 예전에 둘째·셋째 초안이 「추천하던데」로 겹쳐 S4로 한 번 더 쓰던 씨앗(2026-11-18 고침).
+# 씨앗 0~199 전부는 tests/unit/test_piece_assign.py가 배정만으로 본다
+@pytest.mark.parametrize("seed", [0, 76, 123])
+def test_next_draft_gets_other_pieces_and_never_the_same_lead(setup, seed):
     _, services, use = setup
+    services.drafts.rng = random.Random(seed)
     use([ANALYSIS, "follow", "follow", "follow"])
     bodies = [services.drafts.generate(VID).body for _ in range(3)]
     from app.llm import prompts as P

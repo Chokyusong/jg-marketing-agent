@@ -653,13 +653,26 @@ class JobService:
 
     # ------------------------------------------------------------ 기록
 
-    def _event(self, job: Job, state: str, message: str, *, change: bool = True) -> None:
-        """상태를 바꾸고(change) job_events에 한 줄 남긴다."""
+    def _event(
+        self,
+        job: Job,
+        state: str,
+        message: str,
+        *,
+        change: bool = True,
+        deadline: float | None = None,
+    ) -> None:
+        """상태를 바꾸고(change) job_events에 한 줄 남긴다.
+
+        `deadline`: 사람의 응답을 기다리는 마감(time.monotonic). 상태와 같은 잠금 안에서 정한다
+        — 「게시 대기」를 읽었는데 남은 시간이 비어 있는 틈이 없게(2026-11-18)."""
         stamp = self.clock().isoformat()
         with self._lock:
             if change:
                 job.state = state
                 job.message = message
+                if deadline is not None:
+                    job.deadline = deadline
             job.events.append(JobEvent(stamp, state, message))
         with db.session(self.db_path) as conn:
             conn.execute(
@@ -788,9 +801,10 @@ class JobService:
         if job.cancel_flag.is_set():
             raise JobCancelled
 
-    def _wait_for(self, job: Job, flag: threading.Event, timeout: float, reason: str) -> None:
-        """사람의 응답(flag)을 기다린다. 취소되면 JobCancelled, 시간이 넘으면 JobFailed(reason)."""
-        deadline = time.monotonic() + timeout
+    def _wait_for(self, job: Job, flag: threading.Event, deadline: float, reason: str) -> None:
+        """사람의 응답(flag)을 마감(`deadline`, time.monotonic)까지 기다린다. 마감은 상태를 바꿀 때
+        `_event(deadline=)`로 함께 정해 둔다. 취소되면 JobCancelled, 시간이 넘으면
+        JobFailed(reason)."""
         with self._lock:
             job.deadline = deadline
         try:
@@ -837,12 +851,14 @@ class JobService:
             raise self._driver_failed(job, exc) from None
         self._check_cancel(job)
         if job.confirm_before_post:
+            deadline = time.monotonic() + self.approval_timeout  # 기다리는 시간은 그대로
             self._event(
                 job,
                 "awaiting_approval",
                 "입력을 마쳤습니다. 크롬 창의 글을 보고 [게시]를 눌러 주세요",
+                deadline=deadline,
             )
-            self._wait_for(job, job.approve_flag, self.approval_timeout, REASON_APPROVAL_TIMEOUT)
+            self._wait_for(job, job.approve_flag, deadline, REASON_APPROVAL_TIMEOUT)
             self._event(job, "posting", "[게시]를 받아 「댓글」 단추를 누르는 중")
         else:
             self._event(job, "posting", "입력을 마쳤습니다. 「댓글」 단추를 누르는 중")

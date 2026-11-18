@@ -610,8 +610,10 @@ def assign_pieces(
     (`avoid`)에 쓴 것은 뒤로. `keep`이 있으면 그대로 돌려준다(다시 쓸 때 같은 배정).
 
     잘한다는 말은 여섯 몫(동사 다섯 + 통째 꼴)으로 나눠 「잘 본다」가 쏠리지 않게 한다. 꺼내는 말이
-    앞서 보인 초안과 통째로 같아지면 다음 들은 꼴로 바꾼다. `wish`면 끝말은 알고 싶은 것을 받는
-    `WISH_ACTIONS`에서(2026-11-18 D-1).
+    앞서 보인 초안과 통째로 같아지거나, 같은 영상 앞 초안과 들은 꼴 끝말(`style.hearsay_mark`,
+    「추천하던데」 — S4가 보는 것)이 같아지면 다음 들은 꼴 → 다음 잘한다는 말로 바꾼다(2026-11-18:
+    몫이 달라도 「잘 봐준다고 추천하던데」와 「많이 추천하던데」가 S4에 걸려 한 번 더 쓰던 것).
+    `wish`면 끝말은 알고 싶은 것을 받는 `WISH_ACTIONS`에서(2026-11-18 D-1).
 
     `cap`(2026-11-18 길이): 운명원 대목의 예상 길이(`brand_estimate`, ⑤의 꼴 `reason_kind` 몫 포함)
     상한. 넘으면 세기 말 → 때 → 연애 사주 → 들은 꼴 → 언제 → 끝말 순으로, 조각마다 덜 쓴 차례를
@@ -646,17 +648,28 @@ def assign_pieces(
     whens = _least_used(END_WHENS, used_ends, avoid_ends, rng)
     actions = _least_used(WISH_ACTIONS if wish else END_ACTIONS, used_ends, avoid_ends, rng)
     leads = {fold(t) for t in [*used_texts, *avoid]}
+    from app.analysis.style import hearsay_mark  # style이 이 모듈을 가져다 쓴다(돌려 막기)
 
-    def first_pick(verb: int, hears: Sequence[int]) -> Pieces:
-        pick = None
-        for hear in hears:
-            pick = _bare(Pieces(times[0], loves[0], hows[0], verb, hear, whens[0], actions[0]))
-            if fold(pick.lead(brand)) not in leads:
-                break
-        assert pick is not None
-        return pick
+    avoid_marks = {fold(m) for m in (hearsay_mark(t, brand) for t in avoid) if m}
 
-    pick = first_pick(verbs[0], hears)
+    def clash(p: Pieces) -> bool:
+        """앞서 보인 초안과 꺼내는 말이 통째로 같거나, 같은 영상 앞 초안과 S4에 걸릴 들은 꼴."""
+        lead = p.lead(brand)
+        return fold(lead) in leads or fold(hearsay_mark(lead, brand)) in avoid_marks
+
+    def first_pick() -> Pieces:
+        first = None
+        for vr, verb in enumerate(verbs):
+            vhears = hears if vr == 0 else _hears_for(verb, used_texts, rng)
+            for hear in vhears:
+                pick = _bare(Pieces(times[0], loves[0], hows[0], verb, hear, whens[0], actions[0]))
+                first = first or pick
+                if not clash(pick):
+                    return pick
+        assert first is not None
+        return first
+
+    pick = first_pick()
     if cap is None:
         return pick
 
@@ -696,7 +709,7 @@ def assign_pieces(
                     if best is not None and score >= best[0]:
                         continue
                     cand = replace(core, time=t, when=wh, action=ac)
-                    if fold(cand.lead(brand)) not in leads:
+                    if not clash(cand):
                         best = (score, cand)
             if best is not None:
                 return best[1]

@@ -310,6 +310,27 @@ def test_approval_timeout_fails_with_screenshot_and_record(env):
     assert run["screenshot_path"].endswith(f"{job_id}.png")
 
 
+def test_awaiting_approval_never_shows_without_a_deadline(env):
+    """2026-11-18: 상태를 「게시 대기」로 바꾸는 순간 마감도 함께 정한다. 예전에는 상태를 바꾼 뒤
+    기다리기 시작할 때 마감을 정해, 그 사이에 읽으면 남은 시간이 비어 있었다(부하가 클 때
+    test_sandbox_success_walks_every_state_and_marks_posted가 떨어짐). 그 사이를 일부러 읽는다."""
+    e = env(approval_timeout=5.0)
+    seen = []
+    original = e.jobs._event
+
+    def event_then_read(job, state, message, **kw):
+        original(job, state, message, **kw)
+        if state == "awaiting_approval":  # 상태를 바꾼 바로 뒤(기다리기 전)에 화면이 읽는다
+            seen.append(e.jobs.get(job.id).seconds_left)
+
+    e.jobs._event = event_then_read
+    job_id, *_ = e.start(1)
+    e.jobs.wait_for_state(job_id, "awaiting_approval", 5)
+    e.jobs.approve(job_id)
+    assert e.jobs.wait(job_id, 5).state == "posted"
+    assert seen and seen[0] is not None and 4 <= seen[0] <= 5  # 기다리는 시간은 그대로
+
+
 def test_approval_timeout_default_is_five_minutes():
     assert jobs_mod.APPROVAL_TIMEOUT_SECONDS == 300
     assert not hasattr(jobs_mod, "CONFIRM_TIMEOUT_SECONDS")  # 사람이 직접 게시하던 방식은 없다
