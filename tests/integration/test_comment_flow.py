@@ -307,7 +307,8 @@ def test_user_text_lists_situations_used_on_other_videos():
 def test_user_text_lists_reactions_used_on_other_videos():
     user = P.draft_user(title="t", concern="c", material=["- (자막) q"],
                         recent_bodies=["b"], recent_reactions=["와닿네", "", "찔린다"])
-    assert "- 다른 영상 댓글에 이미 쓴 반응: 와닿네 / 찔린다 — 같은 반응 말은 쓰지 않는다." in user
+    assert ("- 다른 영상 댓글에 이미 쓴 반응: 와닿네 / 찔린다 — 같은 반응 말은 꼴만 바꿔서도"
+            "(뜨끔했어요→뜨끔하네) 쓰지 않는다.") in user
     assert "이미 쓴 반응" not in P.draft_user(title="t", concern="c", material=["- (자막) q"],
                                           recent_bodies=["b"])
     assert '"reaction": "본문에서 영상 말에 대한 네 반응을 나타낸 말 그대로"' in P.draft_system(
