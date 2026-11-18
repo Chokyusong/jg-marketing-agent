@@ -15,7 +15,6 @@ def test_config_yaml_matches_design(base_config):
         "disclosure": "[광고]",
         "disclose_default": True,  # R2: 광고 표기 기본값(켬)
         "ai_review": True,  # 2026-11-18: AI 검수 한 번(켬)
-        "writer": "story",  # 2026-11-18 대표 결정: 댓글 쓰는 방식(이야기처럼)
     }
     assert base_config["limits"]["daily_max_comments"] == 10
     assert base_config["browser"]["default_target"] == "youtube"  # R3: 실제 게시가 기본

@@ -9,6 +9,8 @@ import pytest
 from test_drafts_api import ANALYSIS, GOOD_BODY, draft
 from yt_helpers import YT, add_search_and_videos
 
+from app.llm import prompts as P
+
 VID = "BBBBBBBBBB2"
 
 
@@ -51,8 +53,9 @@ def test_draft_prompt_uses_comments_when_there_is_no_transcript(client, fake_llm
     services.llm = llm
     data = client.post("/api/drafts", json={"video_id": VID}).json()
     assert data["passed"]
-    user = llm.calls[1]["kwargs"]["user"]
-    assert "**자막이 없는 영상**" in user and "인기 댓글" in user
+    # 2026-11-18 지시서: 근거가 댓글이면 [짚을 내용]에 댓글 한 줄, 시스템 글에 댓글 줄
+    call = llm.calls[1]["kwargs"]
+    assert "- (댓글) " in call["user"] and P.COMMENT_LINE in call["system"]
     # 근거: 자막이 없으면 댓글을 먼저(제목 낱말을 되풀이하지 않게)
     assert data["evidence_source"] == "comment"
 

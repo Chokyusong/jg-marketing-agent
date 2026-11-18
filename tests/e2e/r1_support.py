@@ -188,7 +188,7 @@ class ScriptedLLM:
                 "evidence": [{"quote": QUOTE, "source": "comment"}],
             }
         body = draft_for(n).removeprefix("[광고] ")
-        return {"body": body, "used_quote": QUOTE, "tone_label": "공감형"}
+        return {"body": body, "used_quote": QUOTE, "mood": "공감형", "wish": "궁합"}
 
     def health(self) -> LLMHealth:
         return LLMHealth("ollama", "fake-model", True, True, True)

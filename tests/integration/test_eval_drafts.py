@@ -69,7 +69,7 @@ def test_eval_counts_drafts_that_push_another_product(tmp_db_path, fake_llm):
     bad = (f"'{quote}'라는 말에 공감해요. 운명원에서 상담받기 전에 쾌속장 화이바톡으로 "
            "속부터 편하게 해 보세요.")
     result, llm = _sponsored_run(fake_llm, tmp_db_path, [analysis] + [
-        {"body": bad, "used_quote": quote, "tone_label": "공감형"}] * 3)
+        {"body": bad, "used_quote": quote, "mood": "공감형", "wish": "궁합"}] * 3)
     # 자막이 없어 「광고·협찬 글이 섞여 있을 수 있다」는 안내가 분석 프롬프트에 붙었다
     assert "설명란과 댓글에는 광고·협찬" in llm.calls[0]["kwargs"]["user"]
     row = result.drafts[0]
@@ -113,9 +113,9 @@ def test_eval_runs_the_real_pipeline_with_fake_llm(tmp_db_path, fake_llm):
               "가 보려고요.")  # 굳은 틀(셈 확인용)
     llm = fake_llm([analysis,
                     {"body": "연애 사주 상담을 받아 보세요.", "used_quote": "",
-                     "tone_label": "조언형"},
-                    {"body": good_a, "used_quote": quote_a, "tone_label": "공감형"},
-                    {"body": good_b, "used_quote": quote_b, "tone_label": "혼잣말형"}])
+                     "mood": "조언형", "wish": "궁합"},
+                    {"body": good_a, "used_quote": quote_a, "mood": "공감형", "wish": "궁합"},
+                    {"body": good_b, "used_quote": quote_b, "mood": "혼잣말형", "wish": "궁합"}])
     llm.model = "fake"
 
     settings = E.eval_settings("fake", tmp_db_path)

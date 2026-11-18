@@ -58,76 +58,10 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(skip_e2e)
 
 
-# ---------------------------------------------------------------- 실제 유튜브 막기(R3)
+# ---------------------------------------------------------------- AI 검수 가짜 답
 
 
-@pytest.fixture(autouse=True)
-def _bridge_check_off(monkeypatch):
-    """다듬기 검사 S11(잇는 문장·까닭 없음)을 끈다(2026-11-18).
-
-    그 전에 짠 가짜 초안들은 잇는 문장 없이 썼고 가짜 AI 응답을 하나씩만 준비했다. 켜 두면 다시
-    쓰기 차례가 하나씩 밀린다. S11을 보는 시험은 `bridge_check_on`을 쓴다."""
-    from app.analysis import drafter
-
-    monkeypatch.setattr(drafter, "BRIDGE_CHECK", False)
-    # S15(정해 준 운명원 조각과 다름, 2026-11-18)도 같은 까닭으로 끈다. 보는 시험은 `piece_check_on`
-    monkeypatch.setattr(drafter, "PIECE_CHECK", False)
-    monkeypatch.setattr(drafter, "STORY_CHECK", False)  # S18~S20(2026-11-18 D)
-    monkeypatch.setattr(drafter, "LENGTH_PLAN", False)  # 길이 셈(2026-11-18)
-    # 이야기처럼 쓰기(2026-11-18 대표 결정, 기본값): 그 전에 짠 시험은 조각 맞추기(pieces)로 돈다.
-    # 이야기 방식을 보는 시험은 `story_writer`를 쓴다(설정·생성자의 writer를 그대로 따른다)
-    monkeypatch.setattr(drafter, "FORCE_WRITER", "pieces")
-
-
-@pytest.fixture
-def story_writer(monkeypatch):
-    """댓글 쓰는 방식을 설정(`comment.writer`)·생성자 값대로 둔다(기본 story)."""
-    from app.analysis import drafter
-
-    monkeypatch.setattr(drafter, "FORCE_WRITER", None)
-
-
-@pytest.fixture
-def bridge_check_on(monkeypatch):
-    """S11을 켠다(실제 프로그램과 같게)."""
-    from app.analysis import drafter
-
-    monkeypatch.setattr(drafter, "BRIDGE_CHECK", True)
-
-
-@pytest.fixture
-def piece_check_on(monkeypatch):
-    """S15를 켠다(실제 프로그램과 같게)."""
-    from app.analysis import drafter
-
-    monkeypatch.setattr(drafter, "PIECE_CHECK", True)
-
-
-@pytest.fixture
-def story_check_on(monkeypatch):
-    """S18~S20(알고 싶은 것 없음 등, 2026-11-18 D)을 켠다(실제 프로그램과 같게)."""
-    from app.analysis import drafter
-
-    monkeypatch.setattr(drafter, "STORY_CHECK", True)
-
-
-@pytest.fixture
-def length_plan_on(monkeypatch):
-    """길이 셈(운명원 대목 상한·글자 수 몫·S1 112자·잇는 문장 덜기, 2026-11-18)을 켠다."""
-    from app.analysis import drafter
-
-    monkeypatch.setattr(drafter, "LENGTH_PLAN", True)
-
-
-REVIEW_OK = {"ok": True, "problems": []}
-# 이야기 방식 가짜 검수의 기본 칸(2026-11-18 판정 여섯 칸) — 준비한 답에 없는 칸은 이것으로 채운다.
-# 칸이 빠진 답을 시험할 때는 답에 "_raw": True를 넣는다(채우지 않는다)
-STORY_REVIEW_OK = {
-    "same_topic": True, "comment_topic": "", "one_voice": True, "flow": True,
-    "specific_link": True, "link_reason": "영상의 고민에서 이어짐", "break_at": "", "drift": "",
-    "brand_natural": True, "brand_issue": "",
-    "natural_ad": True, "ok": True, "problems": [],
-}
+REVIEW_OK = {"ok": True, "problems": [], "wish_kind": "기타"}
 
 
 @pytest.fixture(autouse=True)
@@ -146,22 +80,16 @@ def _ai_review_answers(request, monkeypatch):
 
     real_parse = review.parse
 
-    real_story = review.parse_story
-
-    def fake_ask(llm, *, system, user, story=False):
-        # 이야기 방식(2026-11-18)은 맥락 일치 검증 답으로 푼다 — 준비한 답에 네 판단이 없으면
-        # 문제 없음으로 본다(예전 꼴 {"ok", "problems"} 답도 그대로 쓴다)
-        parse = real_story if story else real_parse
-        schema = review.STORY_REVIEW_SCHEMA if story else review.REVIEW_SCHEMA
+    def fake_ask(llm, *, system, user):
         answer = getattr(llm, "answer_review", None)
-        data = REVIEW_OK if answer is None else answer(system=system, user=user, schema=schema)
-        if story and isinstance(data, dict):
-            data = dict(data)
-            if not data.pop("_raw", False):
-                data = {**STORY_REVIEW_OK, **data}
-        return parse(data)
+        data = REVIEW_OK if answer is None else answer(
+            system=system, user=user, schema=review.REVIEW_SCHEMA)
+        return real_parse(data)
 
     monkeypatch.setattr(review, "ask", fake_ask)
+
+
+# ---------------------------------------------------------------- 실제 유튜브 막기(R3)
 
 
 @pytest.fixture(autouse=True)

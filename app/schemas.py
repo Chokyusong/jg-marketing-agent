@@ -829,7 +829,6 @@ class SettingsEditOut(BaseModel):
     changed: list[str]  # 프로그램 안에서 바꿔 저장한 칸
     ranges: dict[str, list[int]]  # 숫자 칸의 [최소, 최대]
     typing_speeds: list[ChoiceOut]
-    writers: list[ChoiceOut] = Field(default_factory=list)  # 댓글 쓰는 방식(2026-11-18)
     # 게시 뒤 크롬 창: 열어 두기(5분) · 바로 닫기(2026-11-18)
     after_post_windows: list[ChoiceOut] = Field(default_factory=list)
     store_ready: bool  # 저장할 곳이 있는지(실제 프로그램은 늘 참)

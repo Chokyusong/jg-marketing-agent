@@ -67,7 +67,6 @@ from app.user_settings import (
     COMPUTED_FIELDS,
     FIELDS,
     TYPING_SPEED_LABELS,
-    WRITER_LABELS,
     SecretStoreUnavailable,
     UserStore,
     after_post_window_of,
@@ -166,7 +165,6 @@ def effective_values(s: Settings) -> dict[str, Any]:
         "comment.disclosure": str(comment.get("disclosure", "[광고]")),
         "comment.disclose_default": s.disclose_default,
         "comment.ai_review": s.ai_review,
-        "comment.writer": s.writer,
         "limits.daily_max_comments": s.daily_max_comments,
         "posting.confirm_before_post": s.confirm_before_post,
         "posting.after_post_window": after_post_window_of(s.keep_window_seconds),
@@ -225,7 +223,6 @@ def edit_view(s: Settings) -> SettingsEditOut:
         changed=sorted(k for k in s.user_values if k in FIELDS),
         ranges={k: [int(f.lo or 0), int(f.hi or 0)] for k, f in FIELDS.items() if f.kind == "int"},
         typing_speeds=[ChoiceOut(value=k, label=v) for k, v in TYPING_SPEED_LABELS.items()],
-        writers=[ChoiceOut(value=k, label=v) for k, v in WRITER_LABELS.items()],
         after_post_windows=[ChoiceOut(value=k, label=_window_label(k, s))
                             for k in AFTER_POST_WINDOW_LABELS],
         store_ready=_store(s) is not None,

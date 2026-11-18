@@ -32,7 +32,7 @@ BODY = (
     "하루에 한 번 연락 갖고 싸웠다는 댓글 완전 제 얘기네요ㅠㅠ "
     "요즘 운명원 연애 사주 잘 본다고 하던데 저도 언제 한번 가 보려고요."
 )
-DRAFT = {"body": BODY, "used_quote": Q_COMMENT, "tone_label": "공감형"}
+DRAFT = {"body": BODY, "used_quote": Q_COMMENT, "mood": "공감형", "wish": "궁합"}
 
 
 def openai_key() -> str:

@@ -8,7 +8,6 @@ from __future__ import annotations
 import pytest
 
 from app.analysis import analyzer as A
-from app.analysis import style as S
 from app.analysis.analyzer import Evidence
 from app.analysis.context import NO_TRANSCRIPT_NOTE
 from app.analysis.validator import strip_hashtags
@@ -74,28 +73,9 @@ def test_no_transcript_note_puts_comments_first_and_skips_hashtags():
     assert "해시태그" in NO_TRANSCRIPT_NOTE
 
 
-def test_s13_hashtag_word_in_the_draft_is_rewritten():
-    body = "[광고] 인팁특징 얘기 보니 혼자 상상 많이 하는 게 딱 저네요. 요즘 운명원이 연애사주를 " \
-        "잘 본다고 하던데 저도 한번 가 보려고요."
-    issues = S.style_issues(body, brand="운명원", disclosure="[광고]", key_phrases=["혼자 상상"],
-                            context=CONTEXT)
-    assert any(i.startswith("S13") for i in issues), issues
-    ok = body.replace("인팁특징 얘기 보니 ", "")
-    assert not any(i.startswith("S13") for i in S.style_issues(
-        ok, brand="운명원", disclosure="[광고]", key_phrases=["혼자 상상"], context=CONTEXT))
-
-
-def test_prompts_say_hashtag_words_are_not_material():
+def test_analysis_prompt_says_hashtag_words_are_not_material():
     _, analysis_user = P.analysis_messages("자료")
     assert "해시태그(#…) 낱말은 핵심 말이 아니다" in analysis_user
-    thin = P.draft_user(analysis={"concern": "c"}, quote="q", source="comment", min_body=35,
-                        max_body=115, thin=True)
-    assert "**자막이 없는 영상**" in thin and "인기 댓글" in thin
-    assert "제목 낱말을 되풀이하지" in thin
-    plain = P.draft_user(analysis={"concern": "c"}, quote="q", source="comment", min_body=35,
-                         max_body=115)
-    assert "자막이 없는 영상" not in plain
-    assert "해시태그(#…) 낱말" in P.draft_system(brand="운명원", disclosure="[광고]", facts=())
 
 
 # ---------------------------------------------------------- 자료 상태 세 가지(2026-11-18 덧붙임)

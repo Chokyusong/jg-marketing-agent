@@ -33,16 +33,12 @@ class CheckService:
         previous_texts: Sequence[str] = (),
         evidence_quote: str | None = None,
         disclose: bool = True,
-        key_phrases: Sequence[str] | None = None,
-        concern: str = "",
-        story: bool = False,
     ) -> Validation:
         """영상의 맥락이 아직 없으면 만들어서(인기 댓글 1단위) 대조한다.
 
-        `previous_texts`(V11)는 이전에 승인·게시한 글. `disclose`(R3)는 광고 표기를 켰는지 —
-        끄면 V4가 「표기 끔」으로 통과한다(어떤 영상이든). `key_phrases`(V7)와 `concern`(V13)은
-        그 영상 분석의 핵심 말과 고민 한 줄(C1). 없으면 V7은 제목·해시태그에서 핵심 말을 뽑는다.
-        `story`: 이야기 방식(설정 `comment.writer: story`)의 V14(2026-11-18).
+        `previous_texts`(V11)는 이전에 승인·게시한 글. `evidence_quote`(V6)는 초안이 짚은 구절
+        (AI의 `used_quote`). `disclose`(R3)는 광고 표기를 켰는지 — 끄면 V4가 「표기 끔」으로
+        통과한다(어떤 영상이든).
         """
         context = self.context.current(video_id)
         return validate(
@@ -53,7 +49,4 @@ class CheckService:
             previous_texts=list(previous_texts),
             evidence_quote=evidence_quote,
             disclosure_required=disclose,
-            key_phrases=key_phrases,
-            concern=concern,
-            story=story,
         )

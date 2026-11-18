@@ -3,8 +3,9 @@
 - 분석: 고민 한 줄이 요약 꼴이면 한 번 더 시킨다. 핵심 말은 자료와 대조해 거르고 저장한다.
 - 예전(C1 전) 분석: 화면은 제목·해시태그에서 뽑은 핵심 말을 보여 주고, 초안을 만들 때는
   다시 분석한다.
-- 초안: 핵심 말·말투 선택지·운명원 꺼내는 말이 프롬프트에 들어가고, 검사는 핵심 말로 V7을 본다.
-- 사람이 고친 글·직접 쓰는 검사(POST /api/validate)도 같은 근거·핵심 말로 검사한다.
+- 사람이 고친 글·직접 쓰는 검사(POST /api/validate)도 같은 근거로 검사한다.
+- 2026-11-18 대표 최종 지시서(docs/COMMENT_REFACTOR.md)로 초안 프롬프트(핵심 말·말투 목록·조각
+  배정·까닭)와 V7·V13·V14를 뺐다. 새 댓글 흐름은 test_comment_flow.py가 본다.
 """
 
 import json
@@ -13,10 +14,7 @@ import pytest
 from test_drafts_api import (
     ANALYSIS,
     GOOD_BODY,
-    GOOD_BODY_2,
     KEYS,
-    OTHER,
-    OTHER_BODY,
     VID,
     add_youtube,
     draft,
@@ -131,104 +129,14 @@ def test_legacy_analysis_is_shown_with_title_phrases_and_redone_for_drafts(setup
 # ---------------------------------------------------------------- 초안
 
 
-def test_draft_prompt_carries_key_phrases_tones_and_hearsay(setup):
-    client, _, use = setup
-    llm = use([ANALYSIS, draft(GOOD_BODY)])
-    client.post("/api/drafts", json={"video_id": VID})
-    user = user_prompts(llm)[1]
-    assert "[핵심 말] '장거리', '하루에 한 번 연락', '기대치 차이'" in user
-    assert "[말투] 이번 말투는 다음 중" in user
-    # 2026-11-18: 권유 목록 대신 코드가 정해 준 조각(때·평판·들은 꼴·끝말)
-    assert "이번 초안의 운명원 대목: 때='" in user and "/ 끝말='" in user
-    assert "운명원을 꺼내는 말은 이번에 이런 식으로" not in user
-    assert "과제가 보여 준 예시 댓글" in llm.calls[1]["kwargs"]["system"]
-
-
-def test_draft_without_any_key_phrase_fails_v7_and_is_rewritten(setup):
-    client, _, use = setup
-    plain = ("연락 문제로 다투는 얘기 남 일 같지 않네요ㅠㅠ "
-             "요즘 운명원 연애 사주 잘 본다던데 저도 한번 가 보려고요.")
-    llm = use([ANALYSIS, draft(plain), draft(GOOD_BODY)])
-    data = client.post("/api/drafts", json={"video_id": VID}).json()
-    assert data["attempts"] == 2 and data["passed"] is True
-    assert "V7 영상의 핵심 말을 담음" in user_prompts(llm)[2]
-
-
-def test_long_copy_fails_v13_and_is_rewritten(setup):
-    client, _, use = setup
-    copy = ("저도 하루에 한 번 연락으로 싸운 적 있어요 정말 공감돼요. "
-            "요즘 운명원 연애 사주 잘 본다던데 저도 가 보려고요.")
-    llm = use([ANALYSIS, draft(copy), draft(GOOD_BODY)])
-    data = client.post("/api/drafts", json={"video_id": VID}).json()
-    assert data["attempts"] == 2 and data["passed"] is True
-    retry = user_prompts(llm)[2]
-    assert "V13 영상 글을 길게 베끼지 않음" in retry and "그대로 옮겼습니다" in retry
-
-
-def test_abrupt_brand_fails_v14_and_is_rewritten(setup):
-    # 대표가 본 초안(2026-11-17)과 같은 꼴: 고민 뒤에 곧바로 운명원
-    client, _, use = setup
-    abrupt = ("하루에 한 번 연락 얘기가 제 고민 같아 눈길이 가네요. 연락 문제를 어디서부터 풀지 "
-              "막막한데 운명원에서 연애 사주를 한번 보고 싶어요.")
-    llm = use([ANALYSIS, draft(abrupt), draft(GOOD_BODY)])
-    data = client.post("/api/drafts", json={"video_id": VID}).json()
-    assert data["attempts"] == 2 and data["passed"] is True
-    retry = user_prompts(llm)[2]
-    # 2026-11-17 다섯 조각: 빠진 조각(때·잘 본다는 들은 얘기)을 이름으로 알린다
-    assert "V14 브랜드 대목 다섯 조각" in retry and "'요즘/요새'가 없습니다" in retry
-    assert "잘 본다는 평판(~다고 하던데)이 없습니다" in retry
-    # 사람이 고쳐 써도 같은 검사를 거친다
-    edited = client.patch(f"/api/drafts/{data['id']}", json={"body": f"[광고] {abrupt}"}).json()
-    assert failed(edited["validation"]) == ["V14"]
-
-
-def test_next_video_cannot_reuse_the_last_approved_tone(setup):
-    client, _, use = setup
-    llm = use([ANALYSIS, draft(GOOD_BODY, tone="한탄형"), ANALYSIS,
-               draft(OTHER_BODY, tone="유쾌형")])
-    first = client.post("/api/drafts", json={"video_id": VID}).json()
-    assert first["tone_label"] == "한탄형"
-    assert client.post(f"/api/drafts/{first['id']}/approve").status_code == 200
-    other = client.post("/api/drafts", json={"video_id": OTHER}).json()
-    assert other["passed"] is True and other["tone_label"] == "유쾌형"
-    enum = llm.calls[3]["kwargs"]["schema"]["properties"]["tone_label"]["enum"]
-    assert "한탄형" not in enum and len(enum) == 3
-    # 앞 영상에서 쓴 운명원 꺼내는 말의 조각(잘 본다 · 고 하던데)은 이번 권유에서 뒤로 밀린다
-    line = next(x for x in user_prompts(llm)[3].splitlines()
-                if x.startswith("이번 초안의 운명원 대목:"))
-    assert "잘 본다고 하던데" not in line
-    assert "이미 쓴 첫 반응(다른 영상에 승인됨)" in user_prompts(llm)[3]
-
-
-def test_first_draft_asks_for_a_reason_and_the_next_may_skip_it(setup):
-    # 2026-11-18(기획 담당): 같은 영상 초안 가운데 적어도 하나는 ⑤에 이 영상 고민에서 온 까닭
-    client, _, use = setup
-    reasoned = ("하루에 한 번 연락 갖고 싸웠다는 댓글 보니 남 일 같지 않네요ㅠㅠ 요즘 운명원 연애 "
-                "사주 잘 본다고 하던데 저도 연락 문제로 언제 한번 가 보려고요.")
-    llm = use([ANALYSIS, draft(reasoned), draft(GOOD_BODY_2)])
-    first = client.post("/api/drafts", json={"video_id": VID}).json()
-    assert first["passed"] is True
-    ask = user_prompts(llm)[1]
-    assert "이번 끝말에는 '저도' 뒤, 가 보겠다는 말 앞에 이 영상의 고민에서 온 짧은 까닭" in ask
-    assert f"고민 한 줄('{ANALYSIS['concern']}')을 쉬운 내 말로 줄여" in ask
-    second = client.post("/api/drafts", json={"video_id": VID}).json()
-    assert second["passed"] is True
-    free = user_prompts(llm)[2]
-    assert "이번 끝말은 까닭 없이 본보기 꼴" in free and "이번 끝말에는" not in free
-    # 2026-11-18: 앞서 보인 초안의 까닭은 「이미 쓴 까닭」으로 넘긴다
-    assert "이미 쓴 까닭: '연락 문제로'" in free
-
-
 def test_period_after_jamo_is_dropped_from_the_model_but_kept_in_human_edits(setup):
     # 2026-11-18(기획 담당): 「현실적이네ㅋㅋ.」 → 「현실적이네ㅋㅋ」(모델 글만)
     client, _, use = setup
     body = ("하루에 한 번 연락 갖고 싸웠다니 현실적이네ㅋㅋ. 요즘 운명원 연애 사주 잘 본다고 "
             "하던데 저도 언제 한번 가 보려고요.")
-    llm = use([ANALYSIS, draft(body)])
+    use([ANALYSIS, draft(body)])
     made = client.post("/api/drafts", json={"video_id": VID}).json()
     assert "현실적이네ㅋㅋ 요즘" in made["body"] and "ㅋㅋ." not in made["body"]
-    system = llm.calls[1]["kwargs"]["system"]
-    assert "'ㅋㅋ', 'ㅠㅠ', 'ㅎㅎ' 바로 뒤에는 마침표를 찍지 않는다" in system
     edited = client.patch(f"/api/drafts/{made['id']}",
                           json={"body": f"[광고] {body}"}).json()
     assert "현실적이네ㅋㅋ. 요즘" in edited["body"]  # 사람이 쓴 글은 그대로
@@ -246,17 +154,12 @@ def test_human_edit_is_checked_with_the_same_basis(setup):
                          json={"body": made["body"].replace("가 보려고요", "가 보려고")}).json()
     assert small["passed"] is True, failed(small["validation"])
     assert small["evidence_quote"] == made["evidence_quote"]
-    # 핵심 말을 빼면 V7, 영상 글을 길게 옮기면 V13
-    no_key = client.patch(f"/api/drafts/{made['id']}", json={
-        "body": "[광고] 연락 때문에 다툰 얘기 남 일 같지 않네요. 요즘 운명원 연애 사주 잘 "
-                "본다던데 저도 한번 가 보려고요."
+    # 써 본 척은 사람이 고쳐도 걸린다(V8)
+    used = client.patch(f"/api/drafts/{made['id']}", json={
+        "body": "[광고] 하루에 한 번 연락 얘기 남 일 같지 않네요. 운명원 연애 사주 받아봤는데 "
+                "소름이었어요."
     }).json()
-    assert failed(no_key["validation"]) == ["V7"]
-    copied = client.patch(f"/api/drafts/{made['id']}", json={
-        "body": "[광고] 저도 하루에 한 번 연락으로 싸운 적 있어요. 요즘 운명원 연애 사주 잘 "
-                "본다던데 저도 한번 가 보려고요."
-    }).json()
-    assert failed(copied["validation"]) == ["V13"]
+    assert "V8" in failed(used["validation"])
 
 
 def test_validate_api_uses_the_stored_key_phrases_and_concern(setup):
@@ -268,11 +171,6 @@ def test_validate_api_uses_the_stored_key_phrases_and_concern(setup):
         return client.post("/api/validate", json={"video_id": VID, "text": text}).json()
 
     good = check(f"[광고] {GOOD_BODY}")
-    assert good["passed"] is True and good["total"] == 14
-    v7 = next(c for c in good["checks"] if c["code"] == "V7")
-    assert "'하루에 한 번 연락'" in v7["message"]
-    # 고민 한 줄을 그대로 옮기면 V13
-    concern = check(f"[광고] {ANALYSIS['concern']} 하루에 한 번 연락 문제예요. "
-                    "요즘 운명원 연애 사주 잘 본다던데 저도 한번 가 보려고요.")
-    v13 = next(c for c in concern["checks"] if c["code"] == "V13")
-    assert v13["passed"] is False and "고민 한 줄" in v13["message"]
+    assert good["passed"] is True and good["total"] == 10
+    assert [c["code"] for c in good["checks"]] == [
+        "V1", "V2", "V3", "V4", "V5", "V6", "V8", "V9", "V10", "V11"]

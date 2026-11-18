@@ -15,8 +15,10 @@
   `llm.providers.<이름>.api_key_env`에 적힌 환경 변수로 읽는다(`--env-file`로 .env를 줄 수도
   있다). 키 값은 어디에도 찍지 않는다.
 - 영상마다 처음 통과한 초안을 승인한다(다음 영상이 「이미 쓴 표현」·V11을 받는 실제 흐름).
-- 결과: `--out-json`(초안 전문·시도별 글·다시 쓰기 까닭·시간)과 `--out-md`(초안 전문 표 + 지표 +
-  다듬기 검사 S1~S5로 센 남은 수). `--before`에 예전 결과 JSON을 주면 같은 영상끼리 나란히 놓는다.
+- 결과: `--out-json`(초안 전문·시도별 글·다시 쓰기 까닭·시간)과 `--out-md`(초안마다 말 높임·들은
+  경로·기분·알고 싶은 것과 갈래·요약 고민·댓글·AI 검수·다시 쓴 횟수와 까닭·최종 실패 + 지표:
+  첫 시도 통과·첫 검수 통과·까닭별 수·갈래별 수·끝말 같은 것·운명원 소개 그대로 옮긴 것,
+  docs/COMMENT_REFACTOR.md 7절). `--before`에 예전 결과 JSON을 주면 같은 영상끼리 나란히 놓는다.
 - 2026-11-17: 결과 파일은 임시 폴더를 지우기 **전에** 쓴다. `--out-json`은 영상 하나가 끝날 때마다
   덮어써(`"finished": false`) 중간에 죽어도 그때까지의 결과가 남는다. DB 연결·서비스를 닫고
   나가며, 임시 폴더를 지우지 못하면(Windows에서 파일이 아직 잡혀 있을 때 등) 결과는 그대로 두고
@@ -47,14 +49,13 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from eval_drafts import CONTEXTS_DIR, load_contexts, prepare, youtube_transport  # noqa: E402
 
 from app.analysis import review as rv  # noqa: E402
-from app.analysis import style  # noqa: E402
+from app.analysis.drafter import mood_of, toggle_disclosure  # noqa: E402
+from app.analysis.validator import quote_in_context  # noqa: E402
 from app.api.deps import Services, build_services  # noqa: E402
 from app.config import Settings, load_settings  # noqa: E402
 from app.errors import AppError  # noqa: E402
-from app.llm import prompts  # noqa: E402
 from app.youtube.quota import utc_now  # noqa: E402
 
-RETRY_HEAD = "걸린 항목(고치는 법):"
 FAKE_YOUTUBE_KEY = "AIza" + "x" * 35  # 가짜 YouTube에만 쓰는 가짜 키(실행할 때 조립)
 
 
@@ -102,15 +103,6 @@ def run(
 
     `on_video`: 영상 하나가 끝날 때마다(오류로 건너뛴 영상도) 그때까지의 목록으로 부른다.
     """
-    llm = services.require_llm()
-    seen: list[str] = []
-    real_generate = llm.generate_json
-
-    def spy(*args: Any, **kwargs: Any) -> Any:
-        seen.append(str(kwargs.get("user", "")))
-        return real_generate(*args, **kwargs)
-
-    llm.generate_json = spy  # type: ignore[method-assign]
     videos: list[dict[str, Any]] = []
     for vid in order:
         row: dict[str, Any] = {"video_id": vid, "drafts": []}
@@ -133,7 +125,6 @@ def run(
         used: list[str] = []
         approved = False
         for n in range(1, drafts_per_video + 1):
-            seen.clear()
             started = time.monotonic()
             try:
                 d = services.drafts.generate(vid, avoid_quotes=tuple(used))
@@ -141,31 +132,9 @@ def run(
                 row["drafts"].append({"n": n, "error": f"{exc.kind}: {exc.detail}"})
                 continue
             used.append(d.evidence_quote)
-            row["drafts"].append({
-                "n": n, "body": d.body, "chars": len(d.body), "passed": d.passed,
-                "first_passed": d.first_passed, "attempts": d.attempts,
-                "seconds": round(time.monotonic() - started, 1), "quote": d.evidence_quote,
-                "tone": d.tone_label, "failures": d.validation.failure_lines(),
-                # 2026-11-18 AI 검수 한 번: 결과와 처음 검수가 짚은 문제(다시 쓰기 전)
-                "review": d.review_status, "review_problems": list((d.review or {}).get("problems")
-                                                                   or []),
-                "review_first": list((d.review or {}).get("first") or []),
-                # 검수 전·후 문장과 시간(다시 쓰기를 했을 때만 글이 있다, kept: 다시 쓴 글을 썼는지)
-                "review_before": d.review_before, "review_after": d.review_after,
-                "review_kept": (d.review or {}).get("kept"),
-                # 2026-11-18 대표 지시서: 운명원 직전 생각이 영상의 어디서 나왔는지(통과했을 때)
-                "link_reason": (d.review or {}).get("link_reason") or "",
-                "review_missing": list((d.review or {}).get("missing") or []),
-                "review_ms": d.review_ms, "rewrite_ms": d.rewrite_ms,
-                # 2026-11-18 맥락 일치 검증(이야기 방식): 남은 글의 네 판단, 처음 판단(다시 썼으면)
-                "context": dict((d.review or {}).get("checks") or {}),
-                "context_first": dict((d.review or {}).get("first_checks") or {}),
-                "run": json.loads(json.dumps(services.drafts.last_run, ensure_ascii=False)),
-                "retry_reasons": [
-                    [ln[2:] for ln in p.split(RETRY_HEAD, 1)[1].splitlines() if ln.startswith("- ")]
-                    for p in seen if RETRY_HEAD in p
-                ],
-            })
+            row["drafts"].append(draft_record(n, d, services.drafts.last_run,
+                                              round(time.monotonic() - started, 1),
+                                              disclosure=services.drafts.rules.disclosure))
             if approve and d.passed and not approved:
                 try:
                     services.drafts.approve(d.id)
@@ -176,6 +145,33 @@ def run(
         if on_video is not None:
             on_video(videos)
     return videos
+
+
+def draft_record(
+    n: int, d: Any, last_run: dict[str, Any], seconds: float, *, disclosure: str = "",
+) -> dict[str, Any]:
+    """초안 하나의 기록(2026-11-18 지시서 7절의 보고 칸). 글자 수는 V1처럼 표기를 뺀 본문."""
+    review = d.review or {}
+    tries = list(last_run.get("attempts") or [])
+    rule_retries = [t.get("failures") or [] for t in tries[:-1]] if len(tries) > 1 else []
+    return {
+        "n": n, "body": d.body, "chars": len(toggle_disclosure(d.body, disclosure, False)),
+        "passed": d.passed,
+        "first_passed": d.first_passed, "attempts": d.attempts, "seconds": seconds,
+        "quote": d.evidence_quote, "source": d.evidence_source,
+        "voice": last_run.get("voice", ""), "heard": last_run.get("heard", ""),
+        "mood": mood_of(d.tone_label), "tone": d.tone_label,
+        "wish": d.wish, "wish_kind": review.get("wish_kind", ""),
+        "failures": d.validation.failure_lines(),
+        "review": d.review_status, "review_problems": list(review.get("problems") or []),
+        "review_first": list(review.get("first") or []),
+        "review_before": d.review_before, "review_after": d.review_after,
+        "review_kept": review.get("kept"),
+        "review_ms": d.review_ms, "rewrite_ms": d.rewrite_ms,
+        # 규칙 검사로 다시 쓴 까닭(시도마다 걸린 항목). AI 검수의 까닭은 review_first
+        "retry_reasons": rule_retries,
+        "run": json.loads(json.dumps(last_run, ensure_ascii=False)),
+    }
 
 
 # ---------------------------------------------------------------- 표
@@ -198,211 +194,123 @@ def _cell(x: dict[str, Any] | None) -> str:
     return f"{_esc(x['body'])} ({x['chars']}자 · {mark} · {x.get('attempts', '?')}번째)"
 
 
-def _bridge_counts(ds: Sequence[dict[str, Any]], brand: str) -> tuple[int, int, int]:
-    """(잇는 문장 있는 초안, 까닭 있는 초안, 앞 초안의 잇는 문장을 되풀이한 초안) — 2026-11-18."""
-    bridges = [prompts.bridge_sentence(x["body"], brand) for x in ds]
-    reasons = sum(bool(prompts.intent_reason(x["body"], brand)) for x in ds)
-    repeats = sum(bool(style.repeated_bridge(b, [o for o in bridges[:i] if o]))
-                  for i, b in enumerate(bridges))
-    return sum(bool(b) for b in bridges), reasons, repeats
+def ending(body: str, disclosure: str = "[광고]") -> str:
+    """끝말: 본문의 마지막 어절 둘(문장부호·ㅋㅋ·ㅠㅠ 꼬리는 뺀다)."""
+    text = body.strip()
+    if disclosure and text.startswith(disclosure):
+        text = text[len(disclosure):]
+    words = text.rstrip(" .!?…~ㅋㅎㅠㅜ").split()
+    return " ".join(words[-2:])
 
 
-def _review_counts(ds: Sequence[dict[str, Any]]) -> dict[str, int]:
-    """AI 검수 한 번(2026-11-18): 처음 검수가 거짓 · 한 번 고쳐 써서 통과 · 고쳐도 남음 · 못 함."""
-    status = Counter(x.get("review", "") for x in ds)
-    first_false = sum(1 for x in ds if x.get("review") in (rv.REWRITTEN, rv.FLAGGED)
-                      or x.get("review_first"))
-    return {"false": first_false, "rewritten": status[rv.REWRITTEN],
-            "left": status[rv.FLAGGED], "error": status[rv.ERROR],
-            "incomplete": status[rv.INCOMPLETE],
-            "complete": status[rv.PASSED] + status[rv.REWRITTEN] + status[rv.FLAGGED],
-            "discarded": sum(1 for x in ds
-                             if x.get("review_after") and x.get("review_kept") is False)}
+def fact_copied(body: str, facts: Sequence[str]) -> bool:
+    """운명원 소개 문장(brand.facts)을 거의 그대로 옮겼는가(85% 이상 비슷한 구간)."""
+    return any(f and quote_in_context(f, body) for f in facts)
 
 
-def _review_times(ds: Sequence[dict[str, Any]]) -> tuple[float, float, int]:
-    """(검수 평균 초, 다시 쓰기 평균 초(다시 쓴 초안만), 다시 쓴 초안 수) — 2026-11-18 검수 기록."""
-    reviewed = [x for x in ds if x.get("review_ms")]
-    rewrote = [x for x in ds if x.get("rewrite_ms")]
-    avg = (sum(x["review_ms"] for x in reviewed) / len(reviewed) / 1000) if reviewed else 0.0
-    avg_rw = (sum(x["rewrite_ms"] for x in rewrote) / len(rewrote) / 1000) if rewrote else 0.0
-    return avg, avg_rw, len(rewrote)
+def _reason_counts(ds: Sequence[dict[str, Any]]) -> Counter[str]:
+    reasons: Counter[str] = Counter()
+    for x in ds:
+        for retry in x.get("retry_reasons", []):
+            reasons.update((r.split(":", 1)[0].split() or ["?"])[0] for r in retry)  # 검사 번호
+        if x.get("review_first"):
+            reasons["AI 검수"] += 1
+    return reasons
 
 
-def review_trace_lines(videos: Sequence[dict[str, Any]]) -> list[str]:
-    """검수 전·후 문장 표: 다시 쓰기를 한 초안만(고치기 전·검수가 든 문제·고친 뒤·썼는지·시간)."""
-    rows: list[str] = []
-    for v in videos:
-        title = _esc(v.get("title") or v.get("video_id", ""))[:30]
-        for x in v.get("drafts", []):
-            if not x.get("review_before"):
-                continue
-            used = "씀" if x.get("review_kept") else "버림(앞 초안 씀)"
-            rows.append(
-                f"| {title} | {x.get('n', '')} | {_esc(x['review_before'])} | "
-                f"{_esc(' / '.join(x.get('review_first') or []))} | "
-                f"{_esc(x.get('review_after') or '')} | {used} · {x.get('review', '')} | "
-                f"{x.get('review_ms', 0) / 1000:.1f}초 · {x.get('rewrite_ms', 0) / 1000:.1f}초 |")
-    if not rows:
-        return []
-    return ["", "AI 검수 전·후(다시 쓰기를 한 초안만)", "",
-            "| 영상 | # | 고치기 전 | 검수가 든 문제 | 고친 뒤 | 결과 | 검수 · 다시 쓰기 시간 |",
-            "|---|---|---|---|---|---|---|", *rows]
-
-
-def _stats(videos: Sequence[dict[str, Any]], brand: str = "운명원") -> dict[str, str]:
+def _stats(videos: Sequence[dict[str, Any]], facts: Sequence[str] = ()) -> dict[str, str]:
     ds = _drafts(videos)
     n = len(ds)
     if not n:
         return {}
     chars = [x["chars"] for x in ds]
     attempts = Counter(x.get("attempts", 0) for x in ds)
-    bridged, reasons, repeats = _bridge_counts(ds, brand)
+    status = Counter(x.get("review", "") for x in ds)
+    ends = Counter(ending(x["body"]) for x in ds)
     out = {
-        "3번 안 통과": f"{sum(bool(x.get('passed')) for x in ds)}/{n}",
+        "규칙 검사 최종 통과": f"{sum(bool(x.get('passed')) for x in ds)}/{n}",
         "첫 시도 규칙 검사 통과": f"{sum(bool(x.get('first_passed')) for x in ds)}/{n}",
         "시도 1·2·3번": " · ".join(str(attempts.get(i, 0)) for i in (1, 2, 3)),
         "글자 수 범위(평균)": f"{min(chars)}~{max(chars)}자({sum(chars) / n:.0f})",
-        "110자 넘음": str(sum(c > style.SOFT_MAX_TOTAL for c in chars)),
         "초안 1개 평균 시간": f"{sum(x.get('seconds', 0) for x in ds) / n:.1f}초",
-        "잇는 문장 있음": f"{bridged}/{n}",
-        "까닭 있음": f"{reasons}/{n}",
-        "잇는 문장 되풀이": str(repeats),
+        "첫 검수 통과": f"{status[rv.PASSED]}/{n}",
+        "검수 고쳐 써서 통과 · 고쳐도 남음 · 못 함":
+            f"{status[rv.REWRITTEN]} · {status[rv.FLAGGED]} · {status[rv.ERROR]}",
+        "다시 쓴 글 버림(앞 초안 씀)":
+            str(sum(1 for x in ds if x.get("review_after") and x.get("review_kept") is False)),
+        "끝말이 글자까지 같은 초안": str(sum(c for c in ends.values() if c > 1)),
+        "운명원 소개를 거의 그대로 옮김": str(sum(fact_copied(x["body"], facts) for x in ds)),
     }
-    if any("review" in x for x in ds):
-        r = _review_counts(ds)
-        out.update({
-            "AI 검수 거짓(처음)": str(r["false"]),
-            "AI 검수 고쳐 써서 통과": str(r["rewritten"]),
-            "AI 검수 고쳐도 남음": str(r["left"]),
-            "AI 검수 못 함": str(r["error"]),
-            "다시 쓴 글 버림(앞 초안 씀)": str(r["discarded"]),
-            # 2026-11-18 대표 지시서: 칸이 빠진 답·파싱 실패를 정상 판정과 구분해 센다
-            "검수 정상 / 불완전 / 못 함": f"{r['complete']} / {r['incomplete']} / {r['error']}",
-        })
-        avg, avg_rw, rewrote = _review_times(ds)
-        if avg or rewrote:
-            out.update({
-                "검수 1번 평균 시간(초안당 합)": f"{avg:.1f}초",
-                "다시 쓰기 평균 시간": f"{avg_rw:.1f}초({rewrote}개)" if rewrote else "—",
-            })
-    checked = [x for x in ds if x.get("context")]
-    if checked:
-        out.update(context_counts(ds))
+    kinds = Counter(x.get("wish_kind") or "(검수 안 함)" for x in ds)
+    out["알고 싶은 것 갈래"] = ", ".join(f"{k} {c}" for k, c in kinds.most_common())
+    voices = Counter(x.get("voice") or "?" for x in ds)
+    out["말 높임"] = ", ".join(f"{k} {c}" for k, c in voices.most_common())
+    heard = Counter(x.get("heard") or "?" for x in ds)
+    out["들은 경로"] = ", ".join(f"{k} {c}" for k, c in heard.most_common())
+    reasons = _reason_counts(ds)
+    out["다시 쓰게 만든 까닭"] = ", ".join(f"{k} {c}" for k, c in reasons.most_common()) or "없음"
     return out
 
 
-def context_counts(ds: Sequence[dict[str, Any]]) -> dict[str, str]:
-    """맥락 일치 검증(이야기 방식) 집계: 처음 판단 기준과 남은 글 기준."""
-    def first(x: dict[str, Any]) -> dict[str, Any]:
-        return x.get("context_first") or x.get("context") or {}
-
-    checked = [x for x in ds if x.get("context")]
-    n = len(checked)
-    # 판정 칸이 다 온 초안(처음 답 기준 · 남은 글의 답 기준) — 2026-11-18 대표 지시서(여섯 칸 +
-    # brand_natural)
-    full_first = sum(not first(x).get("missing") for x in checked)
-    full_last = sum(not x["context"].get("missing") for x in checked)
-    return {
-        "판정 칸 다 옴(처음 · 남은 글)": f"{full_first} · {full_last}/{n}",
-        "맥락: 벗어난 문장(처음 → 남음)":
-            f"{sum(bool(first(x).get('drift')) for x in checked)} → "
-            f"{sum(bool(x['context'].get('drift')) for x in checked)}/{n}",
-        "맥락: 한 목소리 아님(처음 → 남음)":
-            f"{sum(first(x).get('one_voice') is False for x in checked)} → "
-            f"{sum(x['context'].get('one_voice') is False for x in checked)}/{n}",
-        "맥락: 주제 다름(처음 → 남음)":
-            f"{sum(first(x).get('same_topic') is False for x in checked)} → "
-            f"{sum(x['context'].get('same_topic') is False for x in checked)}/{n}",
-        "맥락: 기승전결 어색(처음 → 남음)":
-            f"{sum(first(x).get('flow') is False for x in checked)} → "
-            f"{sum(x['context'].get('flow') is False for x in checked)}/{n}",
-        "맥락: 억지 연결(처음 → 남음)":
-            f"{sum(first(x).get('natural_ad') is False for x in checked)} → "
-            f"{sum(x['context'].get('natural_ad') is False for x in checked)}/{n}",
-        "맥락: 운명원 직전 생각 설명 못 함(처음 → 남음)":
-            f"{sum(first(x).get('link_reason') == '' for x in checked)} → "
-            f"{sum(x['context'].get('link_reason') == '' for x in checked)}/{n}",
-        "맥락: 운명원 문장 어색·지어낸 능력(처음 → 남음)":
-            f"{sum(first(x).get('brand_natural') is False for x in checked)} → "
-            f"{sum(x['context'].get('brand_natural') is False for x in checked)}/{n}",
-        "맥락: 끝 궁금증 막연(처음 → 남음)":
-            f"{sum(first(x).get('specific_link') is False for x in checked)} → "
-            f"{sum(x['context'].get('specific_link') is False for x in checked)}/{n}",
-    }
-
-
-def remaining_issues(
-    videos: Sequence[dict[str, Any]], *, brand: str, disclosure: str,
-    contexts: dict[str, str] | None = None,
-) -> Counter[str]:
-    """최종 글에 지금의 다듬기 검사(S1~S5)를 대 본 수. 같은 영상 앞 초안과 비교(S4)도 한다."""
-    counts: Counter[str] = Counter()
+def detail_lines(videos: Sequence[dict[str, Any]]) -> list[str]:
+    """초안마다: 말 높임 · 들은 경로 · 기분 · 알고 싶은 것(갈래) · 영상 · 고민 · 댓글 · 검수 ·
+    다시 쓴 횟수와 까닭 · 최종 실패."""
+    rows = ["| 영상 | # | 말 높임 · 들은 경로 · 기분 | 알고 싶은 것(갈래) | 요약 고민 | 댓글 | "
+            "AI 검수 | 다시 쓴 횟수 · 까닭 | 최종 실패 |",
+            "|---|---|---|---|---|---|---|---|---|"]
     for v in videos:
-        earlier: list[str] = []
+        title = _esc(v.get("title") or v.get("video_id", ""))[:30]
+        if v.get("error"):
+            rows.append(f"| {title} | — | | | | 분석 오류: {_esc(v['error'])} | | | |")
+            continue
         for x in v.get("drafts", []):
             if not x.get("body"):
+                rows.append(f"| {title} | {x.get('n')} | | | | 오류: {_esc(x.get('error', ''))}"
+                            " | | | |")
                 continue
-            found = style.style_issues(
-                x["body"], brand=brand, disclosure=disclosure,
-                key_phrases=v.get("key_phrases") or [], earlier=earlier,
-                context=(contexts or {}).get(v["video_id"], ""),
-            )
-            counts.update({i.split(":", 1)[0] for i in found})
-            earlier.append(x["body"])
-    return counts
+            why = [" / ".join(r) for r in x.get("retry_reasons", [])]
+            if x.get("review_first"):
+                why.append("AI 검수: " + " / ".join(x["review_first"]))
+            rewrites = max(0, int(x.get("attempts", 1) or 1) - 1)
+            review = rv.label(x.get("review", "")) or x.get("review", "") or "—"
+            if x.get("review_problems"):
+                review += " — " + " / ".join(x["review_problems"])
+            rows.append(
+                f"| {title} | {x.get('n')} | {_esc(x.get('voice', ''))} · "
+                f"{_esc(x.get('heard', ''))} · {_esc(x.get('mood', ''))} | "
+                f"{_esc(x.get('wish', ''))} ({_esc(x.get('wish_kind', '') or '—')}) | "
+                f"{_esc(v.get('concern', ''))} | {_esc(x['body'])} ({x['chars']}자) | "
+                f"{_esc(review)} | {rewrites}번 · {_esc('; '.join(why)) or '—'} | "
+                f"{_esc(' / '.join(x.get('failures') or [])) or '없음'} |")
+    return rows
 
 
 def markdown_table(
     after: Sequence[dict[str, Any]], *, before: Sequence[dict[str, Any]] | None = None,
-    labels: tuple[str, str] = ("전", "후"), brand: str, disclosure: str,
-    contexts: dict[str, str] | None = None,
+    labels: tuple[str, str] = ("전", "후"), brand: str = "운명원", disclosure: str = "[광고]",
+    facts: Sequence[str] = (),
 ) -> str:
-    """초안 전문 표 + 지표 + 남은 수(Markdown). `before`가 없으면 한 열만."""
-    old = {v["video_id"]: v for v in before or []}
-    width = max([len(v.get("drafts", [])) for v in [*after, *(before or [])]] or [0])
-    lines: list[str] = []
-    if before is not None:
-        lines += [f"| 영상 | # | {labels[0]} | {labels[1]} |", "|---|---|---|---|"]
-    else:
-        lines += [f"| 영상 | # | {labels[1]} |", "|---|---|---|"]
-    for v in after:
-        title = _esc(v.get("title") or v["video_id"])[:40]
-        if v.get("error"):
-            lines.append(f"| {title} | — | 분석 오류: {_esc(v['error'])} |" +
-                         (" |" if before is not None else ""))
-            continue
-        for i in range(width):
-            mine = v["drafts"][i] if i < len(v.get("drafts", [])) else None
-            head = f"| {title if i == 0 else ''} | {i + 1} |"
-            if before is not None:
-                theirs = old.get(v["video_id"], {}).get("drafts", [])
-                lines.append(f"{head} {_cell(theirs[i] if i < len(theirs) else None)} | "
-                             f"{_cell(mine)} |")
-            else:
-                lines.append(f"{head} {_cell(mine)} |")
+    """초안별 상세 표 + 지표(Markdown). `before`가 있으면 같은 영상끼리 나란히 놓은 표를 더한다."""
+    del brand, disclosure
+    lines = detail_lines(after)
     sides = [before, after] if before is not None else [after]
     names = list(labels) if before is not None else [labels[1]]
-    stats = [_stats(s or [], brand) for s in sides]
+    stats = [_stats(s or [], facts) for s in sides]
     keys = list(dict.fromkeys(k for s in stats for k in s))
     lines += ["", "| 지표 | " + " | ".join(names) + " |", "|---" * (len(names) + 1) + "|"]
     for k in keys:
-        lines.append(f"| {k} | " + " | ".join(s.get(k, "—") for s in stats) + " |")
-    left = [remaining_issues(s or [], brand=brand, disclosure=disclosure, contexts=contexts)
-            for s in sides]
-    codes = sorted(set().union(*left))
-    lines += ["", "| 다듬기 검사로 남은 초안 수 | " + " | ".join(names) + " |",
-              "|---" * (len(names) + 1) + "|"]
-    for c in codes or ["(없음)"]:
-        lines.append(f"| {c} | " + " | ".join(str(x.get(c, 0)) for x in left) + " |")
-    reasons: Counter[str] = Counter()
-    for x in _drafts(after):
-        for retry in x.get("retry_reasons", []):
-            reasons.update(r.split(":", 1)[0] for r in retry)
-    if reasons:
-        lines += ["", f"{labels[1]} 다시 쓰게 만든 까닭: " +
-                  ", ".join(f"{k} {n}번" for k, n in reasons.most_common())]
-    lines += review_trace_lines(after)
+        lines.append(f"| {k} | " + " | ".join(_esc(s.get(k, "—")) for s in stats) + " |")
+    if before is not None:
+        old = {v["video_id"]: v for v in before}
+        width = max([len(v.get("drafts", [])) for v in [*after, *before]] or [0])
+        lines += ["", f"| 영상 | # | {labels[0]} | {labels[1]} |", "|---|---|---|---|"]
+        for v in after:
+            title = _esc(v.get("title") or v["video_id"])[:40]
+            theirs = old.get(v["video_id"], {}).get("drafts", [])
+            for i in range(width):
+                mine = v["drafts"][i] if i < len(v.get("drafts", [])) else None
+                lines.append(f"| {title if i == 0 else ''} | {i + 1} | "
+                             f"{_cell(theirs[i] if i < len(theirs) else None)} | {_cell(mine)} |")
     return "\n".join(lines) + "\n"
 
 
@@ -498,12 +406,6 @@ def _compare(
         out["approve"] = not args.no_approve
         out["videos"] = run(services, order, drafts_per_video=args.drafts, titles=titles,
                             on_video=save, approve=not args.no_approve)
-        contexts = {}
-        for vid in order:
-            try:
-                contexts[vid] = services.context.search_text(services.context.current(vid))
-            except AppError:
-                contexts[vid] = ""
         rules = services.drafts.rules
         out["finished"] = True
         write_json(args.out_json, out)
@@ -511,7 +413,8 @@ def _compare(
         if args.before:
             before = json.loads(args.before.read_text(encoding="utf-8")).get("videos", [])
         table = markdown_table(out["videos"], before=before, labels=labels, brand=rules.brand,
-                               disclosure=rules.disclosure, contexts=contexts)
+                               disclosure=rules.disclosure,
+                               facts=services.drafts.brand_facts)
         if args.out_md:
             args.out_md.parent.mkdir(parents=True, exist_ok=True)
             args.out_md.write_text(table, encoding="utf-8")

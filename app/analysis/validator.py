@@ -1,30 +1,17 @@
-"""댓글 규칙 검사 V1~V14 (DESIGN 5.4, PLAYBOOK 6단계·C1).
+"""댓글 규칙 검사 V1~V6·V8~V11 (docs/COMMENT_REFACTOR.md 5절, 2026-11-18 리팩토링).
 
 네트워크·DB·LLM 없이 도는 순수 함수다. AI가 쓴 초안과 사람이 고친 글이 **같은 함수**를 거친다.
+게시를 막는 검사는 이것뿐이다. 말투·짜임·문장 조각은 보지 않는다(예전 V7·V12·V13·V14 삭제,
+V14의 지어낸 평판 검사는 V10에 합쳤다). 검사 번호는 저장된 예전 결과와 맞추려고 바꾸지 않았다.
 
 - `validate(text, ...)` → `Validation(passed, checks, char_count, evidence_quote)`
-- `find_evidence(text, context_text)` → 글과 영상 자료에 함께 나오는 가장 긴 구절
-  (영상 자료 원문 그대로)
-- `normalize(s)` → 대조용 글: NFC, 소문자, 글자·숫자만 남김(공백·문장부호·이모지·기호 제거)
-- `usable_key_phrases(phrases, context_text)` → 핵심 말 중 영상 자료에 실제로 있고 흔한 낱말이 아닌
-것
-- `derive_key_phrases(texts, context_text)` → 핵심 말 목록이 없을 때(예전 분석) 제목·근거에서 뽑는다
+- `find_evidence(text, context_text)` → 글과 영상 자료에 함께 나오는 가장 긴 구절(원문 그대로)
+- `quote_in_context(quote, context_text)` → 구절이 영상 자료에 있는가(V6과 같은 기준, 분석이 씀)
+- `normalize(s)` → 대조용 글: NFC, 소문자, 글자·숫자만 남김
+- `usable_key_phrases`·`derive_key_phrases`·`strip_hashtags` → 영상 분석이 쓴다
 
-C1(2026-11-17, 과제 예시처럼 자연스럽게): V7은 「근거 구절을 4자 이상 이어서 담음」에서 「그 영상의
-핵심 말을 하나 이상 담음」으로 바뀌었다(흔한 낱말만으로는 통과하지 못한다). 새 V13은 영상 자료나
-고민 한 줄을 길게 그대로 베낀 글을 잡는다. V11은 과제 PDF의 예시 댓글(`ASSIGNMENT_SAMPLE`)과도
-비교한다. V12는 댓글 표기(ㅠㅠ·ㅋㅋ·...·^^)를 받는다. 2026-11-18: V14 ④가 같은 설정을 다른 말로 옮긴
-들은 평판(유명·소문·얘기가 많음·추천·후기)을 받고, 설정에 없는 새 평판·사례(`invented_repute`)를
-막는다.
-새 V14는 브랜드가 뜬금없이 나오지 않게
-들은 얘기(「~다던데」)로 꺼내고 내 바람(「~보고 싶다」「가 봐야겠다」)으로 맺었는지 본다(대표가 본
-초안: 고민 뒤에 곧바로 「운명원에서 연애 사주를 한번 보고 싶어요」).
-
-실패 문구는 "무엇이 걸렸고 → 어떻게 고치면 되는지"를 한 줄로 쓴다. 화면과 5단계 재생성 프롬프트가
-같은 문구를 쓴다.
-
-글자 수는 NFC로 맞춘 뒤의 **코드 포인트 수**다(표기 `[광고]`와 공백 포함). 피부색이 붙은 이모지처럼
-여러 코드 포인트로 된 그림 글자는 2자 이상으로 센다(엄격한 쪽).
+실패 문구는 "무엇이 걸렸고 → 어떻게 고치면 되는지"를 한 줄로 쓴다. 화면과 다시 쓰기 프롬프트가
+같은 문구를 쓴다. 글자 수는 NFC로 맞춘 뒤의 코드 포인트 수이고 광고 표기는 빼고 센다.
 """
 
 from __future__ import annotations
@@ -39,24 +26,12 @@ from typing import Any
 # ---------------------------------------------------------------- 기준값
 
 MIN_EVIDENCE_CHARS = 6  # V6: 근거 구절은 정리 후 6자 이상
-MIN_OVERLAP_CHARS = 4  # (예전 V7 기준. C1부터 V7은 핵심 말로 본다)
-MIN_KEY_PHRASE_CHARS = 2  # 핵심 말: 정리 후 2자 이상
-# 핵심 말: 정리 후 10자 이하(V13 기준보다 짧아야 핵심 말만 넣은 글이 걸리지 않는다)
-MAX_KEY_PHRASE_CHARS = 10
-# V13: 영상 자료·고민 한 줄과 정리 후 이만큼 이어서 같으면 「길게 베낌」. 실제 초안(qwen3.8:27b,
-# 영상 8개)을 보고 정했다 — C1 전 초안은 자막을 20~30자씩 옮겼고, 자연스러운 초안은 핵심 말과
-# 앞뒤 몇 글자(10자 안쪽)만 겹쳤다.
-COPY_LIMIT = 13
-TITLE_QUOTE_LIMIT = 8  # V13: 제목을 따옴표로 이만큼(정리 후) 이상 옮기면 실패("'…'라는 제목부터")
-# V13(C1 다듬기): 제목은 영상 속 말이 아니다. 따옴표 없이도 제목을 이만큼(정리 후) 이어서 옮기면
-# 실패(대표가 본 「연애상담 상상상담 가능이라는 말에」 = 10자). 그 말이 자막·설명·댓글에도 있으면
-# 영상 속 말이므로 일반 기준(`COPY_LIMIT`)만 본다. 1~5회차 실제 초안 98개 중 5개가 9자 이상이었다.
-TITLE_COPY_LIMIT = 9
-SAMPLE_SENTENCE_SIMILARITY = 0.8  # V11: 과제 예시 댓글의 한 문장과 이만큼 비슷한 문장이 있으면 실패
+MIN_KEY_PHRASE_CHARS = 2  # 핵심 말(분석): 정리 후 2자 이상
+MAX_KEY_PHRASE_CHARS = 10  # 핵심 말(분석): 정리 후 10자 이하
 QUOTE_SIMILARITY = 0.85  # V6: 근거 구절이 그대로 없으면 이만큼 비슷한 구간이 있어야 한다
-PREVIOUS_SIMILARITY = 0.6  # V11: 이전 글과 이만큼 비슷하면 실패
-# V11(이야기 방식, 2026-11-18): 글 전체가 비슷해도 운명원 앞부분(영상 얘기)이 이만큼 안 되면 통과
-LEAD_SIMILARITY = 0.5
+# V11: 이전 글과 글 전체가 이만큼 같으면 「사실상 같은 글」(2026-11-18 리팩토링: 0.6 → 0.8.
+# 운명원 대목이 닮은 것만으로는 걸리지 않게)
+PREVIOUS_SIMILARITY = 0.8
 BRAND_GAP = 8  # 따옴표로 옮긴 영상 속 말: 앞뒤 이만큼 안에 브랜드가 있으면 V8~V10 면제 없음
 FACT_EXTRA_CHARS = 3  # V10: 걸린 말 앞뒤로 이만큼 더 brand.facts와 똑같으면 사실 문장으로 본다
 _FIND_MIN = 2  # find_evidence: 정리 후 이보다 짧은 겹침은 구절로 치지 않는다
@@ -66,16 +41,12 @@ CHECK_NAMES: dict[str, str] = {
     "V2": "링크 없음",
     "V3": "해시태그 없음",
     "V4": "홍보 표기 맨 앞",
-    "V5": "브랜드 이름 1~2번",
-    "V6": "근거가 영상 자료에 있음",
-    "V7": "영상의 핵심 말을 담음",
-    "V8": "이용 후기 표현 없음",
-    "V9": "지어낸 연애 사연 없음",
-    "V10": "효능·최상급 표현 없음",
+    "V5": "운명원 1~2번 · 연애 사주",
+    "V6": "짚은 구절이 영상 자료에 있음",
+    "V8": "가 본 척하는 후기 없음",
+    "V9": "지어낸 구체적 연애 사연 없음",
+    "V10": "효능 단정·지어낸 평판 없음",
     "V11": "이전 글과 다름",
-    "V12": "한글·영문·숫자·문장부호만(ㅠㅠ·ㅋㅋ 됨)",
-    "V13": "영상 글을 길게 베끼지 않음",
-    "V14": "브랜드 대목 다섯 조각(요즘·이름·연애 사주·평판·의향)",
 }
 PATTERN_CODES = ("V8", "V9", "V10")
 
@@ -244,7 +215,7 @@ BUILTIN_PATTERNS: dict[str, tuple[str, ...]] = {
 
 @dataclass(frozen=True)
 class CheckResult:
-    code: str  # V1 ~ V14
+    code: str  # V1~V6, V8~V11
     name: str
     passed: bool
     message: str  # 한 줄: 통과면 확인한 내용, 실패면 걸린 것 — 고치는 법
@@ -457,7 +428,7 @@ def _found(matches: list[str]) -> str:
 
 # ---------------------------------------------------------------- 핵심 말(C1)
 
-# 어느 연애 영상에나 나오는 흔한 낱말. 이것 하나만으로는 「그 영상의 핵심 말」이 아니다(V7).
+# 어느 연애 영상에나 나오는 흔한 낱말. 이것 하나만으로는 「그 영상의 핵심 말」이 아니다(분석).
 # 낱말 그대로만 본다 — '남자심리'처럼 붙여 쓴 말은 그 영상의 주제일 수 있어 막지 않는다(과제 예시).
 COMMON_WORDS = frozenset(
     """
@@ -542,7 +513,7 @@ def key_phrase_ok(phrase: str, context_n: str, rules: ValidatorRules | None = No
 def usable_key_phrases(
     phrases: Iterable[str], context_text: str, rules: ValidatorRules | None = None
 ) -> list[str]:
-    """핵심 말 중 쓸 수 있는 것(원래 모양 그대로, 같은 말은 하나). V7과 분석이 같은 기준을 쓴다."""
+    """핵심 말 중 쓸 수 있는 것(원래 모양 그대로, 같은 말은 하나). 분석이 쓴다."""
     context_n = normalize(context_text)
     out: list[str] = []
     seen: set[str] = set()
@@ -577,23 +548,6 @@ def derive_key_phrases(
                 continue
             words.append(word)
     return usable_key_phrases(words, context_text, rules)[:limit]
-
-
-def contains_key_phrase(body: str, phrase: str) -> bool:
-    """글에 핵심 말이 들어 있는가(정리한 글로). 끝 한 글자가 달라도 되고('연락하면' → '연락하는'),
-    끝 두 글자(어미)가 달라도 된다('을이 되지 말고' → '을이 되지 마라'). 남은 말이 4자 이상이고
-    흔한 낱말이 아니어야 한다."""
-    body_n = normalize(body)
-    n = normalize(phrase)
-    if not n:
-        return False
-    if n in body_n:
-        return True
-    for cut in (1, 2):
-        stem = n[:-cut]
-        if len(stem) >= (3 if cut == 1 else 4) and stem in body_n and stem not in COMMON_WORDS:
-            return True
-    return False
 
 
 # ---------------------------------------------------------------- 규칙별 검사
@@ -659,18 +613,18 @@ def _v4_disclosure(text: str, rules: ValidatorRules, *, required: bool = True) -
     return _check("V4", False, f"홍보 표기 {mark}가 없습니다 — 글을 '{mark} '로 시작하세요")
 
 
-def _v5_brand(text: str, rules: ValidatorRules, *, story: bool = False) -> CheckResult:
-    """V5 브랜드 이름 1~2번. 이야기 방식(2026-11-18 대표: 운명원 연애 사주 언급은 과제 필수)은
-    연애와 사주 얘기도 있어야 한다(「연애 사주」·「연애사주」·「연애 쪽 사주」 모두 된다)."""
+def _v5_brand(text: str, rules: ValidatorRules) -> CheckResult:
+    """V5 브랜드 이름 1~2번, 그리고 글 안에 '연애'와 '사주'가 둘 다 있다(「연애 사주」·「연애사주」·
+    「연애 쪽 사주」·「사주로 연애운」 모두 된다)."""
     brand = rules.brand
     count = text.count(brand) if brand else 0
     if count == 0:
         return _check("V5", False, f"브랜드 이름 '{brand}'이(가) 없습니다 — 한 번 넣으세요")
     if count > 2:
         return _check("V5", False, f"'{brand}'이(가) {count}번 나옵니다 — 1~2번으로 줄이세요")
-    if story and not ("연애" in text and "사주" in text):
+    if not ("연애" in text and "사주" in text):
         return _check("V5", False, f"'{brand}' 연애 사주 얘기가 없습니다 — 함께 말하세요")
-    return _check("V5", True, f"'{brand}' {count}번" + (" · 연애 사주" if story else ""))
+    return _check("V5", True, f"'{brand}' {count}번 · 연애 사주")
 
 
 def _v6_evidence(
@@ -723,114 +677,6 @@ def _v6_evidence(
 
     return v6, quote or None
 
-
-def _v7_key_phrases(
-    text: str,
-    context_text: str,
-    rules: ValidatorRules,
-    key_phrases: Sequence[str] | None,
-    *,
-    story: bool = False,
-) -> CheckResult:
-    """C1: 글이 그 영상의 핵심 말을 하나 이상 담았는가.
-
-    이야기 방식(`story`, 2026-11-18 대표: 「영상 속 구체적인 장면이나 말을 하나 이상」)에서는 AI가
-    자료를 직접 읽고 장면을 고르므로, 분석의 핵심 말이 아니어도 영상 자료와 6자 이상 겹치는 말을
-    담으면 통과한다.
-
-    핵심 말은 영상 자료에 그대로 있고 흔한 낱말이 아니어야 한다(`usable_key_phrases`). 분석의 핵심
-    말이 주어지면 그것만 본다. 목록이 없거나 쓸 수 있는 것이 없으면(예전 분석·분석 전에
-    사람이 쓴 글) 제목과 해시태그에서 코드로 뽑은 핵심 말을 보고, 그것도 없으면 영상 자료와 정리 후
-    `MIN_EVIDENCE_CHARS`(6)자 이상 겹치는 말(V6과 같은 기준)이 있으면 통과로 본다.
-    """
-    body = _strip_markers(text, rules)
-    phrases = usable_key_phrases(key_phrases or (), context_text, rules)
-    if phrases:
-        hits = [p for p in phrases if contains_key_phrase(body, p)]
-        if hits:
-            return _check("V7", True, f"핵심 말 {_found(hits)} 담음")
-        shared = (find_evidence(body, context_text) or "") if story else ""
-        if len(normalize(shared)) >= MIN_EVIDENCE_CHARS and not is_common_word(shared):
-            return _check("V7", True, f"영상 자료의 말 '{_clip(shared)}' 담음")
-        shown = ", ".join(f"'{_clip(p, 12)}'" for p in phrases[:4])
-        return _check(
-            "V7", False,
-            f"이 영상의 핵심 말({shown})이 글에 없습니다 — 이 중 하나 이상을 넣으세요"
-            "(풀이말은 끝을 바꿔도 됩니다)",
-        )
-    # 2026-11-18: 해시태그 낱말은 핵심 말로 뽑지 않는다(제목에서 #태그를 빼고, 자료에 #태그 말고
-    # 그대로 있는 말만)
-    title = strip_hashtags((context_text or "").split("\n", 1)[0])
-    derived = derive_key_phrases([title], strip_hashtags(context_text or ""), rules)
-    hits = [p for p in derived if contains_key_phrase(body, p)]
-    if hits:
-        return _check("V7", True, f"핵심 말 {_found(hits)} 담음 · 제목에서 뽑은 핵심 말")
-    shared = find_evidence(body, context_text) or ""
-    if len(normalize(shared)) >= MIN_EVIDENCE_CHARS and not is_common_word(shared):
-        return _check(
-            "V7", True, f"영상 자료와 겹치는 말 '{_clip(shared)}' 담음(분석의 핵심 말 없음)"
-        )
-    shown = ", ".join(f"'{_clip(p, 12)}'" for p in derived[:4])
-    hint = f"이 영상의 핵심 말({shown})" if derived else "이 영상의 사람 이름·용어·표현"
-    return _check(
-        "V7", False, f"영상 속 말이 글에 없습니다 — {hint}을 하나 이상 그대로 넣으세요"
-    )
-
-
-def _longest_shared(body_n: str, source: str) -> tuple[int, str]:
-    """(정리 후 이어서 같은 글자 수, 원문 구간). `body_n`은 정리한 글."""
-    raw = unicodedata.normalize("NFC", source or "")
-    src_n, index = _normalize_map(raw)
-    _, start, size = _longest_common(body_n, src_n)
-    if size == 0:
-        return 0, ""
-    return size, raw[index[start] : index[start + size - 1] + 1].strip()
-
-
-def _v13_copy(text: str, context_text: str, rules: ValidatorRules, concern: str) -> CheckResult:
-    """C1: 영상 자료(제목·설명·자막·댓글)나 고민 한 줄을 길게 그대로 옮기지 않았는가.
-
-    자동 자막은 말하다 만 문장이라 그대로 옮기면 말이 안 된다(대표가 본 초안). 정리 후
-    `COPY_LIMIT`자 이상 이어서 같으면 실패. 핵심 말(10자 이하)만 넣은 글은 걸리지 않는다.
-    제목은 따로 본다: 따옴표 안 `TITLE_QUOTE_LIMIT`자, 따옴표 없이 `TITLE_COPY_LIMIT`자(그 말이
-    자막·설명·댓글에 없을 때 — 제목은 영상 속 말이 아니다).
-    """
-    body_n = normalize(_strip_markers(text, rules))
-    worst = (0, "", "")
-    for label, source in (("영상 자료", context_text), ("고민 한 줄", concern)):
-        if not source:
-            continue
-        size, span = _longest_shared(body_n, _strip_markers(source, rules))
-        if size > worst[0]:
-            worst = (size, label, span)
-    size, label, span = worst
-    title = (context_text or "").split("\n", 1)[0]
-    title_n = normalize(_strip_markers(title, rules))
-    for m in _QUOTED.finditer(text):
-        inner_n = normalize(next(g for g in m.groups() if g is not None))
-        if len(inner_n) >= TITLE_QUOTE_LIMIT and inner_n in title_n:
-            return _check(
-                "V13", False,
-                f"영상 제목을 따옴표로 그대로 옮겼습니다({_clip(m.group(0), 20)}) — "
-                "제목은 옮기지 말고 영상 속 말이나 장면을 내 말로 짚으세요",
-            )
-    rest = (context_text or "").partition("\n")[2]
-    t_size, t_span = _longest_shared(body_n, _strip_markers(title, rules))
-    if COPY_LIMIT > t_size >= TITLE_COPY_LIMIT and normalize(t_span) not in normalize(
-        _strip_markers(rest, rules)
-    ):
-        return _check(
-            "V13", False,
-            f"영상 제목의 '{_clip(t_span, 20)}'를 {t_size}자 이어서 옮겼습니다 — 제목은 영상 속 "
-            "말이 아니니 '~라는 말에'로 받지 말고 영상 속 장면이나 말을 내 말로 짚으세요",
-        )
-    if size >= COPY_LIMIT:
-        return _check(
-            "V13", False,
-            f"{label}의 '{_clip(span, 20)}'를 {size}자 이어서 그대로 옮겼습니다 — 핵심 말만 남기고 "
-            "나머지는 내 말로 바꾸세요",
-        )
-    return _check("V13", True, f"영상 글과 가장 길게 겹친 곳 {size}자({COPY_LIMIT}자 미만)")
 
 
 def _fact_allows(text: str, start: int, end: int, facts_n: list[str]) -> bool:
@@ -948,180 +794,41 @@ def _pattern_check(
     return _check(code, True, "걸린 표현 없음")
 
 
-# V12: 허용 글자(PLAYBOOK 6단계 표). 공백 문자는 여기서 받고 줄바꿈은 V1이 잡는다.
-# C1: 댓글 표기 ^^ 와 말줄임 ‥ 를 더했다(ㅠㅠ·ㅋㅋ 같은 한글 자모는 처음부터 받았다).
-ALLOWED_PUNCT = frozenset(".,!?~'\"‘’“”…‥·-()[]%:/^")
-
-
-def _allowed_char(ch: str) -> bool:
-    o = ord(ch)
-    return (
-        0xAC00 <= o <= 0xD7A3  # 한글 완성형
-        or 0x1100 <= o <= 0x11FF  # 한글 낱자
-        or 0x3130 <= o <= 0x318F  # 한글 호환 낱자(ㄱ, ㅏ, ㆍ …)
-        or ("a" <= ch <= "z") or ("A" <= ch <= "Z") or ("0" <= ch <= "9")
-        or ch.isspace()
-        or ch in ALLOWED_PUNCT
-    )
-
-
-def _char_kind(ch: str) -> str:
-    o = ord(ch)
-    if 0x4E00 <= o <= 0x9FFF or 0x3400 <= o <= 0x4DBF or 0xF900 <= o <= 0xFAFF or o >= 0x20000:
-        return "한자"
-    if 0x3040 <= o <= 0x30FF or 0x31F0 <= o <= 0x31FF or 0xFF66 <= o <= 0xFF9F:
-        return "일본어 글자"
-    if o in (0x200D, 0xFE0E, 0xFE0F) or unicodedata.category(ch) in ("Cf", "Mn", "Cc"):
-        return "보이지 않는 글자"
-    if 0x1F000 <= o <= 0x1FAFF or 0x2600 <= o <= 0x27BF or unicodedata.category(ch) == "So":
-        return "이모지·기호"
-    return "허용하지 않는 문자"
-
-
-def _v12_charset(text: str, rules: ValidatorRules) -> CheckResult:
-    body = _strip_markers(text, rules)  # 설정한 표기·브랜드 이름은 그대로 둔다
-    bad = list(dict.fromkeys(ch for ch in body if not _allowed_char(ch)))
-    if not bad:
-        return _check("V12", True, "한글·영문·숫자·문장부호만 씀")
-    shown = []
-    for ch in bad[:5]:
-        kind = _char_kind(ch)
-        label = f"U+{ord(ch):04X}" if kind == "보이지 않는 글자" else ch
-        shown.append(f"'{label}'({kind})")
-    more = f" 외 {len(bad) - 5}개" if len(bad) > 5 else ""
-    return _check(
-        "V12", False,
-        f"쓸 수 없는 글자가 있습니다: {', '.join(shown)}{more} — 지우거나 한글로 바꾸세요",
-    )
-
-
-# 과제 PDF의 예시 댓글(남자심리 분석 영상). 초안 프롬프트에 **말투 기준으로만** 보여 주고,
-# 그것을 베낀 글은 V11이 잡는다(C1). 다른 영상 글이므로 핵심 말·근거로는 쓰지 않는다.
-ASSIGNMENT_SAMPLE = (
-    "근데 진짜 남자심리는 알다가도 모르겠다...ㅠㅠ 맨날 연애하면 차이기만 했던 1인. "
-    "결국 심리 알기는 개뿔 그냥 인연이면 만나는 것 같아요. "
-    "운명원 연애사주가 그렇게 잘 본다던데 나도 언제 짝 만나는지 한번 보고 싶다. "
-    "각자 정해진 운명이 있는 듯."
-)
-_SENT_SPLIT = re.compile(r"[.!?…\n]+")
-_SAMPLE_MIN_SENTENCE = 10  # 정리 후 이보다 짧은 문장은 문장끼리 비교하지 않는다
-
-
-def _sentences_n(text: str, rules: ValidatorRules) -> list[str]:
-    out = []
-    for part in _SENT_SPLIT.split(_strip_markers(text, rules)):
-        n = normalize(part)
-        if len(n) >= _SAMPLE_MIN_SENTENCE:
-            out.append(n)
-    return out
-
-
-def _sample_similarity(text: str, rules: ValidatorRules) -> tuple[float, float]:
-    """(과제 예시와 글 전체 유사도, 문장끼리 가장 비슷한 유사도)."""
-    body_n = normalize(_strip_markers(text, rules))
-    sample_n = normalize(_strip_markers(ASSIGNMENT_SAMPLE, rules))
-    whole = SequenceMatcher(None, body_n, sample_n, autojunk=False).ratio() if body_n else 0.0
-    best = 0.0
-    for a in _sentences_n(text, rules):
-        for b in _sentences_n(ASSIGNMENT_SAMPLE, rules):
-            best = max(best, SequenceMatcher(None, a, b, autojunk=False).ratio())
-    return whole, best
-
-
-def _lead_n(text: str, brand: str) -> str:
-    """운명원 이름 앞(이야기 방식의 기·승·전), 정규화한 것. 이름이 없으면 글 전체."""
-    at = text.find(brand) if brand else -1
-    return normalize(text if at < 0 else text[:at])
-
-
 def _v11_previous(
-    text: str, previous_texts: Sequence[str], rules: ValidatorRules, *, story: bool = False
+    text: str, previous_texts: Sequence[str], rules: ValidatorRules
 ) -> CheckResult:
-    """V11. `story`(이야기 방식, 2026-11-18 대표 기준 「비슷한 건 괜찮고 똑같은 것만」)면 글 전체가
-    PREVIOUS_SIMILARITY 넘게 비슷해도 운명원 앞부분(영상 얘기)이 LEAD_SIMILARITY 밑이면 통과한다 —
-    끝 문장(결)이 닮은 것만으로는 걸리지 않는다."""
+    """V11 이전 글과 사실상 같은 글이 아닌가(2026-11-18 리팩토링: 글 전체만 본다).
+
+    비교 대상은 다른 영상에서 승인·게시한 글. 표기와 브랜드 이름은 빼고 정리한 글끼리
+    `PREVIOUS_SIMILARITY` 이상이면 실패. 운명원 대목이 닮은 것만으로는 걸리지 않게 높게
+    둔다."""
     body_n = normalize(_strip_markers(text, rules))
-    # 앞부분은 운명원 이름 앞까지 — 이름을 지우기 전 글에서 자른다(표기만 뺀다)
-    lead = _lead_n(text.replace(rules.disclosure, " "), rules.brand) if story else ""
     best, best_text = 0.0, ""
-    excused = 0.0
     for prev in previous_texts:
-        plain = _strip_markers(unicodedata.normalize("NFC", prev or ""), rules)
-        prev_n = normalize(plain)
+        prev_n = normalize(_strip_markers(unicodedata.normalize("NFC", prev or ""), rules))
         if not prev_n or not body_n:
             continue
         ratio = SequenceMatcher(None, body_n, prev_n, autojunk=False).ratio()
-        if story and ratio >= PREVIOUS_SIMILARITY:
-            raw = unicodedata.normalize("NFC", prev or "").replace(rules.disclosure, " ")
-            theirs = _lead_n(raw, rules.brand)
-            if lead and theirs and SequenceMatcher(
-                    None, lead, theirs, autojunk=False).ratio() < LEAD_SIMILARITY:
-                excused = max(excused, ratio)  # 앞부분이 다르면 다른 글(끝 문장만 닮음)
-                continue
         if ratio > best:
             best, best_text = ratio, prev
-    whole, sentence = _sample_similarity(text, rules)
-    if whole >= PREVIOUS_SIMILARITY or sentence >= SAMPLE_SENTENCE_SIMILARITY:
-        return _check(
-            "V11", False,
-            f"과제 예시 댓글과 {max(whole, sentence):.0%} 비슷합니다 — 예시는 말투만 참고하고 "
-            "이 영상의 장면·말로 새로 쓰세요",
-        )
     if best >= PREVIOUS_SIMILARITY:
         shown = _clip(_strip_markers(best_text, rules).strip(), 20)
         return _check(
             "V11", False,
-            f"이전 글 '{shown}'와 {best:.0%} 비슷합니다 — 이 영상의 장면·말로 새로 쓰세요",
+            f"이전 글 '{shown}'와 {best:.0%} 같습니다 — 이 영상의 장면과 내 고민으로 새로 쓰세요",
         )
     if not previous_texts:
         return _check("V11", True, "비교할 이전 글 없음")
-    note = f" · 끝 문장만 닮은 글 {excused:.0%}(앞부분이 달라 통과)" if excused else ""
     return _check(
-        "V11", True,
-        f"이전 글 {len(previous_texts)}개와 비교 · 가장 비슷한 것 {best:.0%}{note}",
+        "V11", True, f"이전 글 {len(previous_texts)}개와 비교 · 가장 비슷한 것 {best:.0%}"
     )
 
 
-# V14: 운명원 대목의 다섯 조각(2026-11-17 대표). 기본 문장은 「요즘 운명원 연애 사주 잘 본다고
-# 하던데 저도 언제 한번 가 보려고요」 — ① 때(요즘·요새·최근) ② 이름 ③ 연애 사주 ④ 잘 본다는
-# 평판을 들은 얘기로(「~다고 하던데」「~다는 얘기가 있더라구요」) ⑤ 이용해 보겠다는 뜻(가 보다·
-# 방문하다·상담받다·사주 보다·알아보다 + 려고요·고 싶어요·볼까 해요·생각이에요). 브랜드가 든
-# 문장과 그 앞뒤 문장에서 찾는다. 편한 맞춤법(하더라구요·하더라구여·가보려구요·봐보려구요)과
-# 붙여 쓴 「연애사주」도 받는다. 「한번 보고 싶다」(과제 예시의 끝말)는 「사주 보다」로 본다.
-# 「~인지 보러 가려구요」「~인지 (시간 내서) 보고 싶네요」(알고 싶은 것 + 의향)도 ⑤(V14_WISH).
-V14_TIME = re.compile(r"(?<![가-힣])(?:요즘|요새|최근)")
-V14_LOVE = re.compile(r"연애\s?(?:쪽\s?)?사주")
-# 2026-11-18(기획 담당 · 대표 의견): 과제 설정 「연애 사주 잘 봐주는 곳으로 유명한 곳」을 다른
-# 말로 옮긴 들은 평판도 ④로 받는다 — 유명(「연애사주로 유명하던데」)·소문(「잘 본다고
-# 소문났던데」「입소문이 났던데」)·얘기가 많음(「잘 본다는 얘기가 많던데」「운명원이라는 말이
-# 많던데」)·추천(「주변에서 많이 추천하던데」)·후기(「잘 본다는 후기가 많던데」).
-# 모두 들은 꼴(~던데·~더라·~다던데·~대요)
-_HEARD_END = r"(?:던데|더라|다던데|대요|는데)"
-V14_REPUTE = re.compile(
-    r"(?:잘\s?(?:보|봐|본|맞|맞추|맞춘|맞히|맞힌|맞혀)|정확|유명)[^.!?…]{0,16}?"
-    r"(?:" + HEARSAY_TAIL.pattern + r")"
-    r"|유명[^.!?…]{0,4}?" + _HEARD_END
-    + r"|소문[^.!?…]{0,6}?(?:났|나\s?있|자자)[^.!?…]{0,4}?" + _HEARD_END
-    + r"|(?:얘기|이야기|말|후기)(?:가|이|도)\s?(?:많|자자)[^.!?…]{0,4}?" + _HEARD_END
-    + r"|추천[^.!?…]{0,8}?" + _HEARD_END
-)
-V14_INTENT = re.compile(
-    r"(?:가\s?(?:보|봐|볼)|가\s?려|가서|방문|상담|찾아\s?가|들러|들르|알아\s?(?:보|봐|볼)|"
-    r"봐\s?보|받아\s?(?:보|봐|볼)|사주\s?(?:를\s?|도\s?)?(?:보|봐|볼)|(?:한번|한\s번)\s?(?:보|봐|볼))"
-    r"[^.!?…]{0,14}?"
-    r"(?:려[고구]|려요|련다|고\s?싶|싶|볼까|까\s?(?:해|싶|봐)|생각|야겠|야지|봐야|면\s?좋겠|래요)"
-)
-# 2026-11-18 기획 담당 D-1: 사주로 알고 싶은 것 + 보러 가겠다는 말(「저도 다시 만날 인연인지 기회
-# 되면 보러 가려구요」「저도 이 사람이 인연인지 언제 시간 내서 보고 싶네요」). 「~인지 궁금하네요」
-# 처럼 궁금하다로만 끝나면 받지 않는다
-V14_WISH = re.compile(
-    r"(?:보러|알아보러|물어보러)\s?(?:가|갈|와)[^.!?…]{0,10}?(?:려[고구]|려요|볼까|생각|고\s?싶|싶)"
-    r"|(?:인지|는지|건지|[을ㄹ날볼할갈될올질릴]지)\s+(?:[^\s.!?…]+\s+){0,4}?"
-    r"(?:보\s?고\s?싶|봐\s?보고\s?싶|봤으면|보려[고구])"
-)
 # 2026-11-18(기획 담당 · 대표 의견): 운명원 대목(이름이 든 문장과 그다음 문장)에 과제 설정에 없는 새
-# 평판·사례를 지어내지 않는다. 들은 평판은 위 ④의 꼴뿐이다. brand.facts에 그대로 있는 말은 된다.
-V14_INVENTED: tuple[tuple[str, re.Pattern[str]], ...] = (
+# 평판·사례를 지어내지 않는다(V10). brand.facts에 그대로 있는 말은 된다.
+# 문장 끝: 마침표류, 또는 ㅠㅠ·ㅋㅋ 뒤의 띄어쓰기(댓글은 마침표 없이 이어 쓴다)
+_SENTENCE_SPLIT = re.compile(r"[.!?…\n]+|(?<=[ㄱ-ㅎㅏ-ㅣ])\s+")
+INVENTED_REPUTE: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("예약·대기", re.compile(
         r"예약|대기\s?(?:가|도|해|하|시간|줄)|웨이팅|줄\s?(?:서|을\s?서|이\s?길)|밀렸|밀려\s?있")),
     ("방송·출연", re.compile(
@@ -1149,7 +856,7 @@ _OTHERS_USED = re.compile(
 def invented_repute(sentence: str, facts_n: Sequence[str] = ()) -> tuple[str, str] | None:
     """문장 하나에서 설정에 없는 새 평판·사례 (종류, 걸린 말). 없으면 None. brand.facts에 그대로
     있는 말(`facts_n`: normalize한 사실 문장)은 넘어간다."""
-    for label, pattern in V14_INVENTED:
+    for label, pattern in INVENTED_REPUTE:
         for m in pattern.finditer(sentence):
             word = m.group(0)
             if facts_n and any(normalize(word) in f for f in facts_n):
@@ -1164,45 +871,13 @@ def invented_repute(sentence: str, facts_n: Sequence[str] = ()) -> tuple[str, st
     return None
 
 
-# 빠진 조각을 알리는 말(조각 순서대로)
-V14_MISSING = (
-    ("time", "'요즘/요새'가 없습니다"),
-    ("love", "연애 사주가 없습니다"),
-    ("repute", "잘 본다는 평판(~다고 하던데)이 없습니다"),
-    ("intent", "가 보겠다는 말(가 보려고요 등)이 없습니다"),
-)
-# 문장 끝: 마침표류, 또는 ㅠㅠ·ㅋㅋ 뒤의 띄어쓰기(댓글은 마침표 없이 이어 쓴다)
-_V14_SPLIT = re.compile(r"[.!?…\n]+|(?<=[ㄱ-ㅎㅏ-ㅣ])\s+")
-
-
-def brand_pieces(text: str, brand: str, disclosure: str = "") -> list[str]:
-    """운명원 대목에서 빠진 조각 이름(`V14_MISSING`의 열쇠). 브랜드가 없으면 빈 목록.
-
-    브랜드가 여러 곳이면 가장 덜 빠진 곳을 본다."""
-    body = text.replace(disclosure, " ") if disclosure else text
-    parts = [p.strip() for p in _V14_SPLIT.split(body) if p and p.strip()]
-    spots = [i for i, p in enumerate(parts) if brand and brand in p]
-    best: list[str] | None = None
-    for i in spots:
-        chunk = " . ".join(parts[max(0, i - 1) : i + 2])
-        missing = [
-            key for key, pattern in (
-                ("time", V14_TIME), ("love", V14_LOVE), ("repute", V14_REPUTE),
-                ("intent", V14_INTENT),
-            ) if not pattern.search(chunk)
-            and not (key == "intent" and V14_WISH.search(chunk))
-        ]
-        if best is None or len(missing) < len(best):
-            best = missing
-    return best or []
-
 
 def brand_invented(
     text: str, brand: str, disclosure: str = "", facts_n: Sequence[str] = ()
 ) -> tuple[str, str] | None:
     """운명원 대목(이름이 든 문장과 그다음 문장)의 새 평판·사례(`invented_repute`)."""
     body = text.replace(disclosure, " ") if disclosure else text
-    parts = [p.strip() for p in _V14_SPLIT.split(body) if p and p.strip()]
+    parts = [p.strip() for p in _SENTENCE_SPLIT.split(body) if p and p.strip()]
     for i, p in enumerate(parts):
         if brand and brand in p:
             for s in parts[i : i + 2]:
@@ -1212,58 +887,28 @@ def brand_invented(
     return None
 
 
-def _v14_brand_intro(
-    text: str, rules: ValidatorRules, facts_n: Sequence[str] = ()
+
+def _v10_claims(
+    text: str, rules: ValidatorRules, facts_n: list[str], quoted: Sequence[tuple[int, int]]
 ) -> CheckResult:
-    brand = rules.brand
-    if not brand or brand not in text:
-        return _check("V14", True, f"'{brand}' 없음(V5에서 봄)")
-    invented = brand_invented(text, brand, rules.disclosure, facts_n)
+    """V10 효능 단정·최상급(표현 목록) + 운명원 대목의 지어낸 평판·사례(예전 V14를 합침)."""
+    v10 = _pattern_check(
+        "V10", text, rules,
+        "확인할 수 없는 효능·최상급입니다. 빼거나 brand.facts의 사실로 바꾸세요",
+        facts_n,
+        quoted=quoted,
+    )
+    if not v10.passed:
+        return v10
+    invented = brand_invented(text, rules.brand, rules.disclosure, facts_n)
     if invented:
         label, word = invented
         return _check(
-            "V14", False,
-            f"'{brand}' 대목에 설정에 없는 평판·사례({label}: '{word}')가 있습니다 — 들은 "
-            "평판은 '연애사주 잘 본다고 하던데', '잘 보기로 유명하다던데', '주변에서 많이 "
-            "추천하던데'처럼만 쓰세요",
+            "V10", False,
+            f"'{rules.brand}'에 대해 설정에 없는 평판·사례({label}: '{word}')가 있습니다 — "
+            "연애 사주를 잘 보기로 유명하다는 것만 말하세요",
         )
-    missing = brand_pieces(text, brand, rules.disclosure)
-    if not missing:
-        return _check("V14", True, f"'{brand}' 대목에 다섯 조각이 다 있음")
-    said = dict(V14_MISSING)
-    return _check(
-        "V14", False,
-        f"'{brand}' 대목에 " + " · ".join(said[k] for k in missing)
-        + f" — '요즘 {brand} 연애 사주 잘 본다고 하던데 저도 언제 한번 가 보려고요'처럼 "
-        "다섯 조각을 다 넣으세요",
-    )
-
-
-# 이야기 방식(2026-11-18 대표 표): 코드는 글자 수 · 영상 근거 · 운명원 언급 · 허위 후기만 본다.
-# 기승전결·맥락·한 목소리·운명원이 뜬금없는지는 AI 검토(`review.story_review_system`)가 본다.
-STORY_V14_NAME = "운명원 대목에 지어낸 평판·사례 없음"
-
-
-def _story_skipped(code: str) -> CheckResult:
-    return _check(code, True, "이야기 방식에서는 코드로 보지 않음(대표 표 — AI 검토가 봄)")
-
-
-def _v14_story(text: str, rules: ValidatorRules, facts_n: Sequence[str] = ()) -> CheckResult:
-    """이야기 방식의 V14(2026-11-18 대표 표): 허위만 막는다 — 설정에 없는 평판·사례를 지어내지
-    않았는가. 첫 문장 자리·조각(연애 사주·들은 평판·보러 갈 뜻)은 AI가 쓰고 AI 검토가 본다."""
-    brand = rules.brand
-    name = STORY_V14_NAME
-    if not brand or brand not in text:
-        return CheckResult("V14", name, True, f"'{brand}' 없음(V5에서 봄)")
-    invented = brand_invented(text, brand, rules.disclosure, facts_n)
-    if invented:
-        label, word = invented
-        return CheckResult(
-            "V14", name, False,
-            f"'{brand}' 대목에 설정에 없는 평판·사례({label}: '{word}')가 있습니다 — 들은 "
-            "평판은 '연애 사주 잘 본다던데'처럼만 쓰세요",
-        )
-    return CheckResult("V14", name, True, f"'{brand}' 대목에 지어낸 평판·사례 없음")
+    return v10
 
 
 # ---------------------------------------------------------------- 전체 검사
@@ -1278,62 +923,38 @@ def validate(
     previous_texts: Sequence[str],
     evidence_quote: str | None = None,
     disclosure_required: bool = True,
-    key_phrases: Sequence[str] | None = None,
-    concern: str = "",
-    story: bool = False,
 ) -> Validation:
-    """V1~V14를 모두 돌린다. 하나라도 실패하면 `passed=False`.
-
-    - `disclosure_required`: 거짓이면 V4가 표기 없는 글도 「표기 끔」으로 통과시킨다(R3: 초안의
-      「광고 표기 붙이기」를 끈 경우. 어떤 영상이든)
+    """V1~V6·V8~V11을 모두 돌린다. 하나라도 실패하면 `passed=False`(게시를 막는 검사는 이것뿐).
 
     - `context_text`: 대조할 영상 자료 전체(3단계 `search_text`: 제목·설명·자막·댓글, 자르지 않음)
-    - `previous_texts`: 이전에 승인·게시한 글들(V11). 5단계 전까지는 빈 목록
-    - `evidence_quote`: AI가 고른 근거 구절(5단계). 없으면 `find_evidence`로 찾는다
-    - `key_phrases`: 분석이 뽑은 그 영상의 핵심 말(V7, C1). 없으면 제목·근거에서 코드로 뽑는다
-    - `concern`: 분석의 고민 한 줄(V13: 그대로 길게 옮겼는지 본다)
-    - `story`: 이야기 방식(`comment.writer: story`, 2026-11-18 대표 표)이면 코드는 글자 수 ·
-      영상 근거 · 운명원 언급 · 허위(후기·사연·효능·지어낸 평판)와 원문 금지(링크·해시태그·
-      영상마다 다르게)·표기만 본다. V7·V12·V13은 「보지 않음」으로 통과, V14는 지어낸 평판만
-      본다
+    - `previous_texts`: 이전에 승인·게시한 글들(V11)
+    - `evidence_quote`: 초안이 짚은 영상 구절(AI가 돌려준 `used_quote`). 없으면 글에서 찾는다(V6)
+    - `disclosure_required`: 거짓이면 V4가 표기 없는 글도 「표기 끔」으로 통과시킨다(R3)
     """
     clean = unicodedata.normalize("NFC", text or "").strip()
     facts_n = [normalize(f) for f in brand_facts if f and f.strip()]
 
     v6, quote = _v6_evidence(clean, context_text or "", rules, evidence_quote)
-    # 이야기 방식(2026-11-18 대표): 영상 말을 글자 그대로 넣게 하면 따옴표 자국이 남고 제 말로
-    # 풀어 쓴 글이 걸린다 — 영상 근거는 V6, 장면을 맞게 짚었는지는 AI 검수가 본다
-    v7 = (_story_skipped("V7") if story
-          else _v7_key_phrases(clean, context_text or "", rules, key_phrases))
     quoted = _quoted_spans(clean, context_text or "", rules)
     checks = (
         _v1_length(clean, rules),
         _v2_links(clean),
         _v3_hashtags(clean),
         _v4_disclosure(clean, rules, required=disclosure_required),
-        _v5_brand(clean, rules, story=story),
+        _v5_brand(clean, rules),
         v6,
-        v7,
         _pattern_check(
             "V8", clean, rules,
-            "직접 이용한 후기처럼 읽힙니다. 영상 내용에 공감하는 말로 바꾸세요",
+            "가 본 적 있는 후기처럼 읽힙니다. 아직 안 가 본 사람의 말로 바꾸세요",
             quoted=quoted,
         ),
         _pattern_check(
             "V9", clean, rules,
-            "지어낸 연애 사연(내 애인 이야기)입니다. 영상에 대한 반응과 공감으로 바꾸세요",
+            "지어낸 구체적 연애 사연(내 애인 이야기)입니다. 내 처지는 한마디로만 말하세요",
             quoted=quoted,
         ),
-        _pattern_check(
-            "V10", clean, rules,
-            "확인할 수 없는 효능·최상급입니다. 빼거나 brand.facts의 사실로 바꾸세요",
-            facts_n,
-            quoted=quoted,
-        ),
-        _v11_previous(clean, previous_texts, rules, story=story),
-        _story_skipped("V12") if story else _v12_charset(clean, rules),
-        _story_skipped("V13") if story else _v13_copy(clean, context_text or "", rules, concern),
-        _v14_story(clean, rules, facts_n) if story else _v14_brand_intro(clean, rules, facts_n),
+        _v10_claims(clean, rules, facts_n, quoted),
+        _v11_previous(clean, previous_texts, rules),
     )
     return Validation(
         passed=all(c.passed for c in checks),

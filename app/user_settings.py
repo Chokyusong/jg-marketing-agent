@@ -41,8 +41,6 @@ TYPING_SPEEDS: dict[str, tuple[int, int]] = {
     "fast": (25, 70),
 }
 TYPING_SPEED_LABELS = {"slow": "느리게", "normal": "보통", "fast": "빠르게"}
-# 2026-11-18 댓글 쓰는 방식(`app/analysis/story.py`의 WRITER_LABELS와 같은 말)
-WRITER_LABELS = {"story": "이야기처럼(권장)", "pieces": "조각 맞추기(예전)"}
 # 2026-11-18 대표: 게시 뒤 크롬 창. 열어 두기를 고르면 config.yaml의 초(0이면 300초)를 쓴다
 AFTER_POST_WINDOW_LABELS = {"keep": "열어 두기(5분)", "close": "바로 닫기"}
 KEEP_WINDOW_DEFAULT_SECONDS = 300
@@ -275,9 +273,6 @@ FIELDS: dict[str, Field] = {
     "comment.disclosure": Field("str", "광고 표기 문구", ("comment", "disclosure"), 1, 20),
     "comment.disclose_default": Field("bool", "광고 표기 기본값", ("comment", "disclose_default")),
     "comment.ai_review": Field("bool", "AI 검수 한 번", ("comment", "ai_review")),
-    "comment.writer": Field(
-        "choice", "댓글 쓰는 방식", ("comment", "writer"), choices=tuple(WRITER_LABELS)
-    ),
     "limits.daily_max_comments": Field(
         "int", "하루 상한", ("limits", "daily_max_comments"), 1, 50
     ),

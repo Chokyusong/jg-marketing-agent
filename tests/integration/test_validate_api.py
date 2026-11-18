@@ -56,8 +56,10 @@ def test_good_text_passes_and_builds_context_when_missing(client_and_mock):
     assert data["passed"] is True
     assert data["char_count"] == len(GOOD)
     assert (data["min_chars"], data["max_chars"], data["disclosure"]) == (40, 120, "[광고]")
-    assert (data["passed_count"], data["total"]) == (14, 14)  # C1: V14
-    assert [c["code"] for c in data["checks"]] == [f"V{i}" for i in range(1, 15)]
+    # 2026-11-18 지시서 5절: V1~V6·V8~V11 열 개
+    assert (data["passed_count"], data["total"]) == (10, 10)
+    assert [c["code"] for c in data["checks"]] == [
+        "V1", "V2", "V3", "V4", "V5", "V6", "V8", "V9", "V10", "V11"]
     assert set(data["checks"][0]) == {"code", "name", "passed", "message"}
     assert data["evidence_quote"] == "하루에 한 번 연락으로 싸운"
     # 맥락이 없어서 만들었다: 영상 상세 1 + 인기 댓글 1
@@ -89,21 +91,23 @@ def test_link_fails_v2_and_removing_it_passes(client_and_mock):
     client, _ = client_and_mock
     data = post(client, GOOD + " www.example.com").json()
     assert data["passed"] is False
-    assert data["passed_count"] == 13
+    assert data["passed_count"] == 9
     v2 = by_code(data)["V2"]
     assert v2["passed"] is False and "링크를 지우세요" in v2["message"]
     assert post(client, GOOD).json()["passed"] is True
 
 
-def test_human_text_without_evidence_fails_v6_v7(client_and_mock):
+def test_human_text_without_evidence_fails_v6(client_and_mock):
     client, _ = client_and_mock
     text = (
         "[광고] 연애 고민이 많을 때는 혼자 앓기보다 누군가와 이야기를 나눠 "
         "보세요. 운명원에서 상담받아 보세요."
     )
     checks = by_code(post(client, text).json())
-    assert checks["V6"]["passed"] is False and checks["V7"]["passed"] is False
-    assert all(checks[c]["passed"] for c in ("V1", "V2", "V3", "V4", "V5", "V8", "V9", "V10"))
+    assert checks["V6"]["passed"] is False
+    # 연애 사주 얘기 없이 운명원만 권하면 V5도 걸린다(2026-11-18 지시서 5절)
+    assert checks["V5"]["passed"] is False
+    assert all(checks[c]["passed"] for c in ("V1", "V2", "V3", "V4", "V8", "V9", "V10"))
 
 
 def test_pasted_transcript_becomes_evidence(client_and_mock):
@@ -128,7 +132,6 @@ def test_comments_disabled_video_is_checked_against_title_and_description(
         comments=fixture_json("youtube/error_comments_disabled.json"),
     )
     client = make_client(mock, key=fake_key)
-    # C1: 설명란 글을 길게 옮기면 V13에 걸리므로 짧게 짚는다
     text = (
         "[광고] 연락 빈도 때문에 다투는 커플 얘기 남 일 같지 않네요. "
         "요즘 운명원 연애 사주 잘 본다고 하던데 저도 한번 가 보려고요."
@@ -136,9 +139,10 @@ def test_comments_disabled_video_is_checked_against_title_and_description(
     data = post(client, text).json()
     assert data["passed"] is True, data
     assert data["evidence_quote"] == "연락 빈도 때문에 다투는"
+    # 2026-11-18 지시서로 V13(길게 베끼기)은 뺐다: 설명란 글을 길게 옮겨도 규칙 검사는 통과
     long_copy = post(client, "[광고] 연락 빈도 때문에 다투는 장거리 커플 이야기에 공감했어요. "
                              "요즘 운명원 연애 사주 잘 본다던데 저도 가 보려고요.").json()
-    assert [c["code"] for c in long_copy["checks"] if not c["passed"]] == ["V13"]
+    assert long_copy["passed"] is True
 
 
 def test_previous_texts_are_empty_until_stage5(client_and_mock):

@@ -58,7 +58,8 @@ OTHER_BODY = (
 
 
 def draft(body, tone="공감형", quote=Q_COMMENT):
-    return {"body": body, "used_quote": quote, "tone_label": tone}
+    """AI의 댓글 답(2026-11-18: mood·body·wish·used_quote). `tone`은 기분 칸으로 들어간다."""
+    return {"mood": tone, "body": body, "wish": "궁합", "used_quote": quote}
 
 
 def add_youtube(mock, fixture_json):
@@ -230,8 +231,9 @@ def test_draft_prompt_names_only_the_brand(setup):
     llm = use([ANALYSIS, draft(GOOD_BODY)])
     client.post("/api/drafts", json={"video_id": VID})
     system = llm.calls[1]["kwargs"]["system"]
-    assert "권하는 대상은 '운명원' 하나뿐" in system
-    assert "다른 상품·브랜드·채널 이름을 권하거나 언급하지 않는다" in system
+    # 2026-11-18 지시서: 시스템 글의 [운명원] 칸에는 운명원 하나만 나온다
+    assert "[운명원]\n- 운명원은 연애 사주를 잘 봐주는 곳으로 유명하다." in system
+    assert "가 본 적은 없다" in system
 
 
 def test_analysis_uses_pasted_transcript_first(setup):
@@ -280,12 +282,13 @@ def test_draft_passes_on_first_try_and_code_adds_disclosure(setup):
     assert data["passed"] is True and data["first_passed"] is True
     assert data["attempts"] == 1 and data["status"] == "draft"
     assert data["evidence_quote"] == Q_COMMENT and data["evidence_source"] == "comment"
-    assert data["evidence_label"] == "댓글" and data["tone_label"] == "공감형"
-    assert data["validation"]["passed"] is True and data["validation"]["total"] == 14
+    # tone_label = "말 높임 / 들은 경로 / 기분"(기분은 AI가 고른 mood)
+    assert data["evidence_label"] == "댓글" and data["tone_label"].endswith(" / 공감형")
+    assert data["validation"]["passed"] is True and data["validation"]["total"] == 10
     call = llm.calls[1]["kwargs"]
     assert call["temperature"] == 0.8  # 초안은 높은 온도
-    assert "[광고]는 쓰지 않는다" in call["system"]
-    assert f"'{Q_COMMENT}'" in call["user"] and "40~120자" in call["user"]
+    assert "광고" not in call["system"]  # 광고 표기는 코드가 붙인다(AI에게 말하지 않음)
+    assert f"- (댓글) {Q_COMMENT}" in call["user"] and "40~120자" in call["system"]
 
 
 def test_disclosure_written_by_model_is_not_doubled(setup):
@@ -304,7 +307,7 @@ def test_draft_passes_on_second_try_with_failure_lines_in_prompt(setup):
     retry = user_prompts(llm)[2]
     assert "[다시 쓰기]" in retry
     assert f"앞의 본문: {NO_BRAND}" in retry
-    assert "V5 브랜드 이름 1~2번" in retry
+    assert "- 걸린 까닭: V5 운명원 1~2번 · 연애 사주" in retry
 
 
 def test_all_three_tries_fail_and_the_least_bad_is_saved(setup):
@@ -316,7 +319,7 @@ def test_all_three_tries_fail_and_the_least_bad_is_saved(setup):
     assert data["body"] == f"[광고] {NO_BRAND}"  # 실패 1개짜리(두 번째)를 저장
     assert codes(data["validation"]) == {"V5"}
     # 세 번째 프롬프트에는 두 번째 실패가 들어 있다
-    assert "V5 브랜드 이름" in user_prompts(llm)[3]
+    assert "V5 운명원 1~2번" in user_prompts(llm)[3]
 
 
 def test_llm_error_after_a_try_keeps_the_best_so_far(setup):
@@ -348,13 +351,13 @@ def test_another_draft_uses_a_different_quote(setup):
     second = client.post("/api/drafts", json={"video_id": VID, "another": True}).json()
     assert first["evidence_quote"] == Q_COMMENT
     assert second["evidence_quote"] == "서로 기대치 차이 같아요"
-    assert "'서로 기대치 차이 같아요'" in user_prompts(llm)[2]
-    assert GOOD_BODY in user_prompts(llm)[2]  # 같은 영상의 앞 초안과 다르게 쓰라고 알린다
-    assert second["passed"] is True and second["tone_label"] == "혼잣말형"
-    # C1: 같은 영상의 앞 초안 말투(공감형)는 두 번째 초안의 선택지에서 빠진다
-    enum = llm.calls[2]["kwargs"]["schema"]["properties"]["tone_label"]["enum"]
-    assert "공감형" not in enum and "혼잣말형" in enum
-    assert "앞 댓글 말투(공감형)는 쓰지 않는다" in user_prompts(llm)[2]
+    assert "- (댓글) 서로 기대치 차이 같아요" in user_prompts(llm)[2]
+    # 2026-11-18 지시서: 앞 초안 본문은 보여 주지 않고, 짚은 구절만 피하라고 알린다
+    assert GOOD_BODY not in user_prompts(llm)[2]
+    assert f"- 이미 짚은 구절: {Q_COMMENT} — 이 장면은 피한다" in user_prompts(llm)[2]
+    assert second["passed"] is True and second["tone_label"].endswith(" / 혼잣말형")
+    # 직전 초안과 다른 말 높임·들은 경로
+    assert first["tone_label"].split(" / ")[:2] != second["tone_label"].split(" / ")[:2]
 
     listed = client.get("/api/drafts", params={"video_id": VID}).json()
     assert [d["id"] for d in listed["items"]] == [second["id"], first["id"]]  # 최신이 위
@@ -485,44 +488,3 @@ def test_responses_do_not_contain_the_api_key(setup, fake_key):
                 client.post("/api/drafts", json={"video_id": VID}),
                 client.get("/api/drafts", params={"video_id": VID})):
         assert fake_key not in res.text
-
-
-# ---------------------------------------------------------------- 5단계 점검: V12와 권유 문장
-
-
-HANJA_BODY = GOOD_BODY.replace("같지 않네요", "같지 않揪네요")
-
-
-def test_hanja_in_draft_fails_v12_and_is_rewritten(setup):
-    # 실제 qwen3.8:27b 초안에 섞여 나온 한자(揪) → V12에 걸려 다시 쓴다
-    client, _, use = setup
-    llm = use([ANALYSIS, draft(HANJA_BODY), draft(GOOD_BODY)])
-    data = client.post("/api/drafts", json={"video_id": VID}).json()
-    assert data["attempts"] == 2 and data["passed"] is True and data["first_passed"] is False
-    retry = user_prompts(llm)[2]
-    assert "[다시 쓰기]" in retry and f"앞의 본문: {HANJA_BODY}" in retry
-    assert "V12" in retry and "'揪'(한자)" in retry
-    assert data["body"] == f"[광고] {GOOD_BODY}"
-
-
-def test_hanja_draft_that_never_gets_fixed_cannot_be_approved(setup):
-    client, _, use = setup
-    use([ANALYSIS, draft(HANJA_BODY), draft(HANJA_BODY), draft(HANJA_BODY)])
-    data = client.post("/api/drafts", json={"video_id": VID}).json()
-    assert data["passed"] is False and codes(data["validation"]) == {"V12"}
-    res = client.post(f"/api/drafts/{data['id']}/approve")
-    assert res.status_code == 409
-    assert [f["code"] for f in res.json()["error"]["failures"]] == ["V12"]
-
-
-def test_draft_prompt_lists_closings_of_drafts_approved_for_other_videos(setup):
-    client, _, use = setup
-    llm = use([ANALYSIS, draft(GOOD_BODY), ANALYSIS, draft(OTHER_BODY)])
-    first = client.post("/api/drafts", json={"video_id": VID}).json()
-    assert "이미 쓴 권유 문장" not in user_prompts(llm)[1]  # 승인한 초안이 아직 없다
-    assert client.post(f"/api/drafts/{first['id']}/approve").status_code == 200
-    client.post("/api/drafts", json={"video_id": OTHER})
-    prompt = user_prompts(llm)[3]
-    assert "이미 쓴 권유 문장(다른 영상에 승인됨)" in prompt
-    assert f"- {GOOD_CLOSING}" in prompt
-    assert "고민 한 줄('" in prompt

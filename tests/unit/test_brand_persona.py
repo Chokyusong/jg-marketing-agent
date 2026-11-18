@@ -1,23 +1,17 @@
 """운명원 페르소나(2026-11-17 대표): 「연애 사주 잘 봐주는 곳으로 유명한 곳」(과제 원문).
 
-- 꺼내는 말에 무엇을 잘하는지(잘 본다·잘 봐준다·잘 맞는다·유명하다)가 들어간다.
-- 들은 얘기 꼴의 평판은 통과한다: 「잘 맞는다고 하던데」「잘 봐준다고 하던데」(V10).
-  2026-11-18(기획 담당 · 대표 의견): 남이 **직접 받아 본 결과**를 전하는 것(「친구가 운명원에서 연애
-  사주 봤는데 잘 맞는다고 하던데」)은 이제 V14가 막는다 — 친구·주변은 「추천하던데」까지만. 같은
-  설정을 다른 말로 옮긴 평판(유명·소문·얘기가 많음·추천·후기)은 통과한다.
+- 들은 얘기 꼴의 평판은 통과한다: 「잘 맞는다고 하던데」「잘 봐준다고 하던데」.
+- 남이 **직접 받아 본 결과**나 설정에 없는 새 평판·사례(예약·방송·경력·적중률)는 V10이 막는다
+  (2026-11-18 지시서: 예전 V14의 지어낸 평판 검사를 V10으로 합쳤다).
 - 그대로 막는 것: **내가 써 본 척**(V8)과 **내 단정·효능 단정**(V10).
-- 평판이 빠진 꺼내는 말(「운명원 얘기 자주 보이던데」)은 다듬기 검사 S7이 다시 쓰게 한다.
-- 2026-11-17 다섯 조각(때·이름·연애 사주·잘 본다는 들은 얘기·가 보겠다는 말)이 V14가 되어 아래
-  통과 글은 모두 「요즘/요새/최근」으로 열고 「가 보고 싶다」 같은 의향으로 맺는다.
-  「정확하다던데」는 대표 본보기(「꽤 정확하다는 얘기가 있더라구요」)대로 들은 얘기라 통과로 옮겼다.
+- 댓글 프롬프트의 [운명원] 첫 줄은 설정 brand.facts에서 읽는다(지시서 4절).
 """
 
 from __future__ import annotations
 
 import pytest
 
-from app.analysis import style as S
-from app.analysis.validator import ValidatorRules, validate
+from app.analysis.validator import ValidatorRules, invented_repute, validate
 from app.config import DEFAULT_BRAND_FACTS, forget_old_defaults, load_settings
 from app.llm import prompts as P
 
@@ -30,7 +24,7 @@ OPEN = "[광고] 하루에 한 번 연락으로 싸웠다니 남 일 같지 않�
 def _run(text: str):
     return validate(
         text, context_text=CONTEXT, rules=RULES, brand_facts=FACTS, previous_texts=[],
-        evidence_quote="하루에 한 번 연락", key_phrases=["하루에 한 번 연락"],
+        evidence_quote="하루에 한 번 연락",
     )
 
 
@@ -60,7 +54,7 @@ PASS = [
     "요즘 운명원이 연애사주 잘 본다는 후기가 많던데 저도 한번 가 보려고요.",
     "요새 운명원이 연애사주 잘 본다고 입소문이 났더라구요. 저도 한번 가 보려구요.",
 ]
-# 2026-11-18 대표 의견: 설정에 없는 새 평판·사례와 남이 직접 받아 본 결과는 V14가 막는다
+# 2026-11-18 대표 의견: 설정에 없는 새 평판·사례와 남이 직접 받아 본 결과는 V10이 막는다
 INVENTED = [
     "최근에 친구가 운명원에서 연애 사주 봤는데 잘 맞는다고 하던데 나도 한번 가 보고 싶다.",
     "최근에 아는 언니가 운명원에서 연애 사주 받아 봤는데 잘 봐준다던데 저도 상담받아 보고 싶어요.",
@@ -103,10 +97,11 @@ def test_relayed_reputation_passes_every_rule(lead):
 
 
 @pytest.mark.parametrize("lead", INVENTED)
-def test_invented_reputation_and_others_results_fail_v14(lead):
+def test_invented_reputation_and_others_results_fail_v10(lead):
+    """2026-11-18 지시서: 예전 V14의 지어낸 평판 검사는 V10으로 합쳤다."""
     result = _run(OPEN + lead)
-    v14 = next(c for c in result.checks if c.code == "V14")
-    assert not v14.passed and "설정에 없는 평판·사례" in v14.message, (lead, v14.message)
+    v10 = next(c for c in result.checks if c.code == "V10")
+    assert not v10.passed and "설정에 없는 평판·사례" in v10.message, (lead, v10.message)
 
 
 def test_invented_words_that_are_brand_facts_pass():
@@ -115,9 +110,9 @@ def test_invented_words_that_are_brand_facts_pass():
     rules_facts = [*FACTS, "운명원은 강남역 근처에 있다"]
     result = validate(
         OPEN + lead, context_text=CONTEXT, rules=RULES, brand_facts=rules_facts, previous_texts=[],
-        evidence_quote="하루에 한 번 연락", key_phrases=["하루에 한 번 연락"],
+        evidence_quote="하루에 한 번 연락",
     )
-    assert next(c for c in result.checks if c.code == "V14").passed, result.failure_lines()
+    assert next(c for c in result.checks if c.code == "V10").passed, result.failure_lines()
 
 
 @pytest.mark.parametrize(("lead", "code"), FAIL)
@@ -136,70 +131,26 @@ CEO_CONTEXT = (
     "[제목] 남자친구가 스스로 잘해 주게 만드는 말\n[자막] 사람은 누구나 뭔가 해줬을 때 좋은 소리를 "
     "들으면 또 하고 싶어져요. 부탁은 그때그때 말하는 거예요. 그러면 남자는 스스로 움직이죠."
 )
-CEO_BEFORE = ("좋은 소리를 들으면 스스로 움직이죠, 그 말에 매번 타박부터 한 게 생각나네요. "
-              "요즘 운명원 얘기 자주 보이던데 다음 연애는 오래 갈지 물어보고 싶어요.")
-# 2026-11-17 다섯 조각: 대표가 고친 문장의 끝(「오래 갈지 물어보고 싶어요」)에 가 보겠다는 말이
-# 없어 「저도 한번 가 보려고요」로 맺었다(그 밖은 그대로)
 CEO_AFTER = ("좋은 소리를 들으면 스스로 움직이죠, 그 말에 매번 타박부터 한 게 생각나네요. "
              "요즘 운명원이 연애사주 잘 본다고 하는 얘기가 자주 보이던데 저도 한번 가 "
              "보려고요.")
 
 
-def test_ceo_corrected_sentence_passes_all_fourteen_checks():
+def test_ceo_corrected_sentence_passes_all_ten_checks():
     assert len(CEO_AFTER) == 92
     result = validate(
         CEO_AFTER, context_text=CEO_CONTEXT, rules=RULES, brand_facts=FACTS, previous_texts=[],
-        evidence_quote="좋은 소리를 들으면 또 하고 싶어져요", key_phrases=["스스로 움직이죠"],
-        concern="어떻게 해야 남자친구가 스스로 잘해 줄까?", disclosure_required=False,
+        evidence_quote="좋은 소리를 들으면 또 하고 싶어져요", disclosure_required=False,
     )
-    assert len(result.checks) == 14 and result.passed, result.failure_lines()
-    assert S.style_issues(CEO_AFTER, brand="운명원", disclosure="[광고]") == []
+    assert len(result.checks) == 10 and result.passed, result.failure_lines()
 
 
-def test_lead_without_reputation_is_written_again_s7():
-    found = S.style_issues(CEO_BEFORE, brand="운명원", disclosure="[광고]")
-    assert [i[:2] for i in found] == ["S7"]
-    assert "잘 본다" in found[0]
-    for lead in ("주변에서 운명원 얘기 종종 하던데", "요즘 운명원 얘기가 자꾸 눈에 띄던데"):
-        text = f"[광고] 남 일 같지 않네요. {lead} 나도 한번 보고 싶다."
-        assert [i[:2] for i in S.style_issues(text, brand="운명원", disclosure="[광고]")] == ["S7"]
-    # 평판이 앞 문장에 있어도 된다
-    text = "[광고] 운명원이 연애 사주 잘 본다고 하더라고요. 운명원 가서 나도 물어보고 싶다."
-    assert "S7" not in [i[:2] for i in S.style_issues(text, brand="운명원", disclosure="[광고]")]
-
-
-def test_every_lead_in_the_list_carries_a_reputation():
-    # 2026-11-17: 통째 목록(HEARSAY_LINES) 대신 조각별 목록. 모든 틀 × 들은 얘기 꼴이 평판을 담는다
-    for claim in P.LEAD_CLAIMS:
-        for tail in P.LEAD_TAILS:
-            filled = claim.format(brand="운명원", brand_i="운명원이", love="연애 사주", how="꽤")
-            lead = "요즘 " + filled + tail
-            assert S.has_reputation(lead + " 나도 가 보고 싶다.", "운명원"), lead
-    leads = P.hearsay_choices("운명원", [], n=8)
-    assert all(S.has_reputation(lead + " 나도 가 보고 싶다.", "운명원") for lead in leads)
-
-
-def test_brand_particle_follows_the_name():
-    assert P.with_i("운명원") == "운명원이" and P.with_i("사주나라") == "사주나라가"
-    assert P.fill_hearsay("{brand_i} 잘 본다던데", "사주나라") == "사주나라가 잘 본다던데"
-
-
-def test_good_examples_use_different_reputations():
-    # 2026-11-17 다섯 조각: 좋은 예는 대표 본보기의 결(때로 열고 들은 얘기로 꺼냄)이라 「친구가 …
-    # 봤는데」 예는 없앴다. 대신 넷이 평판 말과 들은 얘기 꼴을 서로 다르게 쓴다
-    marks = ("잘 맞춘다고 하던데", "잘 맞는다는 얘기를 들었는데", "잘 봐준다고 하더라구요",
-             "잘 본다는 이야기가 있던데")
-    used = [next(m for m in marks if m in ex.body) for ex in P.GOOD_EXAMPLES]
-    assert len(set(used)) == 4, used
-
-
-def test_prompt_states_the_persona():
-    system = P.draft_system(brand="운명원", disclosure="[광고]", facts=FACTS)
-    assert "연애 사주 잘 봐주는 곳으로 유명한 곳" in system
-    # 2026-11-18: 남이 직접 받아 본 결과는 쓰지 않는다(친구·주변은 「추천하던데」까지만)
-    assert "남이 직접 받아 본 결과" in system and "'추천하던데'까지만" in system
-    assert "설정에 없는 새 평판·사례를 지어내지 않는다" in system
-    assert "운명원은 연애 사주를 잘 봐주는 곳으로 유명하다" in system  # 사실 문장
+def test_prompt_carries_the_persona_from_brand_facts():
+    """2026-11-18 지시서: [운명원]의 첫 줄은 설정 brand.facts에서 읽는다."""
+    system = P.draft_system(brand="운명원", facts=FACTS, voice="존댓말",
+                            heard="요즘 자주 들어서", from_comment=False)
+    assert "- 운명원은 연애 사주를 잘 봐주는 곳으로 유명하다." in system
+    assert "가 본 적은 없다" in system
 
 
 # ---------------------------------------------------------------- 설정 기본값
@@ -227,47 +178,7 @@ def test_old_saved_default_in_user_folder_loads_the_new_default(clean_env, tmp_p
     assert settings.brand_facts == DEFAULT_BRAND_FACTS
 
 
-# ---------------------------------------------------------------- 2026-11-18 들은 평판 여러 꼴
-
-
-def _ending():
-    return " 저도 한번 가 보려고요."
-
-
-def test_every_reputation_family_passes_every_rule():
-    for fam in range(len(P.LEAD_REPUTES)):
-        lead = "요즘 " + P.LEAD_REPUTES[fam].format(love="연애사주", how="진짜",
-                                                 **P.name_forms("운명원"))
-        result = _run(OPEN + lead + _ending())
-        assert result.passed, (lead, result.failure_lines())
-        assert P.repute_family(lead) == fam, lead
-
-
-def test_reputation_families_rotate_without_piling_up():
-    # 28개 초안을 차례로 만든 셈: 꼴(통째 꼴 9 + 틀 5)이 한쪽으로 몰리지 않는다
-    import random
-    from collections import Counter
-
-    rng = random.Random(11)
-    used: list[str] = []
-    fams: Counter[int] = Counter()
-    for _ in range(28):
-        lead = P.hearsay_choices("운명원", used, n=1, rng=rng)[0]
-        text = OPEN + lead + _ending()
-        assert _run(text).passed, (lead, _run(text).failure_lines())
-        fams[P.repute_family(lead)] += 1
-        used.insert(0, text)
-    total = len(P.LEAD_REPUTES) + len(P.LEAD_CLAIMS)
-    assert len(fams) == total, fams  # 14가지가 다 나온다
-    assert max(fams.values()) <= 3, fams  # 28개 중 한 꼴이 3번을 넘지 않는다
-    assert fams[0] <= 3  # 예전에 몰렸던 「잘 보기로 유명하다던데」
-
-
-def test_name_forms_follow_the_last_syllable():
-    assert P.name_forms("운명원") == {"brand": "운명원", "brand_i": "운명원이",
-                                    "brand_r": "운명원을", "brand_ira": "운명원이라는"}
-    assert P.name_forms("사주나라")["brand_r"] == "사주나라를"
-    assert P.name_forms("사주나라")["brand_ira"] == "사주나라라는"
+# ---------------------------------------------------------------- 들은 평판 여러 꼴
 
 
 def test_heard_reviews_are_not_my_review_but_my_review_still_fails():
@@ -277,19 +188,9 @@ def test_heard_reviews_are_not_my_review_but_my_review_still_fails():
     assert "V8" in {c.code for c in mine.failures}
 
 
-def test_bridge_with_invented_reputation_is_rewritten_s14():
-    body = ("[광고] 하루에 한 번 연락으로 싸웠다니 남 일 같지 않네요. 예약이 석 달 밀린 데라던데 "
-            "이럴 땐 사주라도 보고 싶어지네요. 요즘 운명원이 연애사주 잘 본다고 하던데 저도 한번 "
-            "가 보려고요.")
-    found = S.invented_repute("예약이 석 달 밀린 데라던데 이럴 땐 사주라도 보고 싶어지네요")
+def test_invented_repute_names_the_kind():
+    found = invented_repute("예약이 석 달 밀린 데라던데 이럴 땐 사주라도 보고 싶어지네요")
     assert found and found[0] == "예약·대기"
-    issues = S.style_issues(body, brand="운명원", disclosure="[광고]",
-                            key_phrases=["하루에 한 번 연락"])
-    assert any(i.startswith("S14") and "예약" in i for i in issues), issues
-    clean = body.replace("예약이 석 달 밀린 데라던데 ", "")
-    issues = S.style_issues(clean, brand="운명원", disclosure="[광고]",
-                            key_phrases=["하루에 한 번 연락"])
-    assert not any(i.startswith("S14") for i in issues), issues
 
 
 def test_reasons_and_video_words_are_not_mistaken_for_invented_facts():
@@ -297,5 +198,5 @@ def test_reasons_and_video_words_are_not_mistaken_for_invented_facts():
     for lead in ("요즘 운명원이 연애사주 잘 본다던데 저도 재회 문제로 한번 가 보려고요.",
                  "요즘 운명원이 연애사주 잘 본다던데 저도 배우자 운이 궁금해서 가 보려고요.",
                  "요즘 운명원이 연애사주 잘 본다던데 저도 언제 시간 내서 가 보려고요."):
-        v14 = next(c for c in _run(OPEN + lead).checks if c.code == "V14")
-        assert v14.passed, (lead, v14.message)
+        v10 = next(c for c in _run(OPEN + lead).checks if c.code == "V10")
+        assert v10.passed, (lead, v10.message)

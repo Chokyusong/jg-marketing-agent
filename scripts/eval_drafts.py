@@ -13,7 +13,7 @@
 - 표: 첫 시도 통과율, 3번 안 통과율, 초안 하나 평균 시간, 초안 원문.
 - `--approve-first`: 영상마다 처음 통과한 초안을 승인한다(사람이 영상마다 하나씩 승인하는 흐름).
   그러면 다음 영상의 초안은 그 권유 문장을 「이미 쓴 표현」으로 받고 V11 비교도 한다.
-- 권유 문장 다양성: 브랜드가 든 마지막 문장(`prompts.closing_sentence`)이 서로 다른 개수,
+- 권유 문장 다양성: 브랜드가 든 마지막 문장(`closing_sentence`)이 서로 다른 개수,
   「흐름이 궁금하다면」 같은 굳은 틀이 든 개수, V12(한자·일본어·이모지)에 걸린 초안 수를 센다.
 - 실제 데이터 보정: 맥락의 `foreign_products`(남의 상품 이름)가 초안에 들어갔는지 센다
   (「남의 상품 권함」). 분석이 「연애 고민을 찾지 못했습니다」(`no_love_concern`)로 멈춘 것은
@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import tempfile
 import time
@@ -42,13 +43,23 @@ sys.path.insert(0, str(ROOT))
 from app.api.deps import Services, build_services  # noqa: E402
 from app.config import Settings, load_settings  # noqa: E402
 from app.errors import AppError, ErrorKind  # noqa: E402
-from app.llm import prompts  # noqa: E402
 from app.youtube.quota import utc_now  # noqa: E402
 
 CONTEXTS_DIR = ROOT / "tests" / "fixtures" / "contexts"
 DEFAULT_MODELS = ("qwen2.5:7b", "qwen3.8:27b", "qwen3.6:latest")
 # 5단계 첫 비교에서 qwen3.8:27b 초안 15개 대부분이 되풀이한 권유 틀(5단계 점검)
 STOCK_CLOSINGS = ("흐름이 궁금", "흐름을 짚어", "흐름을 확인", "흐름을 살펴")
+
+
+def closing_sentence(body: str, *, brand: str, disclosure: str = "") -> str:
+    """브랜드가 든 마지막 문장(없으면 마지막 문장). 2026-11-18 댓글 리팩토링으로 프롬프트 모듈에서
+    옮겨 왔다(이 스크립트의 집계에만 쓴다)."""
+    text = body.strip()
+    if disclosure and text.startswith(disclosure):
+        text = text[len(disclosure):].strip()
+    parts = [x.strip() for x in re.split(r"(?<=[.!?…])\s+", text) if x.strip()]
+    with_brand = [x for x in parts if brand in x]
+    return (with_brand or parts or [""])[-1]
 
 
 # ---------------------------------------------------------------- 가상 맥락 → 가짜 YouTube
@@ -213,7 +224,7 @@ class ModelResult:
 
     def closings(self) -> list[str]:
         return [
-            prompts.closing_sentence(d.body, brand="운명원", disclosure="[광고]")
+            closing_sentence(d.body, brand="운명원", disclosure="[광고]")
             for d in self.drafts if d.body
         ]
 

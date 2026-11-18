@@ -1,4 +1,4 @@
-"""규칙 검사 V1~V14 (app/analysis/validator.py): 네트워크·DB·LLM 없이 도는 순수 함수.
+"""규칙 검사 V1~V6·V8~V11 (app/analysis/validator.py, 2026-11-18 지시서 5절): 순수 함수.
 
 규칙마다 통과 예 2개 이상과 실패 예 2개 이상, 경계값(39·40·120·121자), 이모지·영문이 섞인 글,
 홍보 담당자의 정상 표현이 V8~V10에 걸리지 않는지, 사람이 고친 글도 같은 함수로 검사되는지 본다.
@@ -27,18 +27,13 @@ CONTEXT = (
     "저도 하루에 한 번 연락으로 싸운 적 있어요\n"
     "연락 문제는 결국 서로 기대치 차이 같아요"
 )
-# C1-V14: 운명원 대목 다섯 조각(대표 지시 2026-11-17: 때·이름·연애 사주·잘 본다는 들은 얘기·
-# 가 보겠다는 말)
 GOOD = (
     "[광고] 하루에 한 번 연락이면 될까요라는 질문이 와닿았어요. "
     "요즘 운명원 연애 사주 잘 본다고 하던데 저도 한번 가 보고 싶어요."
 )
 
 
-def run(
-    text, *, context=CONTEXT, rules=RULES, facts=FACTS, previous=(), quote=None, keys=None,
-    concern="",
-):
+def run(text, *, context=CONTEXT, rules=RULES, facts=FACTS, previous=(), quote=None):
     return validate(
         text,
         context_text=context,
@@ -46,8 +41,6 @@ def run(
         brand_facts=facts,
         previous_texts=list(previous),
         evidence_quote=quote,
-        key_phrases=keys,
-        concern=concern,
     )
 
 
@@ -70,7 +63,8 @@ def sized(n: int) -> str:
 def test_good_draft_passes_every_rule():
     result = run(GOOD)
     assert result.passed is True
-    assert [c.code for c in result.checks] == [f"V{i}" for i in range(1, 15)]  # C1: V13·V14
+    assert [c.code for c in result.checks] == [
+        "V1", "V2", "V3", "V4", "V5", "V6", "V8", "V9", "V10", "V11"]
     assert all(c.passed for c in result.checks)
     assert result.char_count == len(GOOD)
     assert result.evidence_quote == "하루에 한 번 연락이면"
@@ -326,82 +320,19 @@ def test_v6_ignores_disclosure_and_brand_in_context():
     assert not check(result, "V6").passed
 
 
-# ---------------------------------------------------------------- V7 영상의 핵심 말을 담음 (C1)
-# C1(2026-11-17): 예전 V7은 「근거 구절과 4자 이상 이어서 겹침」이었다. 초안이 근거를 글자 그대로
-# 옮기지 않게 바뀌면서 「분석이 뽑은 그 영상의 핵심 말을 하나 이상 담음」으로 바꿨다.
-
-KEYS = ["기대치 차이", "장거리", "하루에 한 번 연락"]
+# ---------------------------------------------------------------- 핵심 말 고르기(분석)
+# 2026-11-18 지시서로 V7(댓글에 핵심 말)은 뺐다. 분석이 핵심 말을 거르는 함수만 본다.
 
 
-def test_v7_pass_with_a_key_phrase():
-    text = ("[광고] 기대치 차이라는 말 듣고 뜨끔했어요ㅠㅠ "
-            "운명원 연애 사주 잘 본다던데 한번 보고 싶다.")
-    v7 = check(run(text, quote="연락 문제는 결국 서로 기대치 차이 같아요", keys=KEYS), "V7")
-    assert v7.passed and "'기대치 차이'" in v7.message
-
-
-def test_v7_key_phrase_may_change_its_last_letter():
-    # '하루에 한 번 연락'(4자 이상) → '하루에 한 번 연락하는' 처럼 끝 한 글자가 달라도 된다
-    text = ("[광고] 하루에 한 번 연락하는 게 적은 건지 모르겠다... "
-            "운명원 연애 사주 한번 보고 싶네요.")
-    assert check(run(text, keys=["하루에 한 번 연락으"]), "V7").passed
-
-
-def test_v7_fail_without_any_key_phrase():
-    text = ("[광고] 연애할 때 연락 때문에 마음 상한 적 많아요. "
-            "운명원에서 연애 사주 한번 보고 싶네요.")
-    v7 = check(run(text, quote="하루에 한 번 연락이면 충분할까요", keys=KEYS), "V7")
-    assert not v7.passed and "핵심 말" in v7.message and "'기대치 차이'" in v7.message
-
-
-def test_v7_common_words_alone_are_not_key_phrases():
-    # '연락', '연애', '남자'처럼 어느 영상에나 나오는 낱말은 핵심 말이 아니다(목록에서 빠진다)
+def test_common_words_alone_are_not_key_phrases():
     assert V.usable_key_phrases(["연락", "연애", "남자", "영상", "기대치 차이"], CONTEXT) == [
-        "기대치 차이"
-    ]
-    text = "[광고] 연락 문제로 연애가 힘들 때 있죠. 운명원에서 연애 사주 한번 보고 싶네요."
-    assert not check(run(text, keys=["연락", "연애", "기대치 차이"]), "V7").passed
-
-
-def test_v7_key_phrase_must_be_in_the_video_material():
+        "기대치 차이"]
     assert V.usable_key_phrases(["손편지", "장거리"], CONTEXT) == ["장거리"]
-    # 표기·브랜드 이름, 너무 긴 말(정리 후 10자 넘음)도 핵심 말이 아니다
-    long_one = "하루에 한 번 연락이면 충분할까요"
-    phrases = ["운명원", "[광고]", long_one]
-    assert V.usable_key_phrases(phrases, CONTEXT + " 운명원 광고", RULES) == []
 
 
-def test_v7_without_key_phrases_uses_title_words_or_a_shared_phrase():
-    # 분석이 없거나 예전 분석: 제목에서 뽑은 말('장거리', '1년차')이나 6자 이상 겹치는 말로 본다
-    assert V.derive_key_phrases(["장거리 연애 1년차, 연락 문제로 자주 싸워요"], CONTEXT) == [
-        "장거리", "1년차",
-    ]
-    title_word = "[광고] 장거리면 연락이 더 어렵겠다 싶어요. 운명원에서 연애 사주 한번 보고 싶네요."
-    v7 = check(run(title_word), "V7")
-    # 2026-11-18: 해시태그에서는 뽑지 않는다(제목에서만) — 문구도 「제목에서 뽑은 핵심 말」
-    assert v7.passed and "제목에서 뽑은" in v7.message
-    shared = check(run(GOOD), "V7")
-    assert shared.passed and "겹치는 말" in shared.message
-
-
-def test_v7_fail_when_nothing_from_the_video():
-    text = "[광고] 오늘도 좋은 하루 보내시고 행복한 일만 가득하시길 바라요. 운명원이 응원합니다."
-    v7 = check(run(text), "V7")
-    assert not v7.passed and "'장거리'" in v7.message
-
-
-def test_hashtags_become_key_phrase_candidates():
-    assert V.hashtags("영상 #하지원 #이상형 #하지원 #a") == ["하지원", "이상형"]
-
-
-def test_v7_fallback_does_not_ask_for_hashtag_only_words():
-    # 2026-11-18: 분석이 없을 때 V7이 해시태그로만 있는 말(「인팁특징」)을 핵심 말로 내밀지 않는다
-    context = "인팁 연애 이야기 #인팁특징\n좋아하는 사람한테 연락을 못 하겠어요"
-    text = "[광고] 오늘도 좋은 하루 보내시고 행복한 일만 가득하시길 바라요. 운명원이 응원합니다."
-    v7 = V.validate(text, context_text=context, rules=RULES, brand_facts=[],
-                    previous_texts=[]).checks
-    v7 = next(c for c in v7 if c.code == "V7")
-    assert not v7.passed and "인팁특징" not in v7.message
+def test_title_words_become_key_phrases_when_the_model_gives_none():
+    phrases = V.derive_key_phrases(["장거리 연애 1년차, 연락 문제로 자주 싸워요"], CONTEXT)
+    assert "장거리" in phrases
 
 
 # ---------------------------------------------------------------- V8 이용 후기 표현 없음
@@ -424,9 +355,8 @@ def test_normal_promoter_expressions_pass_v8_v9_v10(text):
     result = run(text)
     for code in ("V8", "V9", "V10"):
         assert check(result, code).passed, (code, check(result, code).message)
-    # C1-V14: 권하는 말만 있고 들은 얘기·내 바람이 없으면 V14에 걸린다(운명원이 뜬금없음).
-    # V8~V10에 대해서는 예전처럼 정상 표현이다
-    assert {c.code for c in result.failures} <= {"V14"}, result.failure_lines()
+    # 연애 사주 얘기 없이 운명원만 권하면 V5에 걸린다. V8~V10에 대해서는 정상 표현이다
+    assert {c.code for c in result.failures} <= {"V5"}, result.failure_lines()
 
 
 @pytest.mark.parametrize(
@@ -471,7 +401,7 @@ def test_viewer_persona_intent_passes_v8_v9_v10(phrase):
 )
 def test_v9_fail(phrase):
     v9 = check(run(f"{GOOD} {phrase}"), "V9")
-    assert not v9.passed and "지어낸 연애 사연" in v9.message
+    assert not v9.passed and "연애 사연" in v9.message
 
 
 def test_reservation_claim_is_a_review_v8():
@@ -548,7 +478,7 @@ def test_v11_pass_without_previous_and_with_different_previous():
 )
 def test_v11_fail_similar_previous(prev):
     v11 = check(run(GOOD, previous=["완전히 다른 이전 글입니다 하하", prev]), "V11")
-    assert not v11.passed and "비슷합니다" in v11.message and "새로 쓰세요" in v11.message
+    assert not v11.passed and "같습니다" in v11.message and "새로 쓰세요" in v11.message
 
 
 # ---------------------------------------------------------------- 사람이 고친 글
@@ -570,13 +500,13 @@ def test_human_edited_text_goes_through_same_function():
 
 
 def test_emoji_and_english_mixed_text():
-    # 5단계 점검에서 V12가 생긴 뒤: 영문은 괜찮고, 이모지는 V12 하나에만 걸린다
+    # 2026-11-18 지시서로 V12(허용 글자)를 뺐다: 영문·이모지가 섞여도 규칙 검사는 통과
     text = (
         "[광고] 하루에 한 번 연락이면 될까요 😢 LDR couple 이야기 "
         "공감돼요! 요즘 운명원 연애 사주 잘 본다던데 상담받아 보고 싶네요 🙏"
     )
     result = run(text)
-    assert [c.code for c in result.failures] == ["V12"]
+    assert result.passed, result.failure_lines()
     assert result.evidence_quote == "하루에 한 번 연락이면"
     without_emoji = text.replace(" 😢", "").replace(" 🙏", "")
     assert run(without_emoji).passed, run(without_emoji).failure_lines()
@@ -743,68 +673,6 @@ def test_quoted_claim_next_to_the_brand_is_caught():
     assert not check(run(text, context=QUOTE_CTX), "V10").passed
 
 
-# ---------------------------------------------------------------- V12 허용 글자 (5단계 점검)
-
-V12_HEAD = "[광고] 하루에 한 번 연락이면 될까요"
-V12_TAIL = " 요즘 운명원 연애 사주 잘 본다던데 한번 상담받아 보고 싶네요."
-V12_PASS = [
-    GOOD,
-    # 영문·숫자·기본 문장부호 모두: . , ! ? ~ ' " ‘ ’ “ ” … · - ( ) [ ] % : /
-    "[광고] '하루에 한 번 연락이면 될까요'라는 말, 공감돼요! 2~3일(주말) · 50% … "
-    "“이유”와 ‘마음’ - A/B: 운명원에서 상담받아 보세요?",
-    # 한글 낱자(완성형이 아닌 ㅠㅠ)
-    V12_HEAD + " ㅠㅠ 그 마음 알 것 같아요." + V12_TAIL,
-]
-
-
-@pytest.mark.parametrize("text", V12_PASS)
-def test_v12_passes_korean_english_digits_basic_punctuation(text):
-    v12 = check(run(text), "V12")
-    assert v12.passed, v12.message
-
-
-V12_FAIL = [
-    # 실제 qwen3.8:27b 초안에서 나온 한자(5단계 점검)
-    (V12_HEAD + "라는 말에 마음이揪입니다." + V12_TAIL, "揪", "한자"),
-    (V12_HEAD + "라는 고민, 緣分을 짚어 보세요." + V12_TAIL, "緣", "한자"),
-    (V12_HEAD + "라는 말이 와닿았어요ね." + V12_TAIL, "ね", "일본어"),
-    (V12_HEAD + "라는 말이 와닿았어요 \U0001F495" + V12_TAIL, "\U0001F495", "이모지"),
-    (V12_HEAD + "라는 말이 와닿았어요 \u2665" + V12_TAIL, "\u2665", "기호"),
-    (V12_HEAD + "라는 말이 와닿았어요\u3002" + V12_TAIL, "\u3002", "허용하지 않는"),
-    (V12_HEAD + "라는 말이 와닿았어요;" + V12_TAIL, ";", "허용하지 않는"),
-]
-
-
-@pytest.mark.parametrize(("text", "char", "kind"), V12_FAIL)
-def test_v12_fails_and_names_the_character(text, char, kind):
-    result = run(text)
-    v12 = check(result, "V12")
-    assert not v12.passed
-    assert f"'{char}'" in v12.message and kind in v12.message
-    assert "지우거나 한글로 바꾸세요" in v12.message
-    assert any("V12" in line for line in result.failure_lines())
-    # V12만 걸린다(다른 규칙은 그대로 통과)
-    assert [c.code for c in result.failures] == ["V12"], result.failure_lines()
-
-
-def test_v12_lists_at_most_five_characters_and_counts_the_rest():
-    text = GOOD + " 一二三四五六七"
-    v12 = check(run(text), "V12")
-    assert not v12.passed and "외 2개" in v12.message
-
-
-def test_v12_shows_invisible_characters_by_code_point():
-    text = GOOD.replace("와닿았어요", "와닿\u200d았어요")  # 보이지 않는 이음 글자(ZWJ)
-    v12 = check(run(text), "V12")
-    assert not v12.passed and "U+200D" in v12.message
-
-
-def test_v12_ignores_configured_disclosure_and_brand():
-    rules = ValidatorRules(brand="運命苑", disclosure="【AD】")
-    text = "【AD】 하루에 한 번 연락이면 될까요라는 질문이 와닿았어요. 運命苑에서 상담받으세요."
-    assert check(run(text, rules=rules), "V12").passed
-
-
 # ---------------------------------------------------------------- V4 내 채널 영상(표기 끔)
 
 
@@ -824,92 +692,7 @@ def test_v4_label_optional_only_when_not_required():
     assert not check(misplaced, "V4").passed
 
 
-# ---------------------------------------------------------------- C1: 과제 예시처럼 자연스럽게
-# 대표가 실제 프로그램에서 본 초안(하지원 사주·관상 영상, qwen2.5:7b)은 자동 자막을 30자 넘게
-# 그대로 옮기고 요약 꼴 「고민 한 줄」을 이어 붙였다. 새 검사 V13이 이것을 잡는다.
-
-HJW_CONTEXT = (
-    "[ 연애 & 결혼 ] 연애·결혼 생각 없다는 하지원…마음을 움직일 남자는 누구?\n"
-    "#하지원 #이상형 #남편감 #관상\n"
-    "그 얼굴에서 드러나는 것들 아주 세세하게 드러나는 것들을 알 수가 있고요 "
-    "오늘은 또 머리카락에 대해서 하는데요 그 머리카락을 보고 또 여러 가지를 유추할 수가 있습니다"
-)
-HJW_BAD = (
-    "그 얼굴에서 드러나는 것들 아주 세세하게 드러나는 것들을 알 수가 있고요. 명리학을 통해 "
-    "미래 운세와 인연을 분석하는 방법이 궁금해서 언젠가 운명원에서 이 상황도 한번 보고 싶네요."
-)
-HJW_CONCERN_OLD = "명리학을 통해 미래 운세와 인연을 분석하는 방법"
-HJW_KEYS = ["하지원", "이상형", "남편감", "머리카락"]
-
-
-def run_off(text, **kw):
-    """광고 표기를 끈 글(대표가 본 초안은 표기 끔이었다)."""
-    kw.setdefault("context", HJW_CONTEXT)
-    return validate(
-        text, context_text=kw["context"], rules=RULES, brand_facts=FACTS,
-        previous_texts=list(kw.get("previous", ())), evidence_quote=kw.get("quote"),
-        key_phrases=kw.get("keys"), concern=kw.get("concern", ""), disclosure_required=False,
-    )
-
-
-def test_the_awkward_draft_the_owner_saw_fails_v13_and_v7():
-    result = run_off(HJW_BAD, keys=HJW_KEYS, concern=HJW_CONCERN_OLD,
-                     quote="그 얼굴에서 드러나는 것들 아주 세세하게 드러나는 것들을 알 수가 있고요")
-    failed = {c.code for c in result.failures}
-    assert {"V7", "V13"} <= failed, result.failure_lines()
-    v13 = check(result, "V13")
-    assert "그대로 옮겼습니다" in v13.message and "내 말로" in v13.message
-    # 핵심 말 목록이 없어도(예전 분석) V13은 걸린다
-    assert not check(run_off(HJW_BAD), "V13").passed
-
-
-def test_v13_catches_copying_the_concern_line():
-    text = (
-        "하지원 얼굴 얘기 신기했어요. 명리학을 통해 미래 운세와 인연을 분석하는 방법이 궁금해서 "
-        "운명원에서 한번 보고 싶네요."
-    )
-    v13 = check(run_off(text, keys=HJW_KEYS, concern=HJW_CONCERN_OLD), "V13")
-    assert not v13.passed and "고민 한 줄" in v13.message
-
-
-def test_v13_passes_when_only_key_phrases_are_kept():
-    text = (
-        "하지원도 결혼 생각 없다니 괜히 안심되네ㅋㅋ 나도 연애 쉬는 중인 1인. 요즘 운명원 연애 "
-        "사주 잘 본다던데 나한테도 인연이 오긴 하는지 한번 보고 싶다."
-    )
-    result = run_off(text, keys=HJW_KEYS, concern="연애 생각 없는 사람한테도 인연이 올까")
-    assert result.passed, result.failure_lines()
-    assert "13자 미만" in check(result, "V13").message
-
-
-def test_v13_boundary_is_thirteen_letters():
-    # 첫 줄은 제목(제목은 따로 9자 기준이 있다 — 아래 제목 테스트), 베낀 글은 둘째 줄
-    context = "영상 제목\n가나다라마바사아자차카타파하거너더러"
-    ok = "[광고] 가나다라마바사아자차카타 그 말 공감돼요. 운명원에서 연애 사주 보고 싶네요."  # 12자
-    bad = "[광고] 가나다라마바사아자차카타파 그 말 공감돼요. 운명원에서 연애 사주 보고 싶네요."
-    assert V.COPY_LIMIT == 13
-    assert check(run(ok, context=context), "V13").passed
-    assert not check(run(bad, context=context), "V13").passed
-
-
-def test_v13_title_copied_without_quotes_from_nine_letters():
-    """C1 다듬기: 대표가 본 「연애상담 상상상담 가능이라는 말에」(제목 10자, 따옴표 없음)."""
-    context = (
-        "고민상담전문가 각종고민상담 주식상담 연애상담 상상상담 "
-        "가능\n댓글: 연애 고민 들어 주세요"
-    )
-    tail = " 당황했어요ㅋㅋ 요즘 운명원 연애 사주 잘 본다던데 나도 한번 보고 싶다."
-    boss = check(run(f"[광고] 연애상담 상상상담 가능이라는 말에{tail}", context=context), "V13")
-    assert not boss.passed and "영상 제목의 '연애상담 상상상담 가능'를 10자" in boss.message
-    assert "'~라는 말에'로 받지 말고" in boss.message
-    assert V.TITLE_COPY_LIMIT == 9
-    eight = check(run(f"[광고] 상담 상상상담 가능이라니{tail}", context=context), "V13")  # 8자
-    assert eight.passed, eight.message
-    # 제목의 말이 자막·댓글에도 있으면 영상 속 말이다(일반 기준 13자만 본다)
-    spoken = context + "\n자막: 연애상담 상상상담 가능해요"
-    assert check(run(f"[광고] 연애상담 상상상담 가능이라는 말에{tail}", context=spoken), "V13").passed  # noqa: E501
-
-
+# ---------------------------------------------------------------- 시청자 말투
 # 과제 PDF의 예시 댓글 말투(혼잣말·한탄·들은 얘기·막연한 처지 한마디)는 걸리지 않아야 한다
 VIEWER_LINES = [
     "[광고] 근데 장거리는 진짜 연락이 전부인 듯...ㅠㅠ 연애만 하면 차이는 1인. 요즘 운명원 연애 "
@@ -923,214 +706,46 @@ VIEWER_LINES = [
 
 @pytest.mark.parametrize("text", VIEWER_LINES)
 def test_viewer_voice_with_hearsay_and_vague_self_talk_passes(text):
-    # 실제 흐름처럼 근거 구절(V6)·핵심 말(V7)을 준다. 근거를 글자 그대로 옮기지 않아도 된다
-    result = run(text, keys=KEYS, quote="연락 문제는 결국 서로 기대치 차이 같아요")
+    # 실제 흐름처럼 근거 구절(V6)을 준다. 근거를 글자 그대로 옮기지 않아도 된다
+    result = run(text, quote="연락 문제는 결국 서로 기대치 차이 같아요")
     assert result.passed, result.failure_lines()
 
 
-def test_v12_accepts_comment_marks_but_not_emoji_or_hanja():
-    head = "[광고] 장거리 얘기 공감돼요"
-    tail = " 운명원 연애 사주 한번 보고 싶네요."
-    for marks in ("ㅠㅠ", "ㅋㅋㅋ", "ㅎㅎ", "ㅜㅜ", "...", "…", "‥", "^^", "~"):
-        assert check(run(head + marks + tail, keys=KEYS), "V12").passed, marks
-    assert not check(run(head + " \U0001F62D" + tail, keys=KEYS), "V12").passed
-    assert not check(run(head + " 緣" + tail, keys=KEYS), "V12").passed
+# ---------------------------------------------------------------- 운명원 문장의 V8·V10 경계
+HEAD = "[광고] 하루에 한 번 연락이면 될까요라는 말 공감돼요ㅠㅠ "
 
 
-ASSIGNMENT_STYLE = (
-    "[광고] 근데 장거리는 진짜 연락이 반인 듯...ㅠㅠ 하루에 한 번 연락 갖고 맨날 투닥거리는 1인. "
-    "요즘 운명원 연애 사주 잘 본다던데 우리가 오래 갈지 한번 가 보고 싶다."
-)
-
-
-def test_copy_of_the_assignment_sample_fails_v11_but_its_style_passes():
-    copied = "[광고] " + V.ASSIGNMENT_SAMPLE
-    v11 = check(run(copied, keys=KEYS), "V11")
-    assert not v11.passed and "과제 예시 댓글" in v11.message
-    # 문장 하나만 거의 그대로 옮겨도 걸린다
-    one = (
-        "[광고] 장거리 얘기 보니까 결국 심리 알기는 개뿔 그냥 인연이면 만나는 것 같아요. "
-        "운명원에서 연애 사주 보고 싶다."
-    )
-    assert not check(run(one, keys=KEYS), "V11").passed
-    # 같은 말투로 이 영상의 말을 쓰면 통과
-    result = run(ASSIGNMENT_STYLE, keys=KEYS, quote="하루에 한 번 연락으로 싸운 적 있어요")
-    assert result.passed, result.failure_lines()
-
-
-# ---------------------------------------------------------------- V14 운명원 대목 다섯 조각
-# 대표가 본 초안(2026-11-17): 고민 뒤에 곧바로 "운명원에서 연애 사주를 한번 보고 싶어요"가 붙어
-# 뜬금없었다. 같은 날 대표가 다섯 조각을 정했다: ① 때(요즘·요새·최근) ② 이름 ③ 연애 사주 ④ 잘 본다는
-# 평판을 들은 얘기로 ⑤ 가 보겠다는 말. 하나라도 빠지면 V14가 빠진 조각 이름을 알린다.
-# (예전 시험의 「주변에서 운명원 얘기 자주 하던데」「궁금해지네요」 같은 꼴은 이제 걸린다 — 아래
-# 빠진 조각 시험으로 옮겼다.)
-
-ABRUPT = (
-    "[광고] 하루에 한 번 연락이면 될까요라는 말이 제 고민 같아 눈길이 가네요. "
-    "연락 문제를 어디서부터 풀지 막막한데 운명원에서 연애 사주를 한번 보고 싶어요."
-)
-HEARSAY_HEADS = [
-    "요새 운명원이 연애 사주를 그렇게 잘 본다고 하던데",
-    "요즘 운명원 연애 사주 잘 본다던데",
-    "최근에 주변에서 운명원 연애 사주 잘 본다고들 하던데",
-    "요즘 운명원 연애사주가 잘 맞는다는 이야기가 있던데",
-    "요새 운명원이 연애 사주로 유명하다던데",
-    # 2026-11-18: 친구가 받아 본 결과(「친구가 … 봤는데 잘 맞는다고 하던데」)는 V14가 막아
-    # 친구의 「추천」으로 바꿨다
-    "최근 친구가 운명원 연애 사주 잘 본다고 추천하던데",
-]
-WISHES = [
-    "다음에 연락 문제로 한번 가 봐야겠네요.",
-    "나도 언제 짝 만나는지 한번 보고 싶다.",
-    "저도 기회 되면 상담받아보고 싶어요.",
-    "저도 다음에 한번 가 보고 싶어요.",
-]
-V14_HEAD = "[광고] 하루에 한 번 연락이면 될까요라는 말 공감돼요ㅠㅠ "
-
-
-def test_v14_abrupt_brand_fails_like_the_draft_the_boss_saw():
-    result = run(ABRUPT)
-    v14 = check(result, "V14")
-    assert not v14.passed
-    assert "'요즘/요새'가 없습니다" in v14.message
-    assert "잘 본다는 평판(~다고 하던데)이 없습니다" in v14.message
-    assert "다섯 조각을 다 넣으세요" in v14.message
-    assert [c.code for c in result.failures] == ["V14"], result.failure_lines()
-
-
-@pytest.mark.parametrize("head", HEARSAY_HEADS)
-@pytest.mark.parametrize("wish", WISHES)
-def test_v14_hearsay_then_wish_passes(head, wish):
-    result = run(f"{V14_HEAD}{head} {wish}")
-    assert result.passed, result.failure_lines()
-
-
-def test_v14_pieces_may_sit_in_the_sentence_before_or_after():
-    before = (V14_HEAD + "요즘 연애 사주 잘 본다는 얘기가 들리던데요. 운명원에 저도 한번 "
-              "가 보려고요.")
-    assert check(run(before), "V14").passed
-    after = V14_HEAD + "요새 운명원 연애 사주 그렇게 잘 본다고 하던데. 다음에 한번 가 봐야겠네요."
-    assert check(run(after), "V14").passed
-    # 두 문장 앞이면 이어지지 않는다
-    far = (
-        "[광고] 요즘 연애 사주 잘 본다는 얘기가 들리던데요. 하루에 한 번 연락이면 될까요라는 말 "
-        "공감돼요. 운명원에 저도 한번 가 보려고요."
-    )
-    v14 = check(run(far), "V14")
-    assert not v14.passed and "'요즘/요새'가 없습니다" in v14.message
-
-
-@pytest.mark.parametrize(("text", "missing"), [
-    # 하나씩 빠진 글 → 빠진 조각 이름
-    ("운명원이 연애 사주를 그렇게 잘 본다고 하던데 저도 언제 한번 가 보려고요.",
-     ["'요즘/요새'가 없습니다"]),
-    ("요즘 운명원이 그렇게 잘 본다고 하던데 저도 언제 한번 가 보려고요.",
-     ["연애 사주가 없습니다"]),
-    ("요즘 운명원 연애 사주 얘기가 자주 보이던데 저도 언제 한번 가 보려고요.",
-     ["잘 본다는 평판(~다고 하던데)이 없습니다"]),
-    ("요즘 운명원이 연애 사주를 그렇게 잘 본다고 하던데 제 차례는 언제 올지 궁금하네요.",
-     ["가 보겠다는 말(가 보려고요 등)이 없습니다"]),
-    # 둘 빠진 글은 둘 다
-    ("주변에서 운명원 얘기 자주 하던데. 그래도 연락은 결국 마음 문제겠죠.",
-     ["'요즘/요새'가 없습니다", "연애 사주가 없습니다", "잘 본다는 평판(~다고 하던데)이 없습니다",
-      "가 보겠다는 말(가 보려고요 등)이 없습니다"]),
-])
-def test_v14_names_each_missing_piece(text, missing):
-    v14 = check(run(V14_HEAD + text), "V14")
-    assert not v14.passed
-    for words in missing:
-        assert words in v14.message, (text, v14.message)
-    others = {"'요즘/요새'가 없습니다", "연애 사주가 없습니다",
-              "잘 본다는 평판(~다고 하던데)이 없습니다",
-              "가 보겠다는 말(가 보려고요 등)이 없습니다"}
-    for words in others - set(missing):
-        assert words not in v14.message, (text, words)
-
-
-def test_v14_hearsay_is_not_a_claim_but_my_own_assertion_is():
+def test_hearsay_is_not_a_claim_but_my_own_assertion_is():
     # 들은 얘기 꼴은 V10을 통과한다
     heads = ("요즘 운명원 연애 사주 잘 본다던데",
              "요새 운명원이 연애 사주를 그렇게 잘 본다고 하던데",
              "요즘 운명원 연애사주가 꽤 정확하다는 얘기가 있더라구요.")
     for head in heads:
-        result = run(f"{V14_HEAD}{head} 저도 다음에 한번 가 보려고요.")
+        result = run(f"{HEAD}{head} 저도 다음에 한번 가 보려고요.")
         assert check(result, "V10").passed, (head, check(result, "V10").message)
     # 내 단정은 V10에 걸린다
     for claim in ("운명원은 연애 사주 잘 봐요.", "운명원 연애 사주 잘 보는 곳이에요.",
                   "운명원이 정확히 맞혀요.", "운명원 연애 사주 정확해요."):
-        v10 = check(run(f"{V14_HEAD}{claim} 다음에 한번 가 보고 싶다."), "V10")
+        v10 = check(run(f"{HEAD}{claim} 다음에 한번 가 보고 싶다."), "V10")
         assert not v10.passed, claim
 
 
-def test_v14_intent_passes_but_having_gone_fails_v8():
-    ok = run(f"{V14_HEAD}요즘 운명원 연애 사주 잘 본다던데 다음에 한번 가 봐야겠네요.")
+def test_intent_passes_but_having_gone_fails_v8():
+    ok = run(f"{HEAD}요즘 운명원 연애 사주 잘 본다던데 다음에 한번 가 봐야겠네요.")
     assert check(ok, "V8").passed and ok.passed, ok.failure_lines()
-    ok2 = run(f"{V14_HEAD}요즘 운명원 연애 사주 잘 본다던데 한번 가 보고 싶다.")
+    ok2 = run(f"{HEAD}요즘 운명원 연애 사주 잘 본다던데 한번 가 보고 싶다.")
     assert check(ok2, "V8").passed
-    gone = run(f"{V14_HEAD}요즘 운명원 연애 사주 잘 본다던데 가 봤는데 좋았어요.")
+    gone = run(f"{HEAD}요즘 운명원 연애 사주 잘 본다던데 가 봤는데 좋았어요.")
     assert not check(gone, "V8").passed
 
 
-def test_v14_brand_facts_sentence_still_passes_v10():
+def test_brand_facts_sentence_passes_v10():
     facts = ["운명원은 연애 사주를 잘 봐주는 곳으로 알려져 있다"]
-    text = V14_HEAD + "운명원은 연애 사주를 잘 봐주는 곳으로 알려져 있다던데 한번 가 보고 싶다."
+    text = HEAD + "운명원은 연애 사주를 잘 봐주는 곳으로 알려져 있다던데 한번 가 보고 싶다."
     assert check(run(text, facts=facts), "V10").passed
 
 
-def test_v14_no_brand_is_left_to_v5():
-    text = V14_HEAD + "요즘 연애 사주 얘기가 자주 들리던데 한번 보고 싶다."
-    result = run(text)
-    assert check(result, "V14").passed and not check(result, "V5").passed
-
-
-def test_v14_follows_the_configured_brand():
-    rules = ValidatorRules(brand="별빛당")
-    text = V14_HEAD + "별빛당에서 연애 사주를 한번 보고 싶어요."
-    assert not check(run(text, rules=rules), "V14").passed
-    text = V14_HEAD + "요즘 별빛당 연애 사주 잘 본다던데 저도 한번 가 보려고요."
-    assert check(run(text, rules=rules), "V14").passed
-
-
-# ---------------------------------------------------------------- V13 제목을 따옴표로 통째로 (C1)
-# 대표가 본 초안: "'연애상담 상상상담 가능'이라는 제목부터 제 고민 같아 눈길이 가네요."
-
-TITLE_CTX = "고민상담전문가 각종고민상담 주식상담 연애상담 상상상담 가능\n후기부탁드릴게요"
-
-
-def test_v13_quoting_the_title_fails():
-    text = (
-        "[광고] '연애상담 상상상담 가능'이라는 제목부터 제 고민 같아 눈길이 가네요. "
-        "요즘 운명원 얘기 자주 보이던데 저도 연애 문제로 한번 가 봐야겠네요."
-    )
-    v13 = check(run(text, context=TITLE_CTX), "V13")
-    assert not v13.passed and "제목" in v13.message
-
-
-def test_v13_a_short_quoted_word_from_the_title_passes():
-    text = (
-        "[광고] '상상상담'이라니 웃겼어요ㅋㅋ 연애 문제로 머리 아픈 1인. "
-        "요즘 운명원 얘기 자주 보이던데 저도 다음에 한번 가 봐야겠네요."
-    )
-    assert check(run(text, context=TITLE_CTX), "V13").passed
-
-
-def test_v10_does_not_read_eonjeilji_as_best():
-    # "언제일지"의 '제일'은 최상급이 아니다(C1 좋은 예를 쓰다 찾음). "제일 잘 봐요"는 걸린다
-    ok = V14_HEAD + "운명원 연애 사주 잘 본다던데 제 인연이 언제일지 한번 보고 싶다."
-    assert check(run(ok), "V10").passed
-    assert not check(run(V14_HEAD + "운명원이 제일 잘 본다던데 한번 보고 싶다."), "V10").passed
-
-
-def test_v14_plural_topic_marker_is_not_hearsay():
-    # 실제 초안에서 찾음: 「순애남들은」의 '들은'을 들은 얘기로 읽으면 안 된다
-    text = ("[광고] 순애남들은 이런 여자를 좋아한다니 내 스타일이 궁금해져요. "
-            "운명원 연애 사주 한번 보고 싶네요.")
-    assert not check(run(text), "V14").passed
-    heard = (V14_HEAD + "요즘 주변에서 들은 얘기로는 운명원이 연애 사주로 유명하대요. 저도 한번 "
-             "가 보려고요.")
-    assert check(run(heard), "V14").passed
-
-
+# ---------------------------------------------------------------- 핵심 말 토막(분석)
 # 2026-11-18 대표 시연 초안 「을이 되지 말고라니」: 말하다 만 자막 토막과 어미를 바꾼 핵심 말
 
 
@@ -1145,13 +760,3 @@ def test_cut_fragment_is_not_a_key_phrase(phrase):
 @pytest.mark.parametrize("phrase", ["자존심이 아니라 겁", "석 달", "최고", "읽씹", "복종남"])
 def test_whole_phrases_are_not_cut_fragments(phrase):
     assert not V.is_cut_fragment(phrase)
-
-
-def test_key_phrase_may_change_its_ending():
-    phrase = "을이 되지 말고"
-    body = "편한 연애냐 설레는 연애냐에서 을이 되지 마라는 말이 와닿네요"
-    assert V.contains_key_phrase(body, phrase)
-    assert V.contains_key_phrase("을이 되지 말라는 말이 제일 와닿네요", phrase)
-    assert not V.contains_key_phrase("을이 되는 건 싫네요", phrase)
-    # 예전 기준(끝 한 글자)은 그대로
-    assert V.contains_key_phrase("연락하는 게 무섭네요", "연락하면")

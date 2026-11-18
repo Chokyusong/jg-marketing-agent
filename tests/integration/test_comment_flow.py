@@ -1,0 +1,231 @@
+"""댓글 생성·검수 흐름(2026-11-18 대표 최종 지시서, docs/COMMENT_REFACTOR.md 6절) — 가짜 YouTube·AI.
+
+- 코드가 말 높임·들은 경로를 뽑아 시스템 글에 하나씩만 넣는다. AI는 mood·body·wish·used_quote.
+- `tone_label` = "말 높임 / 들은 경로 / 기분", `wish`와 AI가 본 근거는 `review_json`에 함께.
+- 규칙 검사에 걸리면 걸린 사유와 앞 본문으로 **같은 말 높임·들은 경로**로 다시 쓴다
+  (다시 쓰기 2번까지).
+- [다른 댓글 만들기]: 직전 초안과 다른 조합, 이미 짚은 구절과 앞 댓글의 wish를 요청 글에.
+- [짚을 내용]: 자막 → 제목·설명 → 인기 댓글. 근거가 댓글일 때만 시스템 글에 댓글 줄.
+- AI 검수: 세 가지 판정 + 갈래. 거짓이면 같은 말 높임·들은 경로로 한 번 다시 쓴다.
+"""
+
+import random
+
+import pytest
+from test_drafts_api import (
+    ANALYSIS,
+    GOOD_BODY,
+    GOOD_BODY_2,
+    MANY_FAILS,
+    Q_COMMENT,
+    TRANSCRIPT,
+    VID,
+    add_youtube,
+)
+
+from app.analysis import drafter as D
+from app.analysis.analyzer import Evidence
+from app.llm import prompts as P
+
+WISH = "이 사람이랑 계속 가도 될지"
+
+
+def answer(body, *, mood="답답", wish=WISH, quote=Q_COMMENT):
+    return {"mood": mood, "body": body, "wish": wish, "used_quote": quote}
+
+
+def ok(kind="잘 맞는 사람"):
+    return {"ok": True, "problems": [], "wish_kind": kind}
+
+
+def bad(problem="알고 싶은 것이 고민과 다름"):
+    return {"ok": False, "problems": [problem], "wish_kind": "기타"}
+
+
+@pytest.fixture
+def setup(mock_http, fixture_json, fake_key, make_client, fake_llm):
+    client = make_client(add_youtube(mock_http(), fixture_json), key=fake_key)
+    services = client.app.state.services.get()
+    services.drafts.rng = random.Random(7)
+
+    def use(responses):
+        llm = fake_llm(responses)
+        llm.model = "fake-model"
+        services.llm = llm
+        return llm
+
+    return client, services, use
+
+
+def create(client, **kw):
+    res = client.post("/api/drafts", json={"video_id": VID, **kw})
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def picked(system: str) -> tuple[str, str]:
+    voice = next(v for v in P.VOICES if f"- 말: {v}\n" in system)
+    heard = next(h for h in P.HEARD_FROM if f"너는 이것을 {h} 알게 됐고" in system)
+    return voice, heard
+
+
+def test_first_draft_stores_voice_heard_mood_wish_and_kind(setup):
+    client, services, use = setup
+    llm = use([ANALYSIS, answer(GOOD_BODY), ok("궁합")])
+    data = create(client)
+    system = llm.calls[1]["kwargs"]["system"]
+    voice, heard = picked(system)
+    assert data["tone_label"] == f"{voice} / {heard} / 답답"
+    assert data["evidence_quote"] == Q_COMMENT and data["evidence_source"] == "comment"
+    assert data["review"]["status"] == "passed" and data["passed"] and data["attempts"] == 1
+    stored = services.drafts.get(data["id"])
+    assert stored.wish == WISH and stored.review["wish_kind"] == "궁합"
+    assert stored.review["basis"] == {"quote": Q_COMMENT, "source": "comment"}
+    # 스키마와 온도는 댓글 것, 후보 목록은 프롬프트에 하나씩만
+    assert llm.calls[1]["kwargs"]["schema"] == P.DRAFT_SCHEMA
+    assert sum(v in system for v in P.VOICES) == 1
+    assert sum(h in system for h in P.HEARD_FROM) == 1
+
+
+def test_comment_basis_adds_the_comment_line(setup):
+    """VID의 근거는 모두 인기 댓글이다(자막이 없음) → 댓글 줄이 들어간다."""
+    client, _, use = setup
+    llm = use([ANALYSIS, answer(GOOD_BODY)])
+    create(client)
+    system, user = llm.calls[1]["kwargs"]["system"], llm.calls[1]["kwargs"]["user"]
+    assert P.COMMENT_LINE in system
+    assert f"[짚을 내용]\n- (댓글) {Q_COMMENT}" in user
+    assert ANALYSIS["concern"] in user
+    for word in ("[광고]", "예시", "이미 쓴"):
+        assert word not in system + user, word
+
+
+def test_transcript_basis_comes_first_and_has_no_comment_line(setup):
+    client, _, use = setup
+    assert client.put(f"/api/videos/{VID}/transcript", json={"text": TRANSCRIPT}).status_code == 200
+    quote = "주말마다 기차를 타고 내려가는 게 점점 지쳐요"
+    analysis = dict(ANALYSIS, evidence=[*ANALYSIS["evidence"],
+                                        {"quote": quote, "source": "transcript"}])
+    body = ("주말마다 기차 타고 내려가는 게 지친다는 말 너무 알 것 같아요. 운명원이 연애 사주 잘 "
+            "본다던데 저도 이 사람이랑 계속 갈지 보러 가려고요.")
+    llm = use([analysis, answer(body, quote=quote)])
+    data = create(client)
+    system, user = llm.calls[1]["kwargs"]["system"], llm.calls[1]["kwargs"]["user"]
+    assert f"- (자막) {quote}" in user and "- 자막 앞부분: " in user
+    assert P.COMMENT_LINE not in system
+    assert data["evidence_source"] == "transcript"
+
+
+def test_rule_failure_rewrites_with_the_same_voice_and_reasons(setup):
+    client, _, use = setup
+    llm = use([ANALYSIS, answer(MANY_FAILS), answer(GOOD_BODY)])
+    data = create(client)
+    assert data["passed"] and data["attempts"] == 2 and data["first_passed"] is False
+    first, second = llm.calls[1]["kwargs"], llm.calls[2]["kwargs"]
+    assert first["system"] == second["system"]  # 같은 말 높임·들은 경로
+    assert f"- 앞의 본문: {MANY_FAILS}" in second["user"]
+    assert "- 걸린 까닭: V2" in second["user"]
+
+
+def test_three_failures_keep_the_least_bad(setup):
+    client, _, use = setup
+    one_fail = GOOD_BODY.replace("운명원 ", "")  # V5만 걸린다
+    llm = use([ANALYSIS, answer(MANY_FAILS), answer(one_fail), answer(MANY_FAILS)])
+    data = create(client)
+    assert llm.remaining == 0 and data["attempts"] == 3 and not data["passed"]
+    assert data["body"].endswith(one_fail)
+    assert [c["code"] for c in data["validation"]["checks"] if not c["passed"]] == ["V5"]
+    assert data["review"]["status"] == ""  # 걸린 초안은 검수하지 않는다
+
+
+def test_another_comment_changes_the_combo_and_names_quote_and_wish(setup):
+    client, services, use = setup
+    other_quote = "서로 기대치 차이 같아요"
+    llm = use([ANALYSIS, answer(GOOD_BODY), ok(),
+               answer(GOOD_BODY_2, wish="연락 문제가 반복되는 이유", quote=other_quote), ok()])
+    first = create(client)
+    second = create(client, another=True)
+    assert first["tone_label"].split(" / ")[:2] != second["tone_label"].split(" / ")[:2]
+    user = llm.calls[2]["kwargs"]["user"]
+    assert f"- 이미 짚은 구절: {Q_COMMENT} — 이 장면은 피한다" in user
+    assert f"- 앞 댓글이 알고 싶어 한 것: {WISH}" in user
+    assert GOOD_BODY not in user  # 앞 댓글 본문은 보여 주지 않는다
+    assert f"- (댓글) {other_quote}" in user  # 짚지 않은 근거부터
+    assert second["evidence_quote"] == other_quote
+
+
+def test_review_false_rewrites_once_with_the_same_voice(setup):
+    client, services, use = setup
+    rewrite = GOOD_BODY.replace("언제 한번 가 보려고요", "이 사람이랑 계속 갈지 보러 가려고요")
+    llm = use([ANALYSIS, answer(GOOD_BODY), bad(),
+               answer(rewrite, mood="씁쓸", wish="계속 갈지"), ok("잘 맞는 사람")])
+    data = create(client)
+    assert data["review"]["status"] == "rewritten" and data["body"].endswith(rewrite)
+    assert data["attempts"] == 2
+    assert llm.calls[1]["kwargs"]["system"] == llm.calls[2]["kwargs"]["system"]
+    retry = llm.calls[2]["kwargs"]["user"]
+    assert "- 걸린 까닭: AI 검수: 알고 싶은 것이 고민과 다름" in retry
+    assert f"- 앞의 본문: {GOOD_BODY}" in retry
+    stored = services.drafts.get(data["id"])
+    assert stored.tone_label.endswith(" / 씁쓸") and stored.wish == "계속 갈지"
+    assert stored.review["wish_kind"] == "잘 맞는 사람" and stored.review["first"]
+    # 검수 AI는 쓰는 AI와 같은 [짚을 내용]을 본다
+    review_user = llm.review_calls[0]["kwargs"]["user"]
+    assert f"[짚을 내용]\n- (댓글) {Q_COMMENT}" in review_user
+
+
+def test_review_rewrite_that_breaks_the_rules_keeps_the_first(setup):
+    client, _, use = setup
+    llm = use([ANALYSIS, answer(GOOD_BODY), bad(), answer(MANY_FAILS)])
+    data = create(client)
+    assert data["review"]["status"] == "flagged" and data["body"].endswith(GOOD_BODY)
+    assert data["review"]["problems"] == ["알고 싶은 것이 고민과 다름"]
+    assert data["passed"] and llm.remaining == 0
+
+
+def test_review_error_leaves_the_draft(setup):
+    """모양이 틀린 검수 답(ok가 참/거짓이 아님)은 「검수 못 함」 — 초안은 그대로."""
+    client, services, use = setup
+    llm = use([ANALYSIS, answer(GOOD_BODY), {"ok": "몰라"}])
+    data = create(client)
+    assert data["review"]["status"] == "error" and data["review"]["label"] == "AI 검수 못 함"
+    assert data["body"].endswith(GOOD_BODY) and data["passed"]
+    assert services.drafts.get(data["id"]).wish == WISH  # wish는 그대로
+    assert llm.remaining == 0
+
+
+def test_ai_review_off(setup):
+    client, services, use = setup
+    services.drafts.ai_review = False
+    llm = use([ANALYSIS, answer(GOOD_BODY)])
+    data = create(client)
+    assert data["review"]["status"] == "off" and llm.review_calls == []
+
+
+# ---------------------------------------------------------------- 코드가 고르는 것(단위)
+
+
+def test_pick_voice_avoids_the_last_combo():
+    rng = random.Random(1)
+    last = D.Voice(P.VOICES[0], P.HEARD_FROM[0])
+    assert all(D.pick_voice(rng, avoid=last) != last for _ in range(50))
+    seen = {D.pick_voice(rng) for _ in range(200)}
+    assert len(seen) == len(P.VOICES) * len(P.HEARD_FROM)
+
+
+def test_voice_label_round_trip_and_old_labels():
+    v = D.Voice("존댓말", "요즘 자주 들어서")
+    assert v.label("설렘") == "존댓말 / 요즘 자주 들어서 / 설렘"
+    assert D.voice_of(v.label("설렘")) == v and D.mood_of(v.label("설렘")) == "설렘"
+    assert D.voice_of("공감형") is None and D.mood_of("공감형") == ""
+
+
+def test_pick_evidence_order_transcript_then_title_description_then_comment():
+    ev = [Evidence("댓글 구절입니다", "comment"), Evidence("설명 구절입니다", "description"),
+          Evidence("제목 구절입니다", "title")]
+    assert D.pick_evidence(ev).source == "title"
+    assert D.pick_evidence(ev, ["제목 구절입니다"]).source == "description"
+    assert D.pick_evidence([*ev, Evidence("자막 구절입니다", "transcript")]).source == "transcript"
+    assert D.pick_evidence([ev[0]]).source == "comment"
+    # 무리 안이 다 짚은 구절이면 그 무리의 첫 것(댓글로 내려가지 않는다)
+    assert D.pick_evidence(ev[1:], ["제목 구절입니다", "설명 구절입니다"]).source == "title"
