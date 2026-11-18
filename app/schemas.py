@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_serializer
 
 from app.analysis.analyzer import Analysis
 from app.analysis.context import VideoContext, context_material
@@ -426,6 +426,18 @@ class ReviewOut(BaseModel):
     status: str = ""
     label: str = ""  # 화면에 보이는 한 줄(없으면 빈 글)
     problems: list[str] = Field(default_factory=list)  # 남은 문제(flagged일 때만)
+    # 이야기 방식의 맥락 일치 검증(2026-11-18): 그 검증인지와 벗어난 문장(flagged일 때만)
+    story: bool = False
+    drift: str = ""
+
+    @model_serializer(mode="wrap")
+    def _drop_story_fields(self, handler):
+        """조각 맞추기의 검수 답은 예전 모양 그대로(story·drift 칸은 이야기 방식일 때만)."""
+        data = handler(self)
+        if not self.story and isinstance(data, dict):
+            data.pop("story", None)
+            data.pop("drift", None)
+        return data
 
     @classmethod
     def from_review(cls, review: dict | None) -> ReviewOut:
@@ -433,8 +445,11 @@ class ReviewOut(BaseModel):
 
         data = review or {}
         status = str(data.get("status") or "")
-        problems = [str(p) for p in data.get("problems") or []] if status == rv.FLAGGED else []
-        return cls(status=status, label=rv.label(status), problems=problems)
+        story = bool(data.get("story"))
+        flagged = status == rv.FLAGGED
+        problems = [str(p) for p in data.get("problems") or []] if flagged else []
+        return cls(status=status, label=rv.label(status, story=story), problems=problems,
+                   story=story, drift=str(data.get("drift") or "") if flagged else "")
 
 
 class DraftOut(BaseModel):
@@ -808,6 +823,7 @@ class SettingsEditOut(BaseModel):
     changed: list[str]  # 프로그램 안에서 바꿔 저장한 칸
     ranges: dict[str, list[int]]  # 숫자 칸의 [최소, 최대]
     typing_speeds: list[ChoiceOut]
+    writers: list[ChoiceOut] = Field(default_factory=list)  # 댓글 쓰는 방식(2026-11-18)
     store_ready: bool  # 저장할 곳이 있는지(실제 프로그램은 늘 참)
     applies_later: list[str]  # 값은 저장하지만 동작에는 다음 단계(R3)에서 쓰는 칸
 

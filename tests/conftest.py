@@ -74,6 +74,17 @@ def _bridge_check_off(monkeypatch):
     monkeypatch.setattr(drafter, "PIECE_CHECK", False)
     monkeypatch.setattr(drafter, "STORY_CHECK", False)  # S18~S20(2026-11-18 D)
     monkeypatch.setattr(drafter, "LENGTH_PLAN", False)  # 길이 셈(2026-11-18)
+    # 이야기처럼 쓰기(2026-11-18 대표 결정, 기본값): 그 전에 짠 시험은 조각 맞추기(pieces)로 돈다.
+    # 이야기 방식을 보는 시험은 `story_writer`를 쓴다(설정·생성자의 writer를 그대로 따른다)
+    monkeypatch.setattr(drafter, "FORCE_WRITER", "pieces")
+
+
+@pytest.fixture
+def story_writer(monkeypatch):
+    """댓글 쓰는 방식을 설정(`comment.writer`)·생성자 값대로 둔다(기본 story)."""
+    from app.analysis import drafter
+
+    monkeypatch.setattr(drafter, "FORCE_WRITER", None)
 
 
 @pytest.fixture
@@ -127,11 +138,17 @@ def _ai_review_answers(request, monkeypatch):
 
     real_parse = review.parse
 
-    def fake_ask(llm, *, system, user):
+    real_story = review.parse_story
+
+    def fake_ask(llm, *, system, user, story=False):
+        # 이야기 방식(2026-11-18)은 맥락 일치 검증 답으로 푼다 — 준비한 답에 네 판단이 없으면
+        # 문제 없음으로 본다(예전 꼴 {"ok", "problems"} 답도 그대로 쓴다)
+        parse = real_story if story else real_parse
+        schema = review.STORY_REVIEW_SCHEMA if story else review.REVIEW_SCHEMA
         answer = getattr(llm, "answer_review", None)
         if answer is None:
-            return real_parse(REVIEW_OK)
-        return real_parse(answer(system=system, user=user, schema=review.REVIEW_SCHEMA))
+            return parse(REVIEW_OK)
+        return parse(answer(system=system, user=user, schema=schema))
 
     monkeypatch.setattr(review, "ask", fake_ask)
 

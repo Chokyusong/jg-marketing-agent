@@ -216,6 +216,8 @@ class Settings:
     confirm_before_post: bool = False
     # 2026-11-18 AI 검수 한 번: 규칙 검사를 통과한 초안을 AI가 한 번 더 읽는다(기본 켬)
     ai_review: bool = True
+    # 2026-11-18 대표 결정: 댓글 쓰는 방식 — story(이야기처럼, 기본) | pieces(조각 맞추기, 예전)
+    writer: str = "story"
     typing_speed: str = "normal"  # slow | normal | fast (browser.typing_delay_ms와 같은 뜻)
     window_screen: str | None = None  # 크롬 창을 띄울 모니터 ID(고른 적이 없으면 None)
     youtube_key_source: str | None = None  # program(프로그램에 저장) | dev_file(.env·환경 변수)
@@ -504,6 +506,7 @@ def load_settings(
         browser=browser,
         disclose_default=_flag(comment.get("disclose_default", True), "comment.disclose_default"),
         ai_review=_flag(comment.get("ai_review", True), "comment.ai_review"),
+        writer=_writer(comment.get("writer", "story")),
         confirm_before_post=_flag(
             posting.get("confirm_before_post", False), "posting.confirm_before_post"
         ),
@@ -578,6 +581,12 @@ def _rising_settings(raw: Any) -> RisingSettings:
     if out.min_views < 0 or out.max_views < out.min_views or out.min_views_per_hour < 0:
         raise ValueError("rising의 조회수 범위가 잘못됐습니다(0 ≤ min_views ≤ max_views).")
     return out
+
+
+def _writer(value: Any) -> str:
+    """comment.writer: story | pieces. 비었거나 모르는 값이면 story(기본)."""
+    text = str(value or "").strip().lower()
+    return text if text in ("story", "pieces") else "story"
 
 
 def _flag(value: Any, name: str) -> bool:

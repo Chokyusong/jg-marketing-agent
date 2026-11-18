@@ -31,5 +31,6 @@ def validate_text(body: ValidateIn, services: ServicesDep) -> ValidationOut:
         evidence_quote=quote,
         key_phrases=key_phrases or None,
         concern=concern,
+        story=services.drafts.is_story,
     )
     return ValidationOut.from_validation(result, services.checks.rules)

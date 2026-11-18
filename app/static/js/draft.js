@@ -145,7 +145,10 @@ function reviewView(state, text) {
   if (!review || !review.label) return null;
   const problem = review.status === 'flagged' && review.problems && review.problems[0];
   const line = problem ? `${review.label} · ${problem}` : review.label;
-  return el('span', { class: `checks-review ${REVIEW_CLASS[review.status] || ''}`, id: 'checks-review', title: line, text: line });
+  // 이야기 방식의 맥락 일치 검증(2026-11-18): 「맥락 검증 못 함」은 통과(초록)와 다르게 경고색,
+  // 「맥락 확인 필요」는 벗어난 문장을 까닭 줄에 먼저 보인다(서버가 맨 앞에 둔다)
+  const kind = review.story && review.status === 'error' ? 'is-warn' : (REVIEW_CLASS[review.status] || '');
+  return el('span', { class: `checks-review ${kind}`, id: 'checks-review', title: line, text: line });
 }
 
 function checksView(state) {

@@ -181,6 +181,7 @@ def build_services(
         ledger=services.ledger,
         disclose_default=settings.disclose_default,
         ai_review=settings.ai_review,
+        writer=settings.writer,
     )
     services.hooks = browser_hooks or BrowserHooks()
     services.jobs = build_jobs(services, clock=clock)

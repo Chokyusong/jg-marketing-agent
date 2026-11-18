@@ -61,7 +61,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from app import db
-from app.analysis import analyzer, style
+from app.analysis import analyzer, story, style
 from app.analysis import review as rv
 from app.analysis.analyzer import Analysis, Evidence
 from app.analysis.checking import CheckService
@@ -69,6 +69,7 @@ from app.analysis.context import ContextService
 from app.analysis.validator import ASSIGNMENT_SAMPLE, Validation, normalize
 from app.errors import AppError, ErrorKind
 from app.llm import prompts
+from app.llm import story_prompts as sp
 from app.llm.base import LLMClient
 from app.ops.ledger import Ledger
 from app.youtube.quota import Clock
@@ -96,6 +97,10 @@ STORY_CHECK = True
 # 마지막에 길이(V1)만 걸리면 잇는 문장을 덜어 본다. 그 전에 짠 가짜 초안·프롬프트 시험이 예전
 # 배정을 보므로 자동 테스트는 `tests/conftest.py`가 끈다(켜는 것은 `length_plan_on`)
 LENGTH_PLAN = True
+# 이야기처럼 쓰기(2026-11-18 대표 결정): 설정 `comment.writer`와 상관없이 이 방식으로 쓴다(None이면
+# 설정대로). 그 전에 짠 시험은 조각 맞추기로 돈다 — `tests/conftest.py`가 "pieces"로 두고, 이야기
+# 방식 시험은 `story_writer`로 None(설정·생성자 값)을 쓴다
+FORCE_WRITER: str | None = None
 # 꺼내는 말·끝말을 돌려 쓸 때 보는 「보인 초안」 수(최근 것부터, 2026-11-17)
 SHOWN_TEXTS = 30
 DraftStatus = str  # 'draft' | 'approved' | 'superseded'
@@ -205,6 +210,7 @@ class DraftService:
         polish: bool = POLISH_DRAFTS,
         rng: random.Random | None = None,
         ai_review: bool = True,
+        writer: str = story.WRITER_STORY,
     ) -> None:
         self.context = context
         # 꺼내는 말·끝말을 권할 때 횟수가 같으면 무작위로(2026-11-17). 시험은 씨앗을 넣는다
@@ -228,6 +234,17 @@ class DraftService:
         self._used_leads: list[str] = []  # 앞서 보인 초안들의 ④ 꺼내는 말(S15)
         self._want_bridge: bool | None = None  # 이번 초안에 잇는 문장을 넣을지(S16·S17)
         self._reason_kind: str | None = None  # 이번 초안 ⑤의 꼴(알고 싶은 것 등, S18)
+        # 설정 comment.writer(2026-11-18): story(이야기처럼, 기본) | pieces(조각 맞추기, 예전)
+        self._writer = writer if writer in story.WRITERS else story.WRITER_STORY
+        self._shown: list[str] = []  # 앞서 보인 초안(이야기 방식 S4·「이미 쓴 글」)
+
+    @property
+    def writer(self) -> str:
+        return FORCE_WRITER or self._writer
+
+    @property
+    def is_story(self) -> bool:
+        return self.writer == story.WRITER_STORY
 
     @property
     def rules(self):
@@ -389,8 +406,16 @@ class DraftService:
         previous_body = ""
         attempts = 0
         first_passed = False
-        for attempt in range(1, self.max_attempts + 1):
-            user = self._draft_prompt(kit, analysis, evidence, failure_lines, previous_body)
+        # 차례마다 덜어 낼 것(이야기 방식에서 길이로 세 번 다 걸리면 여운 → 전 차례로 한 번씩 더)
+        steps = [0] * self.max_attempts
+        long_fails = 0
+        step = 0
+        while step < len(steps):
+            attempt = step + 1
+            drop = steps[step]
+            user = self._draft_prompt(
+                kit, analysis, evidence, failure_lines, previous_body, drop=drop
+            )
             try:
                 data = llm.generate_json(
                     system=system,
@@ -412,12 +437,17 @@ class DraftService:
             validation = self.checks.check(
                 video_id, text, previous_texts=previous, evidence_quote=evidence.quote,
                 disclose=disclose, key_phrases=analysis.checked_phrases, concern=analysis.concern,
+                story=self.is_story,
             )
             fails = len(validation.failures)
             issues = self._style(text, mark, analysis.key_phrases, avoid_bodies)
             run["attempts"].append(
-                {"body": text, "failures": validation.failure_lines(), "issues": issues}
+                {"body": text, "failures": validation.failure_lines(), "issues": issues,
+                 **({"drop": drop} if drop else {})}
             )
+            too_long = len(text) > rules.max_chars and any(
+                c.code == "V1" for c in validation.failures)
+            long_fails += too_long
             if best is None or (fails, len(issues)) < best[:2]:
                 best = (fails, len(issues), text, tone, validation, attempt, issues)
             if validation.passed and attempt == 1:
@@ -427,17 +457,23 @@ class DraftService:
             # 규칙 검사에 걸렸으면 그 문구로, 통과했지만 어색하면 다듬기 검사 문구로 다시 쓴다
             failure_lines = validation.failure_lines() + issues
             previous_body = body
+            step += 1
+            # 이야기 방식(2026-11-18): 지금까지 모두 길이로 걸렸으면 여운부터, 다음은 전을 빼고
+            # 한 번 더 쓴다(덜어 낼 것이 남았을 때만)
+            if (self.is_story and step == len(steps) and too_long and long_fails == step
+                    and len(steps) < self.max_attempts + len(sp.DROP_LINES) - 1):
+                steps.append(len(steps) - self.max_attempts + 1)
 
         assert best is not None
         _, _, text, tone, validation, _, issues = best
-        if LENGTH_PLAN and not validation.passed:
+        if LENGTH_PLAN and not validation.passed and not self.is_story:
             # 길이(V1)만 걸렸으면 잇는 문장을 덜어 본다 — 모델을 다시 부르지 않는다(2026-11-18)
             trimmed = self._trim_bridge(text, validation)
             if trimmed:
                 checked = self.checks.check(
                     video_id, trimmed, previous_texts=previous, evidence_quote=evidence.quote,
                     disclose=disclose, key_phrases=analysis.checked_phrases,
-                    concern=analysis.concern,
+                    concern=analysis.concern, story=self.is_story,
                 )
                 if checked.passed:
                     run["trimmed"] = {"before": text, "after": trimmed}
@@ -501,6 +537,11 @@ class DraftService:
         previous = self.previous_texts(video_id)
         mine = [d for d in self.list(video_id) if exclude is None or d.id != exclude.id]
         avoid_bodies = [d.body for d in mine][:3]
+        if self.is_story:
+            return self._prepare_story(
+                video_id, analysis, exclude, llm=llm, rules=rules, mark=mark, min_body=min_body,
+                max_body=max_body, previous=previous, avoid_bodies=avoid_bodies,
+            )
         # C1 다듬기: [다른 댓글 만들기]는 앞 초안과 다른 핵심 말로(남은 핵심 말이 있을 때)
         phrases = [k for k in analysis.key_phrases if k]
         used_before = [k for k in phrases if any(k in style.used_phrases(b, phrases)
@@ -609,6 +650,33 @@ class DraftService:
             thin=thin, pieces=pieces, want_bridge=want_bridge, reason_kind=kind, plan=plan,
         )
 
+    def _prepare_story(
+        self, video_id: str, analysis: Analysis, exclude: Draft | None, **base: Any
+    ) -> SimpleNamespace:
+        """이야기 방식(2026-11-18)의 준비: 「이미 쓴 글」과 영상 자료만. 조각·말투·잇는 문장·까닭·
+        글쓴이 처지는 정하지 않는다(처지도 AI가 영상을 보고 정한다)."""
+        rules = base["rules"]
+        shown = [t for t in self.shown_texts() if exclude is None or t != exclude.body]
+        thin, title, context_text = False, "", ""
+        try:
+            current = self.context.current(video_id)
+            context_text = self.context.search_text(current)
+            thin = not current.transcript_text
+            title = current.video.video.title
+        except AppError:
+            pass
+        self._context_text = context_text
+        self._shown = shown
+        self._last_shown = shown[0] if shown else ""
+        system = sp.story_system(
+            brand=rules.brand, disclosure=rules.disclosure, facts=self.brand_facts,
+            sample=ASSIGNMENT_SAMPLE,
+        )
+        return SimpleNamespace(
+            **base, system=system, schema=prompts.draft_schema(prompts.TONE_LABELS),
+            shown=shown, thin=thin, title=title,
+        )
+
     def _trim_bridge(self, text: str, validation: Validation) -> str:
         """길이(V1)만 넘친 글에서 잇는 문장을 뺀 글(뺄 것이 없거나 다른 검사에도 걸렸으면 빈 글)."""
         if any(c.code != "V1" for c in validation.failures) or len(text) <= self.rules.max_chars:
@@ -620,8 +688,22 @@ class DraftService:
 
     def _draft_prompt(
         self, kit: SimpleNamespace, analysis: Analysis, evidence: Evidence,
-        failure_lines: Sequence[str], previous_body: str,
+        failure_lines: Sequence[str], previous_body: str, *, drop: int = 0,
     ) -> str:
+        if self.is_story:
+            rules = kit.rules
+            plain = [toggle_disclosure(t, rules.disclosure, False) for t in kit.shown
+                     if t not in kit.avoid_bodies]
+            return sp.story_user(
+                analysis=analysis.to_prompt(), title=kit.title, quote=evidence.quote,
+                source=evidence.source, key_phrases=analysis.key_phrases,
+                mark_len=len(kit.mark) + 1 if kit.mark else 0, max_body=kit.max_body,
+                brand=rules.brand, shown=plain,
+                avoid_bodies=[toggle_disclosure(b, rules.disclosure, False)
+                              for b in kit.avoid_bodies],
+                failure_lines=failure_lines, previous_body=previous_body, drop=drop,
+                thin=kit.thin,
+            )
         return prompts.draft_user(
             analysis=analysis.to_prompt(),
             quote=evidence.quote,
@@ -655,6 +737,12 @@ class DraftService:
     def _style(
         self, text: str, mark: str, key_phrases: Sequence[str], earlier: Sequence[str]
     ) -> list[str]:
+        if self.is_story:  # 이야기 방식: S1·S4·S5·S9·S13만(짜임 검사는 보지 않는다)
+            return story.story_issues(
+                text, brand=self.rules.brand, disclosure=self.rules.disclosure,
+                max_total=prompts.SOFT_MAX_DRAFT, earlier=earlier,
+                shown=[t for t in self._shown if t not in earlier], context=self._context_text,
+            )
         return style.style_issues(
             text, brand=self.rules.brand, disclosure=mark, key_phrases=key_phrases,
             earlier=earlier, context=self._context_text,
@@ -706,6 +794,7 @@ class DraftService:
         checked = self.checks.check(
             video_id, new_text, previous_texts=previous, evidence_quote=evidence.quote,
             disclose=disclose, key_phrases=analysis.checked_phrases, concern=analysis.concern,
+            story=self.is_story,
         )
         new_issues = self._style(new_text, mark, analysis.key_phrases, avoid_bodies)
         info.update(failures_after=checked.failure_lines(), issues_after=new_issues)
@@ -743,6 +832,13 @@ class DraftService:
         rewrite = info.get("rewrite") or {}
         if rewrite:
             result["kept"] = text is not None
+        if self.is_story:
+            # 맥락 일치 검증(2026-11-18): 네 판단과 벗어난 문장을 초안마다 남긴다(남은 글의 것)
+            last = info.get("second") if text is not None else info.get("first")
+            checks = dict((last or {}).get("checks") or {})
+            result.update(story=True, checks=checks, drift=str(checks.get("drift") or ""))
+            if "first" in info and "second" in info:
+                result["first_checks"] = dict(info["first"].get("checks") or {})
         return self._save_review(
             draft, result, text=text, validation=validation,
             before=draft.body if rewrite else "", after=str(rewrite.get("body") or ""),
@@ -762,16 +858,28 @@ class DraftService:
             title = self.context.current(draft.video_id).video.video.title
         except AppError:
             title = ""
-        system = rv.review_system(brand=rules.brand)
+        is_story = self.is_story
+        thin: bool | None = None
+        if is_story:
+            try:
+                thin = not self.context.current(draft.video_id).transcript_text
+            except AppError:
+                thin = None
+        system = rv.review_system(brand=rules.brand, story=is_story)
         llm = self._llm()
 
         def ask(text: str) -> tuple[bool, list[str]] | None:
             body = toggle_disclosure(text, rules.disclosure, False)
             started = time.monotonic()
+            # 이야기 방식일 때만 story를 넘긴다(예전 꼴의 가짜 ask도 그대로 받게)
+            extra = {"story": True} if is_story else {}
             try:
-                return rv.ask(llm, system=system, user=rv.review_user(
+                return rv.ask(llm, system=system, **extra, user=rv.review_user(
                     body=body, title=title, concern=concern, key_phrases=phrases,
-                    evidence=draft.evidence_quote))
+                    evidence=draft.evidence_quote, story=is_story,
+                    source=prompts.SOURCE_LABELS.get(draft.evidence_source, "")
+                    if is_story else "",
+                    topic=analysis.topic if analysis and is_story else "", thin=thin))
             except (AppError, ValueError) as exc:
                 info.setdefault("errors", []).append(str(getattr(exc, "message", exc)))
                 return None
@@ -782,7 +890,7 @@ class DraftService:
         if first is None:
             return {"status": rv.ERROR, "problems": []}, None, None
         ok, problems = first
-        info["first"] = {"ok": ok, "problems": problems}
+        info["first"] = {"ok": ok, "problems": problems, **_checks_of(first)}
         if ok:
             return {"status": rv.PASSED, "problems": []}, None, None
         flagged = {"status": rv.FLAGGED, "problems": problems, "first": problems}
@@ -793,7 +901,9 @@ class DraftService:
         kit = self._prepare(draft.video_id, analysis, draft.disclosed, exclude=draft)
         before = self._style(draft.body, mark, analysis.key_phrases, kit.avoid_bodies)
         previous_body = toggle_disclosure(draft.body, rules.disclosure, False)
-        user = self._draft_prompt(kit, analysis, evidence, rv.retry_lines(problems), previous_body)
+        user = self._draft_prompt(
+            kit, analysis, evidence, rv.retry_lines(problems, story=is_story), previous_body
+        )
         started = time.monotonic()
         try:
             data = kit.llm.generate_json(
@@ -810,7 +920,7 @@ class DraftService:
         validation = self.checks.check(
             draft.video_id, text, previous_texts=kit.previous, evidence_quote=evidence.quote,
             disclose=draft.disclosed, key_phrases=analysis.checked_phrases,
-            concern=analysis.concern,
+            concern=analysis.concern, story=self.is_story,
         )
         issues = self._style(text, mark, analysis.key_phrases, kit.avoid_bodies)
         info["rewrite"] = {"body": text, "failures": validation.failure_lines(),
@@ -822,7 +932,7 @@ class DraftService:
             # 두 번째 검수 실패·시간 초과: 검수를 통과했는지 모르는 글로 바꾸지 않는다 — 앞 초안
             return {"status": rv.ERROR, "problems": [], "first": problems}, None, None
         ok2, problems2 = second
-        info["second"] = {"ok": ok2, "problems": problems2}
+        info["second"] = {"ok": ok2, "problems": problems2, **_checks_of(second)}
         if ok2:
             return {"status": rv.REWRITTEN, "problems": [], "first": problems}, text, validation
         return {"status": rv.FLAGGED, "problems": problems2, "first": problems}, text, validation
@@ -1072,6 +1182,7 @@ class DraftService:
             disclose=disclose,
             key_phrases=analysis.checked_phrases if analysis else None,
             concern=analysis.concern if analysis else "",
+            story=self.is_story,
         )
 
     def _source_of(self, video_id: str, quote: str) -> str | None:
@@ -1135,3 +1246,8 @@ def used_quotes(drafts: Sequence[Draft]) -> list[str]:
             out.append(d.evidence_quote)
     return out
 
+
+def _checks_of(verdict: Any) -> dict[str, Any]:
+    """맥락 일치 검증의 네 판단(이야기 방식 답에만 있다)."""
+    checks = getattr(verdict, "checks", None)
+    return {"checks": dict(checks)} if checks else {}

@@ -152,6 +152,9 @@ def run(
                 "review_before": d.review_before, "review_after": d.review_after,
                 "review_kept": (d.review or {}).get("kept"),
                 "review_ms": d.review_ms, "rewrite_ms": d.rewrite_ms,
+                # 2026-11-18 맥락 일치 검증(이야기 방식): 남은 글의 네 판단, 처음 판단(다시 썼으면)
+                "context": dict((d.review or {}).get("checks") or {}),
+                "context_first": dict((d.review or {}).get("first_checks") or {}),
                 "run": json.loads(json.dumps(services.drafts.last_run, ensure_ascii=False)),
                 "retry_reasons": [
                     [ln[2:] for ln in p.split(RETRY_HEAD, 1)[1].splitlines() if ln.startswith("- ")]
@@ -274,7 +277,33 @@ def _stats(videos: Sequence[dict[str, Any]], brand: str = "운명원") -> dict[s
                 "검수 1번 평균 시간(초안당 합)": f"{avg:.1f}초",
                 "다시 쓰기 평균 시간": f"{avg_rw:.1f}초({rewrote}개)" if rewrote else "—",
             })
+    checked = [x for x in ds if x.get("context")]
+    if checked:
+        out.update(context_counts(ds))
     return out
+
+
+def context_counts(ds: Sequence[dict[str, Any]]) -> dict[str, str]:
+    """맥락 일치 검증(이야기 방식) 집계: 처음 판단 기준과 남은 글 기준."""
+    def first(x: dict[str, Any]) -> dict[str, Any]:
+        return x.get("context_first") or x.get("context") or {}
+
+    checked = [x for x in ds if x.get("context")]
+    n = len(checked)
+    return {
+        "맥락: 벗어난 문장(처음 → 남음)":
+            f"{sum(bool(first(x).get('drift')) for x in checked)} → "
+            f"{sum(bool(x['context'].get('drift')) for x in checked)}/{n}",
+        "맥락: 한 목소리 아님(처음 → 남음)":
+            f"{sum(first(x).get('one_voice') is False for x in checked)} → "
+            f"{sum(x['context'].get('one_voice') is False for x in checked)}/{n}",
+        "맥락: 주제 다름(처음 → 남음)":
+            f"{sum(first(x).get('same_topic') is False for x in checked)} → "
+            f"{sum(x['context'].get('same_topic') is False for x in checked)}/{n}",
+        "맥락: 억지 연결(처음 → 남음)":
+            f"{sum(first(x).get('natural_ad') is False for x in checked)} → "
+            f"{sum(x['context'].get('natural_ad') is False for x in checked)}/{n}",
+    }
 
 
 def remaining_issues(

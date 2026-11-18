@@ -55,6 +55,8 @@ TITLE_COPY_LIMIT = 9
 SAMPLE_SENTENCE_SIMILARITY = 0.8  # V11: 과제 예시 댓글의 한 문장과 이만큼 비슷한 문장이 있으면 실패
 QUOTE_SIMILARITY = 0.85  # V6: 근거 구절이 그대로 없으면 이만큼 비슷한 구간이 있어야 한다
 PREVIOUS_SIMILARITY = 0.6  # V11: 이전 글과 이만큼 비슷하면 실패
+# V11(이야기 방식, 2026-11-18): 글 전체가 비슷해도 운명원 앞부분(영상 얘기)이 이만큼 안 되면 통과
+LEAD_SIMILARITY = 0.5
 BRAND_GAP = 8  # 따옴표로 옮긴 영상 속 말: 앞뒤 이만큼 안에 브랜드가 있으면 V8~V10 면제 없음
 FACT_EXTRA_CHARS = 3  # V10: 걸린 말 앞뒤로 이만큼 더 brand.facts와 똑같으면 사실 문장으로 본다
 _FIND_MIN = 2  # find_evidence: 정리 후 이보다 짧은 겹침은 구절로 치지 않는다
@@ -1006,14 +1008,36 @@ def _sample_similarity(text: str, rules: ValidatorRules) -> tuple[float, float]:
     return whole, best
 
 
-def _v11_previous(text: str, previous_texts: Sequence[str], rules: ValidatorRules) -> CheckResult:
+def _lead_n(text: str, brand: str) -> str:
+    """운명원 이름 앞(이야기 방식의 기·승·전), 정규화한 것. 이름이 없으면 글 전체."""
+    at = text.find(brand) if brand else -1
+    return normalize(text if at < 0 else text[:at])
+
+
+def _v11_previous(
+    text: str, previous_texts: Sequence[str], rules: ValidatorRules, *, story: bool = False
+) -> CheckResult:
+    """V11. `story`(이야기 방식, 2026-11-18 대표 기준 「비슷한 건 괜찮고 똑같은 것만」)면 글 전체가
+    PREVIOUS_SIMILARITY 넘게 비슷해도 운명원 앞부분(영상 얘기)이 LEAD_SIMILARITY 밑이면 통과한다 —
+    끝 문장(결)이 닮은 것만으로는 걸리지 않는다."""
     body_n = normalize(_strip_markers(text, rules))
+    # 앞부분은 운명원 이름 앞까지 — 이름을 지우기 전 글에서 자른다(표기만 뺀다)
+    lead = _lead_n(text.replace(rules.disclosure, " "), rules.brand) if story else ""
     best, best_text = 0.0, ""
+    excused = 0.0
     for prev in previous_texts:
-        prev_n = normalize(_strip_markers(unicodedata.normalize("NFC", prev or ""), rules))
+        plain = _strip_markers(unicodedata.normalize("NFC", prev or ""), rules)
+        prev_n = normalize(plain)
         if not prev_n or not body_n:
             continue
         ratio = SequenceMatcher(None, body_n, prev_n, autojunk=False).ratio()
+        if story and ratio >= PREVIOUS_SIMILARITY:
+            raw = unicodedata.normalize("NFC", prev or "").replace(rules.disclosure, " ")
+            theirs = _lead_n(raw, rules.brand)
+            if lead and theirs and SequenceMatcher(
+                    None, lead, theirs, autojunk=False).ratio() < LEAD_SIMILARITY:
+                excused = max(excused, ratio)  # 앞부분이 다르면 다른 글(끝 문장만 닮음)
+                continue
         if ratio > best:
             best, best_text = ratio, prev
     whole, sentence = _sample_similarity(text, rules)
@@ -1031,8 +1055,10 @@ def _v11_previous(text: str, previous_texts: Sequence[str], rules: ValidatorRule
         )
     if not previous_texts:
         return _check("V11", True, "비교할 이전 글 없음")
+    note = f" · 끝 문장만 닮은 글 {excused:.0%}(앞부분이 달라 통과)" if excused else ""
     return _check(
-        "V11", True, f"이전 글 {len(previous_texts)}개와 비교 · 가장 비슷한 것 {best:.0%}"
+        "V11", True,
+        f"이전 글 {len(previous_texts)}개와 비교 · 가장 비슷한 것 {best:.0%}{note}",
     )
 
 
@@ -1193,6 +1219,74 @@ def _v14_brand_intro(
     )
 
 
+# 이야기 방식(2026-11-18 대표 결정, `comment.writer: story`): V14는 넷만 본다 — ① 이름 ② 연애 사주
+# (또는 사주) ③ 잘 본다는 평판을 들은 얘기로(「잘 본다길래」도) ④ 가 보거나 보겠다는 말. 때 말
+# (요즘·요새)은 없어도 된다. 더해서 운명원은 첫 문장에 나오지 않는다(영상 반응으로 시작하게).
+# 설정에 없는 새 평판·사례를 지어내지 않는 것은 두 방식 모두 같다(지어낸 후기 금지)
+V14_SAJU = re.compile(r"사주")
+V14_STORY_MISSING = (
+    ("love", "연애 사주(사주)가 없습니다"),
+    ("repute", "잘 본다는 평판(~다던데·~다길래)이 없습니다"),
+    ("intent", "보러 가겠다는 말(보러 가려구요·보고 싶다 등)이 없습니다"),
+)
+
+
+def story_pieces(text: str, brand: str, disclosure: str = "") -> list[str]:
+    """이야기 방식에서 운명원 대목에 빠진 것(`V14_STORY_MISSING`의 열쇠). 운명원이 든 문장과 그
+    앞뒤 문장에서 찾는다. 브랜드가 없으면 빈 목록."""
+    body = text.replace(disclosure, " ") if disclosure else text
+    parts = [p.strip() for p in _V14_SPLIT.split(body) if p and p.strip()]
+    spots = [i for i, p in enumerate(parts) if brand and brand in p]
+    best: list[str] | None = None
+    for i in spots:
+        chunk = " . ".join(parts[max(0, i - 1) : i + 2])
+        missing = [
+            key for key, ok in (
+                ("love", V14_SAJU.search(chunk)),
+                ("repute", V14_REPUTE.search(chunk)),
+                ("intent", V14_INTENT.search(chunk) or V14_WISH.search(chunk)),
+            ) if not ok
+        ]
+        if best is None or len(missing) < len(best):
+            best = missing
+    return best or []
+
+
+def brand_in_first_sentence(text: str, brand: str, disclosure: str = "") -> bool:
+    body = text.replace(disclosure, " ", 1) if disclosure else text
+    parts = [p.strip() for p in _V14_SPLIT.split(body) if p and p.strip()]
+    return bool(brand and parts and brand in parts[0])
+
+
+def _v14_story(text: str, rules: ValidatorRules, facts_n: Sequence[str] = ()) -> CheckResult:
+    brand = rules.brand
+    if not brand or brand not in text:
+        return _check("V14", True, f"'{brand}' 없음(V5에서 봄)")
+    if brand_in_first_sentence(text, brand, rules.disclosure):
+        return _check(
+            "V14", False,
+            f"첫 문장에 '{brand}'이 나왔습니다 — 영상 속 말이나 장면에 대한 내 반응으로 시작하고 "
+            f"'{brand}'은 끝에서 꺼내세요",
+        )
+    invented = brand_invented(text, brand, rules.disclosure, facts_n)
+    if invented:
+        label, word = invented
+        return _check(
+            "V14", False,
+            f"'{brand}' 대목에 설정에 없는 평판·사례({label}: '{word}')가 있습니다 — 들은 "
+            "평판은 '연애사주 잘 본다던데', '잘 본다길래'처럼만 쓰세요",
+        )
+    missing = story_pieces(text, brand, rules.disclosure)
+    if not missing:
+        return _check("V14", True, f"'{brand}' 대목에 이름·연애 사주·들은 평판·보러 갈 뜻이 있음")
+    said = dict(V14_STORY_MISSING)
+    return _check(
+        "V14", False,
+        f"'{brand}' 대목에 " + " · ".join(said[k] for k in missing)
+        + f" — '{brand}이 연애사주 잘 본다던데 [알고 싶은 것] 보러 가려구요'처럼 쓰세요",
+    )
+
+
 # ---------------------------------------------------------------- 전체 검사
 
 
@@ -1207,6 +1301,7 @@ def validate(
     disclosure_required: bool = True,
     key_phrases: Sequence[str] | None = None,
     concern: str = "",
+    story: bool = False,
 ) -> Validation:
     """V1~V14를 모두 돌린다. 하나라도 실패하면 `passed=False`.
 
@@ -1218,6 +1313,7 @@ def validate(
     - `evidence_quote`: AI가 고른 근거 구절(5단계). 없으면 `find_evidence`로 찾는다
     - `key_phrases`: 분석이 뽑은 그 영상의 핵심 말(V7, C1). 없으면 제목·근거에서 코드로 뽑는다
     - `concern`: 분석의 고민 한 줄(V13: 그대로 길게 옮겼는지 본다)
+    - `story`: 이야기 방식(`comment.writer: story`)이면 V14를 `_v14_story`로 본다(넷만 + 첫 문장)
     """
     clean = unicodedata.normalize("NFC", text or "").strip()
     facts_n = [normalize(f) for f in brand_facts if f and f.strip()]
@@ -1249,10 +1345,10 @@ def validate(
             facts_n,
             quoted=quoted,
         ),
-        _v11_previous(clean, previous_texts, rules),
+        _v11_previous(clean, previous_texts, rules, story=story),
         _v12_charset(clean, rules),
         _v13_copy(clean, context_text or "", rules, concern),
-        _v14_brand_intro(clean, rules, facts_n),
+        _v14_story(clean, rules, facts_n) if story else _v14_brand_intro(clean, rules, facts_n),
     )
     return Validation(
         passed=all(c.passed for c in checks),
