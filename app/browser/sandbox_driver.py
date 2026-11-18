@@ -291,6 +291,48 @@ class PlaywrightSandboxDriver:
             message = self._page.text_content("#post-status") or ""
             raise DriverError(f"연습 페이지가 게시를 거절했습니다: {message.strip()}")
 
+    # ------------------------------------------------------------ 게시 뒤 열어 둔 창(2026-11-18)
+
+    comment_selector = "#comment-list .c-body"  # 달린 댓글의 글(유튜브 실행기는 자기 것을 쓴다)
+
+    def _comment_selector(self) -> str:
+        return self.comment_selector
+
+    def show_comment(self, text: str) -> bool:
+        """방금 단 내 댓글을 화면 가운데로 내린다(읽기·스크롤만, 아무것도 누르지 않는다).
+
+        찾아서 내렸으면 True. 공백 차이는 무시한다."""
+        script = """([selector, text]) => {
+          const norm = (s) => (s || '').split(/\\s+/).filter(Boolean).join(' ');
+          const want = norm(text);
+          const node = [...document.querySelectorAll(selector)]
+            .find((n) => norm(n.textContent) === want);
+          if (!node) return false;
+          node.scrollIntoView({ block: 'center', inline: 'nearest' });
+          return true;
+        }"""
+        if self._page is None:
+            return False
+        try:
+            return bool(self._page.evaluate(script, [self._comment_selector(), text]))
+        except Exception:
+            return False
+
+    def wait_closed(self, seconds: float) -> bool:
+        """최대 `seconds`초 기다리며 사람이 창을 닫았는지 본다(닫혔으면 True).
+
+        기다리는 동안 Playwright가 창·페이지 닫힘 소식을 받는다(동기 API는 부를 때만 받는다)."""
+        page = self._page
+        if page is None:
+            return True
+        try:
+            if page.is_closed():
+                return True
+            page.wait_for_timeout(max(1, int(seconds * 1000)))
+            return page.is_closed()
+        except Exception:  # 창(크롬)이 닫혀 페이지를 쓸 수 없다
+            return True
+
     # ------------------------------------------------------------ 마무리
 
     def screenshot(self, path: Path) -> bool:

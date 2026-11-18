@@ -688,6 +688,7 @@ class JobOut(BaseModel):
     events: list[JobEventOut]
     confirm_before_post: bool = False  # 입력 뒤 [게시]를 기다리는 작업인지(설정 「게시 직전 확인」)
     disclosed: bool = True  # 그 댓글이 광고 표기를 붙였는지
+    window_open: bool = False  # 게시 뒤 크롬 창이 아직 열려 있는지(2026-11-18)
 
     @classmethod
     def from_view(cls, v) -> JobOut:  # v: app.browser.jobs.JobView
@@ -718,6 +719,7 @@ class JobOut(BaseModel):
             events=[JobEventOut(at=e.at, state=e.state, message=e.message) for e in v.events],
             confirm_before_post=v.confirm_before_post,
             disclosed=v.disclosed,
+            window_open=v.window_open,
         )
 
 
@@ -828,6 +830,8 @@ class SettingsEditOut(BaseModel):
     ranges: dict[str, list[int]]  # 숫자 칸의 [최소, 최대]
     typing_speeds: list[ChoiceOut]
     writers: list[ChoiceOut] = Field(default_factory=list)  # 댓글 쓰는 방식(2026-11-18)
+    # 게시 뒤 크롬 창: 열어 두기(5분) · 바로 닫기(2026-11-18)
+    after_post_windows: list[ChoiceOut] = Field(default_factory=list)
     store_ready: bool  # 저장할 곳이 있는지(실제 프로그램은 늘 참)
     applies_later: list[str]  # 값은 저장하지만 동작에는 다음 단계(R3)에서 쓰는 칸
 

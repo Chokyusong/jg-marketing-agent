@@ -269,6 +269,9 @@ class PlaywrightYouTubeDriver(PlaywrightSandboxDriver):
         except PlaywrightError:
             raise DriverError(TEXT_CLICK_FAILED) from None
 
+    def _comment_selector(self) -> str:
+        return self.sel.comment_text  # 게시 뒤 열어 둔 창에서 내 댓글로 내릴 때(show_comment)
+
     def verify_posted(self, text: str) -> None:
         """댓글 목록에서 방금 단 글을 찾는다(공백 차이는 무시)."""
         from playwright.sync_api import Error as PlaywrightError

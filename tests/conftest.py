@@ -238,7 +238,10 @@ def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, An
 def base_config() -> dict[str, Any]:
     """저장소의 config.yaml 내용(dict). 테스트에서 고쳐도 원본에는 영향 없음."""
     with CONFIG_PATH.open(encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        data = yaml.safe_load(f)
+    # 2026-11-18: 게시 뒤 크롬 창은 자동 테스트에서 바로 닫는다(열어 두기는 그 시험만 켠다)
+    data.setdefault("posting", {})["keep_window_seconds"] = 0
+    return data
 
 
 @pytest.fixture

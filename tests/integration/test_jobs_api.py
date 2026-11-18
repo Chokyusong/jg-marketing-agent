@@ -20,6 +20,7 @@ from app.browser import sandbox as sandbox_mod
 from app.browser.hooks import BrowserHooks
 from app.browser.sandbox_driver import DriverError
 from app.browser.screens import Monitor
+from app.errors import AppError
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 # 대표 PC처럼 위쪽에 2번 모니터가 있는 배치(이 PC의 실제 모니터에 따라 결과가 바뀌지 않게 고정)
@@ -496,3 +497,56 @@ def test_missing_chosen_monitor_falls_back_with_one_line(setup):
     notes = [e["message"] for e in job["events"] if "연결돼 있지 않아" in e["message"]]
     assert notes == ["크롬 창: 고른 모니터가 지금 연결돼 있지 않아 자동으로 고른 화면에 띄웁니다"]
     assert options["settings"][0].window_position == (320, -990)
+
+
+KEEP_WINDOW = {"posting": {"keep_window_seconds": 60}}
+
+# ---------------------------------------------------------------- 게시 뒤 크롬 창(2026-11-18)
+
+
+class LingerApiDriver(FakeDriver):
+    def show_comment(self, text):
+        self.calls.append("show")
+        return True
+
+    def wait_closed(self, seconds):
+        time.sleep(seconds)
+        return False
+
+
+@pytest.mark.parametrize("setup_overrides", [KEEP_WINDOW])
+def test_job_reports_posted_at_once_with_window_open(setup, monkeypatch):
+    client, services, approve_one, drivers, _, _ = setup
+    monkeypatch.setitem(globals(), "FakeDriver", LingerApiDriver)
+    d = approve_one()
+    job = client.post(
+        "/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": "sandbox"}
+    ).json()
+    job = wait_state(client, job["id"], "posted")
+    assert job["state"] == "posted" and job["finished"] and job["verified"] is True
+    assert job["window_open"] is True
+    assert drivers[0].calls == ["open", "type", "click", "verify", "show"]
+    assert services.jobs.active_id() is None  # 화면은 바쁘지 않다(다음 [댓글 달기]를 받는다)
+    assert services.jobs.busy() is False
+    assert services.jobs.release_window() is True
+    job = client.get(f"/api/jobs/{job['id']}").json()
+    assert job["window_open"] is False and drivers[0].calls[-1] == "close"
+
+
+def test_job_api_says_window_closed_by_default(setup):
+    client, _, approve_one, drivers, _, _ = setup
+    d = approve_one()
+    job = client.post(
+        "/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": "sandbox"}
+    ).json()
+    job = wait_state(client, job["id"], "posted")
+    assert job["window_open"] is False and drivers[0].calls[-1] == "close"
+
+
+def test_job_service_refuses_to_start_while_the_window_will_not_close(setup, monkeypatch):
+    client, services, approve_one, _, _, _ = setup
+    d = approve_one()
+    monkeypatch.setattr(services.jobs, "release_window", lambda timeout=0: False)
+    with pytest.raises(AppError) as err:
+        services.jobs.start(VID, d["id"], None, "sandbox", base_url="http://127.0.0.1:80")
+    assert err.value.kind == "job_busy"

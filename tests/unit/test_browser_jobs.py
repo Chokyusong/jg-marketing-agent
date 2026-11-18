@@ -888,3 +888,192 @@ def test_chrome_is_closed_before_the_job_reports_its_end(env, fail_on):
     view = e.jobs.wait(job_id, 5)
     assert view.state == ("failed" if fail_on else "posted")
     assert seen and seen[0] not in ("posted", "failed")
+
+
+# -------------------------------------------------- 게시 뒤 크롬 창 열어 두기(2026-11-18)
+
+
+class LingerDriver(FakeDriver):
+    """게시 뒤 열어 둔 창 흉내: 내 댓글로 내리기(`show_comment`)와 사람이 창을 닫음(`human`)."""
+
+    def __init__(self, log: list[str], **kw):
+        super().__init__(**kw)
+        self.log = log
+        self.human = threading.Event()
+        self.shown: list[str] = []
+        self.close_threads: set[str] = set()
+
+    def open(self, user_data_dir: Path, url: str) -> None:
+        self.log.append(f"open {url.split('v=')[-1][:11]}")
+        super().open(user_data_dir, url)
+
+    def show_comment(self, text: str) -> bool:
+        self.calls.append("show")
+        self.shown.append(text)
+        return True
+
+    def wait_closed(self, seconds: float) -> bool:
+        if self.human.is_set():
+            return True
+        time.sleep(seconds)
+        return self.human.is_set()
+
+    def close(self) -> None:
+        self.log.append("close")
+        self.close_threads.add(threading.current_thread().name)
+        super().close()
+
+
+def keep_env(env, seconds: float = 60, **kw):
+    """게시 뒤 창을 `seconds`초 열어 두는 작업 서비스(게시 직전 확인 끔)."""
+    log: list[str] = []
+    holder: dict = {}
+    driver_kw = kw.pop("driver_kw", {})
+
+    def make(*_):
+        d = LingerDriver(log, **driver_kw)
+        holder["e"].drivers.append(d)
+        return d
+
+    e = env(keep_window_seconds=seconds, confirm_before_post=False, driver_factory=make,
+            youtube_driver_factory=make, **kw)
+    holder["e"] = e
+    e.log = log
+    return e
+
+
+def wait_until(check, timeout: float = 5.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if check():
+            return True
+        time.sleep(0.02)
+    return check()
+
+
+def messages(view) -> list[str]:
+    return [ev.message for ev in view.events]
+
+
+@pytest.mark.parametrize("target", ["sandbox", "youtube"])
+def test_keep_window_finishes_job_at_once_and_leaves_chrome_open(env, target):
+    e = keep_env(env)
+    job_id, _, body = e.start(1, target=target)
+    view = e.jobs.wait(job_id, 5)
+    assert view.state == "posted" and view.finished and view.verified is True
+    assert view.window_open is True
+    driver = e.drivers[0]
+    assert driver.calls == ["open", "type", "click", "verify", "show"]  # 더 누르지 않는다
+    assert driver.shown == [body] and not driver.closed
+    assert e.jobs.busy() is False and e.jobs.active_id() is None  # 다음 일을 막지 않는다
+    assert e.jobs.window_open() is True
+    assert jobs_mod.MSG_WINDOW_OPEN in " ".join(messages(view))
+    assert [p["status"] for p in e.post_rows()] == ["posted"]
+
+
+def test_next_job_closes_the_open_window_first(env):
+    e = keep_env(env)
+    first, *_ = e.start(1)
+    e.jobs.wait(first, 5)
+    second, *_ = e.start(2)  # 「다음 일」: 시작하기 전에 앞 창을 닫고 닫힌 것을 확인한다
+    assert e.drivers[0].closed  # start()가 돌아올 때 이미 닫혀 있다
+    e.jobs.wait(second, 5)
+    assert e.log[:3] == [f"open {vid(1)}", "close", f"open {vid(2)}"]
+    assert e.drivers[0].close_threads == {"jg-browser-worker"}  # 만든 스레드에서 닫는다
+    old = e.jobs.get(first)
+    assert old.window_open is False and old.state == "posted"
+    assert "크롬 창을 닫았습니다(다음 일을 시작함)" in messages(old)
+    assert e.jobs.get(second).window_open is True  # 새 작업의 창은 다시 열려 있다
+
+
+def test_login_check_on_the_worker_closes_the_open_window_first(env):
+    e = keep_env(env)
+    job_id, *_ = e.start(1)
+    e.jobs.wait(job_id, 5)
+    seen: list[bool] = []
+    assert e.jobs.run_task(lambda: seen.append(e.drivers[0].closed) or "done") == "done"
+    assert seen == [True]
+
+
+def test_release_window_closes_and_waits(env):
+    e = keep_env(env)
+    job_id, *_ = e.start(1)
+    e.jobs.wait(job_id, 5)
+    assert e.jobs.release_window() is True
+    assert e.drivers[0].closed and e.jobs.window_open() is False
+    assert e.jobs.release_window() is True  # 창이 없으면 바로
+
+
+def test_open_window_closes_after_the_time_runs_out(env):
+    e = keep_env(env, seconds=0.3)
+    job_id, *_ = e.start(1)
+    e.jobs.wait(job_id, 5)
+    assert wait_until(lambda: e.drivers[0].closed, 5)
+    view = e.jobs.get(job_id)
+    assert view.window_open is False
+    assert "크롬 창을 닫았습니다(열어 둔 시간이 다 됨)" in messages(view)
+    assert e.drivers[0].close_threads == {"jg-browser-worker"}
+
+
+def test_window_closed_by_the_person_is_let_go(env):
+    e = keep_env(env)
+    job_id, *_ = e.start(1)
+    e.jobs.wait(job_id, 5)
+    e.drivers[0].human.set()  # 사람이 크롬 창을 닫았다
+    assert wait_until(lambda: not e.jobs.window_open(), 5)
+    view = e.jobs.get(job_id)
+    assert view.window_open is False and e.drivers[0].closed  # Playwright도 마저 닫는다
+    assert "크롬 창을 닫았습니다(사람이 닫음)" in messages(view)
+
+
+def test_shutdown_closes_the_open_window_and_stops_the_worker(env):
+    e = keep_env(env)
+    job_id, *_ = e.start(1)
+    e.jobs.wait(job_id, 5)
+    assert e.jobs.shutdown(timeout=5) is True
+    assert e.drivers[0].closed
+    assert "크롬 창을 닫았습니다(프로그램을 닫음)" in messages(e.jobs.get(job_id))
+    assert not (e.jobs._worker and e.jobs._worker.is_alive())
+
+
+def test_unverified_real_post_still_leaves_the_window_open(env):
+    e = keep_env(env, driver_kw={"fail_on": "verify"})
+    job_id, *_ = e.start(1, target="youtube")
+    view = e.jobs.wait(job_id, 5)
+    assert view.state == "posted" and view.verified is False
+    assert view.window_open is True and not e.drivers[0].closed
+    assert "show" not in e.drivers[0].calls  # 못 찾은 댓글로는 내리지 않는다
+    assert [r["reason"] for r in e.run_rows() if r["action"] == "post"] == [NOTE_UNVERIFIED]
+
+
+@pytest.mark.parametrize("step", ["open", "type", "click"])
+def test_failure_before_posting_still_screenshots_and_closes(env, step):
+    e = keep_env(env, driver_kw={"fail_on": step})
+    job_id, *_ = e.start(1, target="youtube")
+    view = e.jobs.wait(job_id, 5)
+    assert view.state == "failed" and view.window_open is False and view.has_screenshot
+    assert e.drivers[0].closed and e.jobs.window_open() is False
+    assert "show" not in e.drivers[0].calls
+
+
+def test_practice_mode_verify_failure_closes(env):
+    e = keep_env(env, driver_kw={"fail_on": "verify"})
+    job_id, *_ = e.start(1)
+    view = e.jobs.wait(job_id, 5)
+    assert view.state == "failed" and e.drivers[0].closed and view.window_open is False
+
+
+def test_zero_seconds_closes_right_after_posting(env):
+    e = keep_env(env, seconds=0)
+    job_id, *_ = e.start(1)
+    view = e.jobs.wait(job_id, 5)
+    assert view.state == "posted" and view.window_open is False
+    assert e.drivers[0].calls[-1] == "close" and "show" not in e.drivers[0].calls
+
+
+def test_job_service_default_closes_right_away(path, tmp_path, clock):
+    e = Env(path, tmp_path, clock, confirm_before_post=False)
+    try:
+        assert e.jobs.keep_window_seconds == 0  # 만들 때 정하지 않으면 예전처럼 바로 닫는다
+    finally:
+        e.jobs.shutdown(timeout=5)

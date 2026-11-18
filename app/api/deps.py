@@ -195,6 +195,7 @@ def build_services(
         run_on_worker=services.jobs.run_task,
         busy=services.jobs.busy,
         task_running=services.jobs.task_running,
+        release_window=services.jobs.release_window,  # 게시 뒤 열어 둔 크롬 창을 먼저 닫는다
         windows=windows or LoginWindows(),
         launcher=hooks.launcher or popen_launcher,
         checker=hooks.login_checker or default_checker,
@@ -253,6 +254,7 @@ def build_jobs(services: Services, *, clock: Clock = utc_now) -> JobService:
         screens=services.monitors,
         app_monitor=services.app_monitor,
         confirm_before_post=settings.confirm_before_post,
+        keep_window_seconds=settings.keep_window_seconds,
         **extra,
     )
 

@@ -268,8 +268,11 @@ class ProfileAccounts:
         clock: Clock = utc_now,
         task_running: Callable[[], bool] = lambda: False,
         app_monitor: Callable[[Sequence[Monitor]], Monitor | None] | None = None,
+        release_window: Callable[[], bool] = lambda: True,
     ) -> None:
         self.db_path = db_path
+        # 게시 뒤 열어 둔 크롬 창을 닫고 닫힌 것을 확인한다(2026-11-18, `jobs.release_window`)
+        self.release_window = release_window
         self.profiles = profiles
         self.browser = browser
         self.chrome_finder = chrome_finder
@@ -361,6 +364,7 @@ class ProfileAccounts:
             raise AppError(ErrorKind.CHROME_NOT_FOUND)
         if self.windows.is_open(name):
             raise AppError(ErrorKind.PROFILE_IN_USE, detail="프로그램이 연 창이 아직 열려 있음")
+        self._release()
         path = ensure_profile_dir(self.browser.profiles_root, profile.folder)
         require_profile_free(path)
         plan = self._plan()
@@ -368,6 +372,11 @@ class ProfileAccounts:
         proc = self.launcher(args)
         self.windows.track(name, proc)
         return self.state_of(name)
+
+    def _release(self) -> None:
+        """게시 뒤 열어 둔 크롬 창이 있으면 먼저 닫는다(닫히지 않으면 그 프로필을 쓰지 않는다)."""
+        if not self.release_window():
+            raise AppError(ErrorKind.PROFILE_IN_USE, detail="게시 뒤 열어 둔 크롬 창을 닫는 중")
 
     # ------------------------------------------------------------ 확인
 
@@ -441,6 +450,7 @@ class ProfileAccounts:
             raise AppError(ErrorKind.PLAYWRIGHT_MISSING)
         if self.chrome_finder() is None:
             raise AppError(ErrorKind.CHROME_NOT_FOUND)
+        self._release()
         path = ensure_profile_dir(self.browser.profiles_root, profile.folder)
         deadline = time.monotonic() + wait_release
         while profile_in_use(path) and time.monotonic() < deadline:

@@ -388,6 +388,8 @@ V13의 제목 9자 기준(C1 다듬기)은 대표가 본 「연애상담 상상�
 
 상태가 바뀔 때마다 `job_events`에 적고, 대시보드는 0.5초마다 물어 와서 보여 준다. 작업은 한 번에 하나만 돈다.
 
+**게시 뒤 크롬 창(2026-11-18 대표)**: 「댓글」을 누른 뒤에는(내 댓글을 찾았든 「게시됨 · 내 댓글 확인 못 함」이든, 연습 모드도) 크롬 창을 닫지 않고 둔다. 찾았으면 내 댓글을 화면 가운데로 내려 두고(`show_comment`, 읽기·스크롤만) 그 뒤로는 아무것도 누르지 않는다. 작업은 바로 「게시 완료」로 끝나고 바쁜 상태(`busy()`)가 아니며 하루 상한·영상당 1개·한 번에 하나 규칙과 확인 방법은 그대로다. 진행 줄에 「크롬 창에 내 댓글이 떠 있습니다 · 다음 일을 시작하면 닫힙니다」(`window_open`, 대시보드는 창이 닫힐 때까지 계속 묻는다). 창은 작업 스레드가 쥐고 있다가(Playwright 동기 객체는 만든 스레드에서만 닫는다) ① 사람이 창을 닫으면(`wait_closed`로 0.25초마다 본다) ② 다음 브라우저 일 — [댓글 달기]·[로그인 확인]·[로그인하기]·[유튜브 열기] — 을 시작하면 먼저 닫고 닫힌 것을 확인한 뒤(`release_window`, 프로필 폴더가 풀린다) ③ 프로그램을 닫으면 ④ 설정한 시간(기본 5분)이 지나면 닫힌다. 닫을 때마다 `job_events`에 「크롬 창을 닫았습니다(까닭)」. 게시 전에 실패하면 예전대로 캡처하고 닫는다. 설정 「게시 뒤 크롬 창: 열어 두기(5분) / 바로 닫기」(`posting.keep_window_seconds`, 0이면 바로 닫기, 자동 테스트는 0). [댓글 보기]는 그대로.
+
 ### 6.3 기술 선택
 
 - **Playwright 동기 API를 전용 스레드에서** 돌린다. Windows에서 uvicorn 이벤트 루프와 Playwright 비동기 API가 충돌하는 문제를 피한다.
@@ -431,6 +433,7 @@ limits:
   daily_max_comments: 10
 posting:
   confirm_before_post: false  # 게시 직전 확인(기본 끔: [댓글 달기] 한 번으로 게시까지, R3)
+  keep_window_seconds: 300    # 게시 뒤 크롬 창을 열어 둘 초(0 = 바로 닫기, 2026-11-18)
 discover:
   query: 연애 고민
   max_results: 12
@@ -468,7 +471,7 @@ llm:
   - 유튜브 연결: API 키(따로 저장, 아래).
   - AI 모델: `llm.model`.
   - 댓글 규칙: `comment.min_chars`(10~500)·`comment.max_chars`(20~1000, 최소 < 최대, 홍보 표기 + 10자 이상), `comment.brand`, `brand.facts`(10줄까지), `comment.disclosure`, `comment.disclose_default`, `comment.ai_review`(2026-11-18 AI 검수 한 번, 바로 적용), `comment.writer`(2026-11-18 댓글 쓰는 방식 story·pieces, 바로 적용).
-  - 게시: `limits.daily_max_comments`(1~50), `posting.confirm_before_post`, `browser.typing_speed`(느리게 120~260ms · 보통 60~160ms · 빠르게 25~70ms), `browser.window_screen`.
+  - 게시: `limits.daily_max_comments`(1~50), `posting.confirm_before_post`, `posting.after_post_window`(열어 두기 = config.yaml의 `keep_window_seconds`, 0이면 300초 · 바로 닫기 = 0), `browser.typing_speed`(느리게 120~260ms · 보통 60~160ms · 빠르게 25~70ms), `browser.window_screen`.
   - 영상 찾기: `discover.query`·`discover.max_results`(1~50)·`discover.exclude_shorts`·`discover.shorts_under_seconds`(10~3600, 기본 181).
 - **저장**(`PUT /api/settings`, 바꾼 칸만):
   - 칸마다 검사해 틀리면 422 `settings_invalid`와 `fields`(칸 이름 → 한국어 이유). 하나라도 틀리면 아무것도 저장하지 않는다.

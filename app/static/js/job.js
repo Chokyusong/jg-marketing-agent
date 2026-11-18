@@ -16,6 +16,7 @@ import { refreshStatus } from './topbar.js';
 
 const $ = (id) => document.getElementById(id);
 const POLL_MS = 500;
+const WINDOW_OPEN_NOTE = '크롬 창에 내 댓글이 떠 있습니다 · 다음 일을 시작하면 닫힙니다'; // jobs.MSG_WINDOW_OPEN
 
 let timer = null;
 let lastFinishedId = null;
@@ -168,7 +169,8 @@ async function poll(id) {
     if (getState().job && getState().job.id !== id) return;
     setState({ job });
     if (job.finished) {
-      stopPolling();
+      // 게시 뒤 크롬 창을 열어 둔 동안은 계속 물어 닫힌 때를 안다(아래 줄의 「떠 있습니다」를 지운다)
+      if (!job.window_open) stopPolling();
       onFinished(job);
     }
   } catch (error) {
@@ -334,7 +336,9 @@ function paint(state) {
       ? (job.verified ? '게시 완료 ·' : '게시됨 · 내 댓글 확인 못 함 ·')
       : job.state === 'failed' ? '게시 실패' : `${where} · ${STATE_WORDS[job.state] || job.state_label}`;
     const mark = job.disclosed === false ? ' · 광고 표기 없음' : '';
-    desc.textContent = `${job.profile}${mark} · ${job.message}${left}`;
+    // 게시 뒤 크롬 창을 열어 둔 동안(2026-11-18): 진행 줄에 그렇게 적는다(닫히면 사라진다)
+    const open = job.state === 'posted' && job.window_open ? ` · ${WINDOW_OPEN_NOTE}` : '';
+    desc.textContent = `${job.profile}${mark} · ${job.message}${left}${open}`;
   } else {
     const [t, d] = idleTitle(state, video, blocker);
     title.textContent = t;

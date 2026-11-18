@@ -30,6 +30,7 @@ export const FIELD_IDS = {
   'comment.writer': 'set-writer',
   'limits.daily_max_comments': 'set-daily-max',
   'posting.confirm_before_post': 'set-confirm-before',
+  'posting.after_post_window': 'set-after-post-window',
   'browser.typing_speed': 'set-typing-speed',
   'browser.window_screen': 'set-window-screen',
   'discover.query': 'set-query',
@@ -1428,6 +1429,7 @@ export function settingsView(s) {
     group('게시', 'set-post', [
       numberField('limits.daily_max_comments', '하루 상한', { unit: '개 (1~50)', note: '③에서는 낮추기만 됩니다' }),
       switchField('posting.confirm_before_post', '게시 직전 확인', '켜짐 · 입력 뒤 [게시]를 한 번 더 누릅니다', '꺼짐 · [댓글 달기] 한 번으로 게시까지'),
+      selectField('posting.after_post_window', '게시 뒤 크롬 창', s.edit.after_post_windows || [], s.edit.values['posting.after_post_window'], '열어 두면 내 댓글이 보이게 내려 둡니다. 창을 닫거나 다음 일을 시작하면 닫힙니다'),
       selectField('browser.typing_speed', '타자 속도', s.edit.typing_speeds, s.edit.values['browser.typing_speed']),
       screenField(s),
       readRow('크롬', flag(b.chrome_found, '찾음', '못 찾음 · 크롬을 설치해 주세요')),

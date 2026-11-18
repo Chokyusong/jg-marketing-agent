@@ -63,12 +63,15 @@ from app.schemas import (
     YouTubeKeyOut,
 )
 from app.user_settings import (
+    AFTER_POST_WINDOW_LABELS,
     COMPUTED_FIELDS,
     FIELDS,
     TYPING_SPEED_LABELS,
     WRITER_LABELS,
     SecretStoreUnavailable,
     UserStore,
+    after_post_window_of,
+    keep_seconds_of,
     key_shape_ok,
     llm_key_shape_ok,
     validate,
@@ -166,6 +169,7 @@ def effective_values(s: Settings) -> dict[str, Any]:
         "comment.writer": s.writer,
         "limits.daily_max_comments": s.daily_max_comments,
         "posting.confirm_before_post": s.confirm_before_post,
+        "posting.after_post_window": after_post_window_of(s.keep_window_seconds),
         "browser.typing_speed": s.typing_speed,
         "browser.window_screen": s.window_screen or "",
         "browser.window_position": _xy(s.browser.window_position) or "",
@@ -205,6 +209,15 @@ def key_out(s: Settings) -> YouTubeKeyOut:
     )
 
 
+def _window_label(choice: str, s: Settings) -> str:
+    """「열어 두기(5분)」 — config.yaml에서 다른 초를 정했으면 그 시간으로 적는다."""
+    if choice != "keep":
+        return AFTER_POST_WINDOW_LABELS[choice]
+    seconds = s.keep_window_seconds or keep_seconds_of(s.rules)
+    span = f"{seconds // 60}분" if seconds % 60 == 0 else f"{seconds}초"
+    return f"열어 두기({span})"
+
+
 def edit_view(s: Settings) -> SettingsEditOut:
     return SettingsEditOut(
         values=effective_values(s),
@@ -213,6 +226,8 @@ def edit_view(s: Settings) -> SettingsEditOut:
         ranges={k: [int(f.lo or 0), int(f.hi or 0)] for k, f in FIELDS.items() if f.kind == "int"},
         typing_speeds=[ChoiceOut(value=k, label=v) for k, v in TYPING_SPEED_LABELS.items()],
         writers=[ChoiceOut(value=k, label=v) for k, v in WRITER_LABELS.items()],
+        after_post_windows=[ChoiceOut(value=k, label=_window_label(k, s))
+                            for k in AFTER_POST_WINDOW_LABELS],
         store_ready=_store(s) is not None,
         applies_later=APPLIES_LATER,
     )

@@ -79,7 +79,7 @@ ollama pull qwen3.8:27b        # Ollama를 쓸 때만
 |---|---|
 | ① 버튼 한 번에 최신 영상(썸네일·제목·채널·날짜) | 화면 ①칸 · `app/youtube/service.py` · `tests/integration/test_videos_api.py` |
 | ② 고르면 고민 한 줄과 댓글 초안 | 화면 ②칸 · `app/analysis/analyzer.py`, `drafter.py` · `tests/integration/test_drafts_api.py` |
-| ③ 크롬 프로필 → 댓글 창 → 한 글자씩 → 게시 → 내 댓글 확인 | 화면 ③칸 · `app/browser/youtube_driver.py`, `jobs.py` · `tests/e2e/test_r3_post_flow.py`(가짜 유튜브 페이지로) |
+| ③ 크롬 프로필 → 댓글 창 → 한 글자씩 → 게시 → 내 댓글 확인(게시 뒤 크롬 창은 내 댓글을 띄운 채 5분, 다음 일을 시작하면 닫힘 · 설정에서 「바로 닫기」) | 화면 ③칸 · `app/browser/youtube_driver.py`, `jobs.py` · `tests/e2e/test_r3_post_flow.py`·`test_keep_window_flow.py`(가짜 유튜브 페이지로) |
 
 **댓글 조건** — 규칙 검사는 AI 없이 코드가 합니다(`app/analysis/validator.py`, `tests/unit/test_validator.py`). 이야기처럼 쓰기(기본)에서는 나눠 봅니다(2026-11-18 대표): **코드**는 글자 수 · 영상 근거 · 운명원 언급 · 허위 후기(와 링크·해시태그·영상마다 다르게·광고 표기), **AI**는 영상 맥락과 일치하는가 · 기승전결이 자연스러운가 · 같은 사람이 쓴 글처럼 읽히는가 · 운명원 언급이 뜬금없는가, 그리고 가장 중요한 기준으로 운명원을 꺼내기 직전의 생각이 왜 그 영상에서 나왔는지 자연스럽게 이해되는지(설명할 수 없거나 끝의 궁금증이 막연하면 걸림), 운명원 문장이 자연스러운 한국어이고 지어낸 능력이 없는지를 봅니다(`app/analysis/review.py`, 걸리면 댓글 전체를 한 번 다시 쓰고 남으면 「맥락 확인 필요 · 끊긴 곳」 — 게시는 막지 않음. 판정 칸이 빠진 답은 「검수 불완전」, 깨진 답·시간 초과는 「맥락 검증 못 함」으로 통과와 따로 보입니다). 가상의 시청자 관점·연애 고민과 「친구가 얘기해 줬는데 … 잘 본다던데」 같은 전해 들은 추천은 되고, 운명원을 직접 이용했다는 후기만 막습니다. 쓰는 AI에게는 영상 자료·요약·실제 근거 구절·조건만 주고, 말투·문장 수·끝말은 정하지 않습니다.
 

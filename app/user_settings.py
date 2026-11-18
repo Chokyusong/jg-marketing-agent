@@ -43,6 +43,9 @@ TYPING_SPEEDS: dict[str, tuple[int, int]] = {
 TYPING_SPEED_LABELS = {"slow": "느리게", "normal": "보통", "fast": "빠르게"}
 # 2026-11-18 댓글 쓰는 방식(`app/analysis/story.py`의 WRITER_LABELS와 같은 말)
 WRITER_LABELS = {"story": "이야기처럼(권장)", "pieces": "조각 맞추기(예전)"}
+# 2026-11-18 대표: 게시 뒤 크롬 창. 열어 두기를 고르면 config.yaml의 초(0이면 300초)를 쓴다
+AFTER_POST_WINDOW_LABELS = {"keep": "열어 두기(5분)", "close": "바로 닫기"}
+KEEP_WINDOW_DEFAULT_SECONDS = 300
 _KEY_SHAPE = re.compile(r"^[A-Za-z0-9_\-]{20,200}$")
 # R5: AI 이름(파일 이름에 쓴다), 모델 이름(명령 인자로도 넘기므로 '-'로 시작하지 못하게), 주소
 PROVIDER_NAME = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,39}$")
@@ -281,6 +284,10 @@ FIELDS: dict[str, Field] = {
     "posting.confirm_before_post": Field(
         "bool", "게시 직전에 한 번 더 확인", ("posting", "confirm_before_post")
     ),
+    "posting.after_post_window": Field(
+        "choice", "게시 뒤 크롬 창", ("posting", "after_post_window"),
+        choices=tuple(AFTER_POST_WINDOW_LABELS),
+    ),
     "browser.typing_speed": Field(
         "choice", "글자 입력 속도", ("browser", "typing_speed"), choices=tuple(TYPING_SPEEDS)
     ),
@@ -444,7 +451,26 @@ def apply_overlay(rules: dict[str, Any], values: dict[str, Any]) -> dict[str, An
         node[field.path[-1]] = copy.deepcopy(value)
         if name == "browser.typing_speed" and value in TYPING_SPEEDS:
             out.setdefault("browser", {})["typing_delay_ms"] = list(TYPING_SPEEDS[value])
+        if name == "posting.after_post_window" and value in AFTER_POST_WINDOW_LABELS:
+            out["posting"]["keep_window_seconds"] = (
+                keep_seconds_of(rules) if value == "keep" else 0
+            )
     return out
+
+
+def keep_seconds_of(rules: dict[str, Any]) -> int:
+    """「열어 두기」의 초: config.yaml의 `posting.keep_window_seconds`가 0보다 크면 그 값,
+    아니면 300."""
+    posting = rules.get("posting") if isinstance(rules.get("posting"), dict) else {}
+    value = posting.get("keep_window_seconds")
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return KEEP_WINDOW_DEFAULT_SECONDS
+
+
+def after_post_window_of(seconds: int) -> str:
+    """설정 화면의 값: 0초면 「바로 닫기」, 아니면 「열어 두기」."""
+    return "keep" if seconds > 0 else "close"
 
 
 def typing_speed_of(delay: tuple[int, int]) -> str:

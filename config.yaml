@@ -19,6 +19,9 @@ limits:
   daily_max_comments: 10
 posting:
   confirm_before_post: false  # 게시 직전에 한 번 더 확인(기본 끔: [댓글 달기] 한 번으로 게시까지)
+  # 게시 뒤 크롬 창을 열어 둘 초(내 댓글이 보이게 내려 둠). 0이면 바로 닫기. 사람이 닫거나 다음 일을
+  # 시작하거나 프로그램을 닫아도 닫힌다(자동 테스트는 0)
+  keep_window_seconds: 300
 discover:
   query: 연애 고민
   max_results: 12

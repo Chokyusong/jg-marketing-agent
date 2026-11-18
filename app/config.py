@@ -214,6 +214,8 @@ class Settings:
     # 게시 직전 확인(켜면 입력 뒤 [게시]를 한 번 더 눌러야 게시). 옛 키 own_video_ids는 읽지 않는다
     disclose_default: bool = True
     confirm_before_post: bool = False
+    # 2026-11-18 대표: 게시 뒤 크롬 창을 열어 둘 시간(초, 0이면 바로 닫기). 기본 5분
+    keep_window_seconds: int = 300
     # 2026-11-18 AI 검수 한 번: 규칙 검사를 통과한 초안을 AI가 한 번 더 읽는다(기본 켬)
     ai_review: bool = True
     # 2026-11-18 대표 결정: 댓글 쓰는 방식 — story(이야기처럼, 기본) | pieces(조각 맞추기, 예전)
@@ -510,6 +512,7 @@ def load_settings(
         confirm_before_post=_flag(
             posting.get("confirm_before_post", False), "posting.confirm_before_post"
         ),
+        keep_window_seconds=_keep_window_seconds(posting.get("keep_window_seconds", 300)),
         typing_speed=typing_speed_of(browser.typing_delay_ms),
         window_screen=window_screen,
         youtube_key_source=key_source,
@@ -592,6 +595,21 @@ def _writer(value: Any) -> str:
 def _flag(value: Any, name: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"{name}는 true 또는 false여야 합니다.")
+    return value
+
+
+KEEP_WINDOW_MAX_SECONDS = 3600
+
+
+def _keep_window_seconds(value: Any) -> int:
+    """`posting.keep_window_seconds`: 게시 뒤 크롬 창을 열어 둘 초(0 = 바로 닫기, 최대 1시간)."""
+    if isinstance(value, bool) or not isinstance(value, int) or not (
+        0 <= value <= KEEP_WINDOW_MAX_SECONDS
+    ):
+        raise ValueError(
+            f"posting.keep_window_seconds는 0~{KEEP_WINDOW_MAX_SECONDS} 사이의 정수(초)여야 "
+            "합니다(0이면 게시 뒤 바로 닫기)."
+        )
     return value
 
 

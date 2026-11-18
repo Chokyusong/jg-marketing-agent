@@ -49,6 +49,13 @@ get(job_id) -> JobView          상태, 지난 단계, 메시지, 실패 사유,
   실제 모니터 안인지 본다(`screens.check_window_position`). 밖이면 주 모니터의 안전한 위치로 바꿔
   띄우고 작업 기록(job_events)에 그렇게 했다고 남긴다.
 - 프로그램 창을 닫으면(`shutdown`) 진행 중인 작업을 취소하고 크롬을 닫는다.
+- **게시 뒤 크롬 창 열어 두기(2026-11-18 대표).** 「댓글」을 누른 뒤(내 댓글을 찾았든 못 찾았든)
+  설정 `posting.keep_window_seconds`(기본 300초, 0이면 바로 닫기)가 있으면 내 댓글을 화면 가운데로
+  내려 두고 창을 닫지 않는다. 작업은 바로 「게시 완료」로 끝나고(`busy()`가 아님) 더는 아무것도
+  누르지 않는다. 창은 작업 스레드가 쥐고 있다가(Playwright는 만든 스레드에서만 닫는다) 사람이 창을
+  닫거나 · 다음 브라우저 일(게시 · 로그인 확인 · [로그인하기] · [유튜브 열기] — `release_window()`로
+  먼저 닫고 닫힌 것을 확인) · 프로그램 종료 · 시간이 다 되면 닫는다. 게시 전에 실패하면 예전대로
+  캡처하고 닫는다.
 """
 
 from __future__ import annotations
@@ -134,6 +141,16 @@ REASON_APPROVAL_TIMEOUT = "게시 대기 시간 초과(5분 안에 [게시]를 �
 REASON_CANCELLED = "사용자가 게시를 그만뒀습니다"
 REASON_STALE = "프로그램이 게시 작업 중에 꺼졌습니다"
 NOTE_UNVERIFIED = "게시됨(확인 못 함)"
+# 게시 뒤 크롬 창(2026-11-18 대표): 기본 5분 열어 두기. 작업 스레드는 이 간격으로 창이 닫혔는지 본다
+KEEP_WINDOW_SECONDS = 300
+LINGER_POLL_SECONDS = 0.25
+RELEASE_TIMEOUT_SECONDS = 15.0
+MSG_WINDOW_OPEN = "크롬 창에 내 댓글이 떠 있습니다 · 다음 일을 시작하면 닫힙니다"
+# 창을 닫은 까닭(job_events에 「크롬 창을 닫았습니다(…)」로 남는다)
+CLOSED_BY_PERSON = "사람이 닫음"
+CLOSED_BY_NEXT = "다음 일을 시작함"
+CLOSED_BY_TIMEOUT = "열어 둔 시간이 다 됨"
+CLOSED_BY_SHUTDOWN = "프로그램을 닫음"
 
 
 def mode_of(target: str) -> tuple[str, str]:
@@ -219,6 +236,7 @@ class Job:
     chrome: Path | None = None  # chrome.exe 위치
     profile_path: Path | None = None  # 프로필 폴더(API에는 싣지 않는다)
     window_position: tuple[int, int] | None = None  # 실제로 띄운 창 위치(화면 밖이면 바꾼 값)
+    window_open: bool = False  # 게시 뒤 크롬 창을 열어 둔 채인지(2026-11-18)
 
     @property
     def finished(self) -> bool:
@@ -253,6 +271,7 @@ class JobView:
     events: list[JobEvent]
     confirm_before_post: bool = False
     disclosed: bool = True
+    window_open: bool = False  # 게시 뒤 크롬 창이 아직 열려 있는지(닫히면 거짓)
 
 
 VerifyComment = Callable[
@@ -297,6 +316,22 @@ class _Task:
             self.done.set()
 
 
+class _Release:
+    """열어 둔 크롬 창을 닫아 달라는 요청(작업 스레드가 닫고 `done`을 세운다)."""
+
+    def __init__(self) -> None:
+        self.done = threading.Event()
+
+
+@dataclass
+class _Linger:
+    """게시 뒤 열어 둔 크롬 창(작업 스레드만 만지는 실행기와 마감)."""
+
+    job: Job
+    driver: Any
+    deadline: float  # time.monotonic
+
+
 def playwright_installed() -> bool:
     return importlib.util.find_spec("playwright") is not None
 
@@ -320,8 +355,11 @@ class JobService:
         app_monitor: Callable[[Sequence[Monitor]], Monitor | None] | None = None,
         youtube_driver_factory: YouTubeDriverFactory = default_youtube_driver_factory,
         confirm_before_post: bool = False,
+        keep_window_seconds: float = 0,
     ) -> None:
         self.db_path = db_path
+        # 게시 뒤 크롬 창을 열어 둘 시간(초). 0이면 예전처럼 바로 닫는다(2026-11-18 대표)
+        self.keep_window_seconds = max(0.0, float(keep_window_seconds))
         self.youtube_driver_factory = youtube_driver_factory  # 실제 게시 실행기 만들기
         # 설정 「게시 직전 확인」(R3). 끄면(기본) 입력을 마치고 바로 「댓글」을 누른다
         self.confirm_before_post = bool(confirm_before_post)
@@ -341,10 +379,11 @@ class JobService:
         self._lock = threading.RLock()
         self._jobs: dict[str, Job] = {}
         self._active: Job | None = None
-        self._queue: queue.Queue[Job | _Task | None] = queue.Queue()
+        self._queue: queue.Queue[Job | _Task | _Release | None] = queue.Queue()
         self._worker: threading.Thread | None = None
         self._closed = False
         self._task: _Task | None = None  # 작업 스레드에서 도는 짧은 일(로그인 확인)
+        self._linger: _Linger | None = None  # 게시 뒤 열어 둔 크롬 창(작업 스레드만 닫는다)
 
     # ------------------------------------------------------------ 시작
 
@@ -359,10 +398,13 @@ class JobService:
         daily_limit: int | None = None,
         fail: str = "",
     ) -> str:
-        """시작 전 확인을 하고 작업을 작업 스레드에 넣는다. 막히면 AppError(아무것도 안 남긴다)."""
+        """시작 전 확인을 하고 작업을 작업 스레드에 넣는다. 막히면 AppError(아무것도 안 남긴다).
+
+        게시 뒤 열어 둔 크롬 창이 있으면 먼저 닫고 닫힌 것을 확인한다(프로필 폴더를 풀어 둔다)."""
         mode, post_target = mode_of(target)
         if not is_video_id(video_id):
             raise AppError(ErrorKind.INVALID_URL, detail="영상 ID 형식이 아님")
+        self._release_or_fail()
         with self._lock:
             if self._closed:
                 raise AppError(ErrorKind.JOB_BUSY, detail="프로그램을 닫는 중")
@@ -541,6 +583,7 @@ class JobService:
         """`fn`을 작업 스레드에서 돌리고 결과를 돌려준다(Playwright는 그 스레드에서만 쓴다).
 
         게시 작업이 진행 중이거나 다른 짧은 일이 돌고 있으면 `profile_check_busy`.
+        게시 뒤 열어 둔 크롬 창은 이 일보다 먼저 닫힌다(작업 스레드가 다음 일을 받을 때).
         """
         with self._lock:
             if self._closed:
@@ -649,6 +692,7 @@ class JobService:
             events=list(job.events),
             confirm_before_post=job.confirm_before_post,
             disclosed=job.disclosed,
+            window_open=job.window_open,
         )
 
     # ------------------------------------------------------------ 기록
@@ -726,9 +770,21 @@ class JobService:
 
     def _work_loop(self) -> None:
         while True:
-            job = self._queue.get()
+            if self._linger is None:
+                job = self._queue.get()
+            else:  # 열어 둔 창이 있다: 사람이 닫았는지·시간이 다 됐는지 보면서 다음 일을 기다린다
+                try:
+                    job = self._queue.get_nowait()
+                except queue.Empty:
+                    self._tend_linger()
+                    continue
+            # 다음 일(게시 · 짧은 일 · 닫기 요청 · 멈춤)보다 열어 둔 창을 먼저 닫는다
+            self._end_linger(CLOSED_BY_SHUTDOWN if job is None else CLOSED_BY_NEXT)
             if job is None:
                 return
+            if isinstance(job, _Release):
+                job.done.set()
+                continue
             if isinstance(job, _Task):
                 job.run()
                 with self._lock:
@@ -736,6 +792,76 @@ class JobService:
                         self._task = None
                 continue
             self._run(job)
+
+    def _tend_linger(self) -> None:
+        """열어 둔 창을 잠깐 지켜본다(작업 스레드). 사람이 닫았거나 시간이 다 됐으면 닫는다."""
+        linger = self._linger
+        if linger is None:
+            return
+        left = linger.deadline - time.monotonic()
+        if left <= 0:
+            self._end_linger(CLOSED_BY_TIMEOUT)
+            return
+        step = min(LINGER_POLL_SECONDS, left)
+        wait_closed = getattr(linger.driver, "wait_closed", None)
+        try:
+            if callable(wait_closed):
+                closed = bool(wait_closed(step))  # Playwright 이벤트도 이때 받는다
+            else:
+                time.sleep(step)
+                closed = False
+        except Exception:  # 창 상태를 못 읽으면 닫힌 것으로 본다(남는 것이 없게 마저 닫는다)
+            closed = True
+        if closed:
+            self._end_linger(CLOSED_BY_PERSON)
+
+    def _end_linger(self, why: str) -> None:
+        """열어 둔 창을 닫는다(작업 스레드에서만 부른다). 없으면 아무것도 안 한다.
+
+        다 닫은 뒤에야 `_linger`를 비운다 — 그 사이 다른 스레드의 `release_window()`가
+        「창 없음」으로 보고 프로필 폴더를 쓰려 들지 않게(닫기 요청은 큐에 들어가 이 닫기 뒤에
+        답을 받는다)."""
+        linger = self._linger
+        if linger is None:
+            return
+        job = linger.job
+        try:
+            linger.driver.close()
+        except Exception:
+            log.exception("job %s: 열어 둔 크롬 창을 닫지 못했습니다", job.id)
+        with self._lock:
+            self._linger = None
+            job.window_open = False
+            if job.driver is linger.driver:
+                job.driver = None
+        try:
+            self._event(job, job.state, f"크롬 창을 닫았습니다({why})", change=False)
+        except Exception:  # 기록을 못 남겨도 창은 닫혔다
+            log.exception("job %s: 창 닫힘을 기록하지 못했습니다", job.id)
+
+    def window_open(self) -> bool:
+        """게시 뒤 열어 둔 크롬 창이 있는지."""
+        with self._lock:
+            return self._linger is not None
+
+    def release_window(self, timeout: float = RELEASE_TIMEOUT_SECONDS) -> bool:
+        """열어 둔 크롬 창을 닫고 닫힐 때까지 기다린다(다른 브라우저 일을 시작하기 전).
+
+        창이 없으면 바로 True. 닫는 것은 작업 스레드다(Playwright는 만든 스레드에서만 닫는다).
+        잠금을 쥔 채 부르지 않는다(작업 스레드가 닫으면서 잠금을 잠깐 쓴다)."""
+        with self._lock:
+            if self._linger is None:
+                return True
+            worker = self._worker
+            request = _Release()
+            self._queue.put(request)
+        if worker is None or not worker.is_alive():
+            return True
+        return request.done.wait(timeout)
+
+    def _release_or_fail(self) -> None:
+        if not self.release_window():
+            raise AppError(ErrorKind.JOB_BUSY, detail="게시 뒤 열어 둔 크롬 창을 닫는 중")
 
     def _run(self, job: Job) -> None:
         driver: BrowserDriver | None = None
@@ -760,7 +886,8 @@ class JobService:
             log.exception("job %s crashed", job.id)
             self._fail(job, f"예상하지 못한 오류: {type(exc).__name__}", driver=driver)
         finally:
-            self._close_driver(job)
+            if self._linger is None or self._linger.job is not job:
+                self._close_driver(job)
 
     def _place_window(self, job: Job) -> WindowPlan:
         """창을 띄울 곳(자동 · 고른 모니터 · 옛 좌표). 바꾸거나 떨어지면 기록에 한 줄 남긴다."""
@@ -873,9 +1000,12 @@ class JobService:
                 driver.verify_posted(job.comment_text)
             except DriverError as exc:
                 raise JobFailed(exc.reason, screenshot=exc.screenshot) from None
-            self._close_driver(job)  # 끝났다고 알리기 전에 크롬을 닫아 프로필 폴더를 풀어 둔다
+            keep = self._keep_window(job, driver, found=True)
+            if not keep:  # 끝났다고 알리기 전에 크롬을 닫아 프로필 폴더를 풀어 둔다
+                self._close_driver(job)
             self._finish_posted(
-                job, verified=True, note="", message="연습 페이지에 댓글이 달린 것을 확인했습니다"
+                job, verified=True, note="", message="연습 페이지에 댓글이 달린 것을 확인했습니다",
+                keep=keep,
             )
             return
         # 실제 게시: 여기부터는 이미 눌렀다. 못 찾아도 실패로 되돌리지 않는다
@@ -891,10 +1021,13 @@ class JobService:
                     found = self.verify_comment(job.video_id, job.comment_text)
                 except Exception:  # Data API 확인을 못 해도 게시는 이미 했다
                     found = None
-        self._close_driver(job)
+        keep = self._keep_window(job, driver, found=bool(found))
+        if not keep:
+            self._close_driver(job)
         if found:
             self._finish_posted(
-                job, verified=True, note="", message="유튜브에 내 댓글이 달린 것을 확인했습니다"
+                job, verified=True, note="", message="유튜브에 내 댓글이 달린 것을 확인했습니다",
+                keep=keep,
             )
         else:
             self._finish_posted(
@@ -903,14 +1036,47 @@ class JobService:
                 note=NOTE_UNVERIFIED,
                 message="게시됨(확인 못 함) — 「댓글」을 눌렀지만 페이지·Data API에서 "
                 "내 댓글을 찾지 못했습니다. [댓글 보기]로 확인해 주세요",
+                keep=keep,
             )
 
-    def _finish_posted(self, job: Job, *, verified: bool, note: str, message: str) -> None:
+    def _keep_window(self, job: Job, driver: BrowserDriver, *, found: bool) -> bool:
+        """게시 뒤 창을 열어 둘지 정하고, 열어 두면 내 댓글이 화면에 보이게 내려 둔다.
+
+        설정이 0초이거나 그만두기·프로그램 닫기 중이면 False(예전처럼 바로 닫는다). 내 댓글을 못
+        찾았어도 창은 열어 둔다(사람이 직접 볼 수 있게). 내려 두기에 실패해도 창은 그대로 둔다.
+        작업 스레드에서만 부른다."""
+        if self.keep_window_seconds <= 0 or job.cancel_flag.is_set():
+            return False
+        with self._lock:
+            if self._closed:
+                return False
+        show = getattr(driver, "show_comment", None)
+        if found and callable(show):
+            try:
+                if not show(job.comment_text):
+                    log.info("job %s: 내 댓글을 화면 가운데로 내리지 못했습니다", job.id)
+            except Exception:
+                log.info("job %s: 내 댓글로 내려 가지 못했습니다", job.id)
+        with self._lock:  # 작업을 끝났다고 알리기(_finish_posted) 전에 정해 둔다
+            self._linger = _Linger(job, driver, time.monotonic() + self.keep_window_seconds)
+            job.window_open = True
+        return True
+
+    def _finish_posted(
+        self, job: Job, *, verified: bool, note: str, message: str, keep: bool = False
+    ) -> None:
         self.rules.mark_posted(job.post_id, comment_text=job.comment_text, job_id=job.id, note=note)
         with self._lock:
             job.verified = verified
             job.finished_at = self.clock().isoformat()
+        if keep:  # 진행 줄의 안내(화면은 window_open을 보고 같은 말을 붙인다). 끝 알림보다 먼저
+            self._event(job, "posted", f"{MSG_WINDOW_OPEN}(길어도 {self._keep_span()})",
+                        change=False)
         self._event(job, "posted", message)
+
+    def _keep_span(self) -> str:
+        seconds = int(self.keep_window_seconds)
+        return f"{seconds // 60}분" if seconds % 60 == 0 else f"{seconds}초"
 
     def _fail(
         self, job: Job, reason: str, *, driver: BrowserDriver | None, screenshot: bool = True
@@ -920,6 +1086,10 @@ class JobService:
             path = Path(self.browser.screenshot_dir) / f"{job.id}.png"
             if driver.screenshot(path):
                 shot = path
+        with self._lock:  # 열어 두려던 창도 실패면 닫는다(그 실행기는 아래에서 닫힌다)
+            if self._linger is not None and self._linger.job is job:
+                self._linger = None
+                job.window_open = False
         self._close_driver(job)  # 실패를 알리기 전에 닫는다(다시 시도할 때 프로필이 풀려 있게)
         try:
             self.rules.mark_failed(
@@ -941,7 +1111,10 @@ class JobService:
     # ------------------------------------------------------------ 닫기
 
     def shutdown(self, timeout: float = 8.0) -> bool:
-        """진행 중인 작업을 취소하고 크롬을 닫은 뒤 작업 스레드를 멈춘다. 멈췄으면 True."""
+        """진행 중인 작업을 취소하고 크롬을 닫은 뒤 작업 스레드를 멈춘다. 멈췄으면 True.
+
+        게시 뒤 열어 둔 크롬 창도 작업 스레드가 멈추기 전에 닫는다(`_work_loop`가 None을
+        받을 때)."""
         with self._lock:
             self._closed = True
             job = self._active
