@@ -173,7 +173,8 @@ class Voice:
 def voice_of(tone_label: str) -> Voice | None:
     """저장된 `tone_label`에서 말 높임·들은 경로를 읽는다(예전 초안이면 None)."""
     parts = [p.strip() for p in (tone_label or "").split(TONE_SEP)]
-    if len(parts) >= 2 and parts[0] in prompts.VOICES and parts[1] in prompts.HEARD_FROM:
+    heard_all = (*prompts.HEARD_FROM, *prompts.LEGACY_HEARD)
+    if len(parts) >= 2 and parts[0] in prompts.VOICES and parts[1] in heard_all:
         return Voice(parts[0], parts[1])
     return None
 

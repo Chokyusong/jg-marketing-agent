@@ -205,7 +205,8 @@ def test_quote_window_finds_quotes_split_by_timestamps():
 def test_write_line_asks_to_show_and_empathize_with_the_video_worry():
     s = P.draft_system(brand="운명원", facts=[], voice="반말", heard="요즘 자주 들어서",
                        from_comment=False, said="운명원이 연애 사주를 잘 본다")
-    assert "댓글만 읽어도 보이게 짚고, 거기에 대한 네 마음을 쓴다." in s
+    assert "댓글만 읽어도 알 수 있게 한 마디로 짧게 짚는다." in s
+    assert "그 말이 네 얘기처럼 와닿은 까닭이 바로 네 처지로 이어지게 쓴다" in s
     assert "공감한다" not in s  # 15회차: 낱말이 새어 나와 「~다는 말 공감돼요」 한 틀이 됐다
     assert "짚은 얘기와 같은 데서" in s
 
@@ -238,7 +239,8 @@ def test_draft_user_rewrite_shows_previous_body_and_reasons_but_no_other_bodies(
 def test_voice_and_heard_candidates():
     assert P.VOICES == ("반말 혼잣말", "존댓말")  # 섞어 쓰기는 뺐다(2026-11-18 대표)
     # 2026-11-19 대표: 친구·지인에게 들은 경로는 뺐다
-    assert P.HEARD_FROM == ("요즘 자주 들어서", "요새 여기저기서 들어서", "예전에 어디선가 들어서")
+    assert P.HEARD_FROM == ("요즘 자주 들어서", "요새 여기저기서 들어서", "요즘 이래저래 들어서")
+    assert all(h.split()[0] in ("요즘", "요새") for h in P.HEARD_FROM)  # 16회차 대표
     for samples in P.VOICE_SAMPLES.values():
         for s in samples:
             assert not any(w in s for w in ("친구", "지인", "주변")), s
