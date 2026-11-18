@@ -264,6 +264,7 @@ def test_review_reads_the_same_material_and_the_three_questions(setup):
     data = create(client)
     call = llm.review_calls[0]["kwargs"]
     assert f"[짚을 내용]\n- (댓글) {data['evidence_quote']}" in call["user"]
-    for part in ("1. 댓글이 짚은 장면이나 말이", "2. 운명원에서 무엇을 알고 싶은지가",
+    for part in ("1. 댓글이 영상의 장면이나 말 하나를 짚어",
+                 "2. 사주로 보고 싶은 궁금증이 댓글에 있고",
                  "3. 문장이 말이 되는가"):
         assert part in call["system"]

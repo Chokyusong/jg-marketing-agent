@@ -86,36 +86,61 @@ def system(*, voice="존댓말", heard="요즘 자주 들어서", from_comment=F
 
 
 def test_draft_system_is_the_template_with_the_picked_values():
+    """2026-11-18 대표 목표: 완성 문장 없이 [댓글에 들어갈 것]만, 들은 경로는 운명원 줄에 넣는다."""
     text = system()
     assert text.startswith(
         "너는 방금 이 유튜브 영상을 본 20~30대 시청자다. 영상 밑에 댓글 하나를 단다.")
     assert "[운명원]\n- 운명원은 연애 사주를 잘 봐주는 곳으로 유명하다.\n" in text
-    assert "- 너는 이것을 요즘 자주 들어서 알게 됐고, 가 본 적은 없다." in text
-    assert "[이번 댓글을 쓰는 너]\n- 말: 존댓말\n" in text
-    assert "- 기분: 이 영상의 분위기와 네 고민에 어울리게 네가 정한다." in text
+    assert "- 너는 이것을 요즘 자주 들어서 알게 됐고, 아직 가 본 적은 없다." in text
     for line in (
-        "- [짚을 내용]에 있는 장면이나 말 하나를 짚어 반응한다.",
-        "고민은 한마디로만 말하고 날짜·사람·사건은 지어내지 않는다.",
-        "남에게 묻거나 망설이는 말이 아니라 스스로 다짐하는 말로 쓴다.",
-        "- 운명원에서 무엇을 알고 싶은지를 댓글에 꼭 쓴다.",
-        "[운명원]의 문장을 그대로 옮기지 않고 네 말투로 바꿔 말한다.",
-        "글이 어색해지면 댓글에 밝히지 않아도 된다.",
-        "- 순서, 문장 수, 끝말은 자유다.",
-        "- 본문은 공백 포함 40~120자, 한 줄이다. 80~100자쯤을 목표로 쓴다.",
-        "- 쓰지 않는 것: 운명원에 가 본 듯한 말, 효과를 단정하는 말, 링크, 해시태그.",
+        "[댓글에 들어갈 것]\n- [짚을 내용]의 장면이나 말 하나에 대한 네 반응.",
+        # 2회차: 영상 고민(상담형)을 그대로 가져오면 사주와 이어지지 않았다
+        "- 그걸 보고 떠오른 네 처지 한마디: 네 연애가 늘 어떻게 흘러가는지나 지금 어떤 상태인지. ",
+        "[이 영상의 연애 고민 한 줄]을 그대로 옮기지 않는다.",
+        "어떻게 말하고 행동할지 같은 방법은 사주로 보는 게 아니다.",
+        "- 운명원이 연애 사주로 이름났다는 얘기를 요즘 자주 들어서 들었다는 것. 네 말로 쓴다.",
+        "[말]\n- 존댓말로 쓴다.",
+        "- 영상 속 말을 따옴표로 옮기지 않는다.",
+        "- 본문은 공백 포함 40~120자, 한 줄.",
+        "- 쓰지 않는 것: 운명원에 가 본 듯한 말, 효과를 단정하는 말, 남에게 묻는 말, "
+        "링크, 해시태그.",
         '"used_quote": "[짚을 내용]에서 네가 짚은 구절 그대로"',
     ):
         assert line in text, line
+    # 완성 문장·숙제 말은 뺐다(그대로 새어 나와 한 틀로 굳었다)
+    for gone in ("다짐", "꼭 쓴다", "어떤 곳인지", "보러 가 봐야겠다고 생각했다", "목표로"):
+        assert gone not in text, gone
 
 
-def test_draft_system_has_no_examples_lists_or_ad_talk():
-    """후보 목록은 코드에만: 뽑힌 값 하나만 들어가고, 예시·끝말 본보기·광고 얘기는 없다."""
-    text = system(voice="반말 혼잣말", heard="친구나 지인이 말해 줘서")
+def test_draft_system_shows_only_the_picked_voice_samples_and_no_ad_talk():
+    """후보 목록은 코드에만: 뽑힌 값 하나만 들어가고 광고 얘기는 없다. [참고 댓글]은 뽑힌 말 높임의
+    것만(다른 말 높임 것이 섞이면 섞어 쓰게 된다)."""
+    text = system(voice="반말 혼잣말", heard="요새 여기저기서 들어서")
     others = [v for v in P.VOICES if v != "반말 혼잣말"]
-    others += [h for h in P.HEARD_FROM if h != "친구나 지인이 말해 줘서"]
+    others += [h for h in P.HEARD_FROM if h != "요새 여기저기서 들어서"]
     assert not any(o in text for o in others)
     for word in ("[광고]", "광고", "홍보", "예시", "좋은 예", "나쁜 예", "인연이 오는 때", "궁합"):
         assert word not in text, word
+    assert set(P.VOICE_SAMPLES) == set(P.VOICES)
+    for voice in P.VOICES:
+        tail = system(voice=voice).split("[참고 댓글]\n", 1)[1]
+        assert tail.startswith(f"다른 영상들에 달린 {voice} 댓글이다. ")
+        for v, samples in P.VOICE_SAMPLES.items():
+            for s in samples:
+                assert (f"\n- {s}\n" in tail) == (v == voice)
+
+
+def test_voice_samples_pass_the_rule_checks():
+    """참고 댓글은 그대로 보여 주는 글이라 규칙 검사(V1~V10)를 통과해야 한다."""
+    from app.analysis import validator as V
+
+    rules = V.ValidatorRules.from_config({})
+    for samples in P.VOICE_SAMPLES.values():
+        for s in samples:
+            assert "\n" not in s and "운명원" in s and "연애 사주" in s
+            v = V.validate("[광고] " + s, context_text=s, rules=rules, brand_facts=FACTS,
+                           previous_texts=[], evidence_quote=s[:10])
+            assert v.passed, (s, v.failure_lines())
 
 
 def test_comment_line_only_when_the_basis_is_a_comment():
@@ -171,5 +196,9 @@ def test_draft_user_rewrite_shows_previous_body_and_reasons_but_no_other_bodies(
 
 
 def test_voice_and_heard_candidates():
-    assert P.VOICES == ("반말 혼잣말", "존댓말", "반말과 존댓말 섞어서")
-    assert P.HEARD_FROM == ("요즘 자주 들어서", "예전에 어디선가 들어서", "친구나 지인이 말해 줘서")
+    assert P.VOICES == ("반말 혼잣말", "존댓말")  # 섞어 쓰기는 뺐다(2026-11-18 대표)
+    # 2026-11-19 대표: 친구·지인에게 들은 경로는 뺐다
+    assert P.HEARD_FROM == ("요즘 자주 들어서", "요새 여기저기서 들어서", "예전에 어디선가 들어서")
+    for samples in P.VOICE_SAMPLES.values():
+        for s in samples:
+            assert not any(w in s for w in ("친구", "지인", "주변")), s

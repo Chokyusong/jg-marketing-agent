@@ -64,8 +64,8 @@ def create(client, **kw):
 
 
 def picked(system: str) -> tuple[str, str]:
-    voice = next(v for v in P.VOICES if f"- 말: {v}\n" in system)
-    heard = next(h for h in P.HEARD_FROM if f"너는 이것을 {h} 알게 됐고" in system)
+    voice = next(v for v in P.VOICES if f"[말]\n- {v}로 쓴다." in system)  # 2026-11-18 새 틀
+    heard = next(h for h in P.HEARD_FROM if f"- 너는 {h} 「" in system)  # 9회차
     return voice, heard
 
 
@@ -229,3 +229,64 @@ def test_pick_evidence_order_transcript_then_title_description_then_comment():
     assert D.pick_evidence([ev[0]]).source == "comment"
     # 무리 안이 다 짚은 구절이면 그 무리의 첫 것(댓글로 내려가지 않는다)
     assert D.pick_evidence(ev[1:], ["제목 구절입니다", "설명 구절입니다"]).source == "title"
+
+
+# ------------------------------------------------ 2026-11-18 운명원 말하기를 영상마다 다르게
+
+
+def test_pick_voice_alternates_with_other_videos():
+    """다른 영상 직전 초안과 말 높임은 번갈아, 들은 경로는 최근 두 개와 다르게(2026-11-18)."""
+    rng = random.Random(3)
+    recent = [D.Voice(P.VOICES[0], P.HEARD_FROM[0]), D.Voice(P.VOICES[1], P.HEARD_FROM[1])]
+    for _ in range(50):
+        v = D.pick_voice(rng, recent=recent)
+        assert v.voice != P.VOICES[0] and v.heard == P.HEARD_FROM[2]
+    # 같은 영상 직전 조합까지 피해야 해서 남는 게 없으면 조건을 푼다
+    only = D.Voice(P.VOICES[1], P.HEARD_FROM[2])
+    assert all(D.pick_voice(rng, avoid=only, recent=recent) != only for _ in range(30))
+
+
+def test_user_text_carries_recent_comments_on_other_videos():
+    user = P.draft_user(title="t", concern="c", material=["- (자막) q"],
+                        recent_bodies=["요즘 운명원이 연애 사주 잘 본다던데 가봐야지", ""])
+    assert ("[다른 영상에 최근 단 댓글]\n- 요즘 운명원이 연애 사주 잘 본다던데 가봐야지\n"
+            "- 이 댓글들과 처지(네 연애가 어떤지)·궁금증·운명원 얘기·끝말이 겹치지 않게, "
+            "다른 걸로 쓴다.") in user
+    # 9회차: 요청 글 끝 쪽(답하라는 말 바로 위)에 둔다
+    assert user.index("[다른 영상에 최근 단 댓글]") > user.index("[짚을 내용]")
+    assert "[다른 영상에 최근 단 댓글]" not in P.draft_user(
+        title="t", concern="c", material=["- (자막) q"])
+
+
+def test_pick_saying_avoids_what_other_videos_just_used():
+    """들은 말의 요지(핫하다 / 잘 본다 / 유명하다 / 연애 사주 하면 운명원)는 다른 영상 최근 두
+    댓글과 다르게."""
+    rng = random.Random(5)
+    recent = ["운명원이 연애 사주로 유명하단 얘길 들어서 가봐야지",
+              "운명원 연애 사주 잘 본다던데 가봐야겠어요"]
+    assert [D.saying_of(b, "운명원") for b in recent] == [2, 1]
+    assert D.saying_of("연애 사주 하면 운명원이라고들 하던데", "운명원") == 3
+    assert D.saying_of("요새 운명원이 연애 사주 잘 보는 걸로 핫하던데", "운명원") == 0
+    assert D.saying_of("그냥 가봐야지", "운명원") is None
+    for _ in range(30):
+        assert D.pick_saying(rng, "운명원", recent) in {
+            "운명원이 연애 사주 잘 보는 걸로 핫하다", "연애 사주 하면 운명원이다"}
+    every = recent + ["연애 사주 하면 운명원이라던데"]
+    assert D.pick_saying(rng, "운명원", every[1:] + every[:1]) in {
+        s.format(brand="운명원") for s, _ in P.SAYINGS}
+
+
+def test_system_carries_the_picked_saying():
+    text = P.draft_system(brand="운명원", facts=["운명원은 연애 사주를 잘 봐주는 곳으로 유명하다"],
+                          voice="존댓말", heard="요즘 자주 들어서", from_comment=False,
+                          said="연애 사주 하면 운명원이다")
+    assert ("- 너는 요즘 자주 들어서 「연애 사주 하면 운명원이다」는 걸 알게 됐고, "
+            "아직 가 본 적은 없다.") in text
+    assert ("- 요즘 자주 들어서 알게 된 그 얘기(「연애 사주 하면 운명원이다」). "
+            "그 뜻 그대로") in text
+    assert "누가 말해 줬는지(친구·지인)는 쓰지 않는다." in text
+    # 9회차: 소개 문장(잘 봐주는 곳으로 유명하다)이 요지를 덮었다 → 들은 말이 있으면 넣지 않는다
+    assert "[운명원]\n- 연애 사주를 보는 곳이다.\n" in text
+    assert "잘 봐주는 곳으로 유명하다" not in text
+    others = [s.format(brand="운명원") for s, _ in P.SAYINGS if not s.startswith("연애 사주 하면")]
+    assert not any(o in text for o in others)

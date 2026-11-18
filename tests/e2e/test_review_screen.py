@@ -18,6 +18,7 @@ import threading
 import pytest
 from r1_support import (
     PICK,
+    TITLES,
     draft_for,
     headless_page,
     measure,
@@ -60,10 +61,14 @@ def live(tmp_path, make_config, fixture_json, monkeypatch):
     gate = threading.Event()
     real_parse = review.parse
 
+    def is_video(n: int, user: str) -> bool:
+        # 2026-11-19: 검수 요청에 영상 고민 한 줄(「영상 N번: …」)을 넣지 않게 돼 제목 줄로 알아본다
+        return f"[영상 제목] {TITLES[n - 1]}\n" in user
+
     def fake_ask(llm, *, system, user):
-        if f"영상 {SLOW}번" in user:
+        if is_video(SLOW, user):
             gate.wait(timeout=30)
-        if f"영상 {WARN}번" in user:
+        if is_video(WARN, user):
             return real_parse({"ok": False, "problems": [FLAG]})
         return real_parse({"ok": True, "problems": []})
 

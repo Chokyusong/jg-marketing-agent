@@ -232,7 +232,8 @@ def test_draft_prompt_names_only_the_brand(setup):
     client.post("/api/drafts", json={"video_id": VID})
     system = llm.calls[1]["kwargs"]["system"]
     # 2026-11-18 지시서: 시스템 글의 [운명원] 칸에는 운명원 하나만 나온다
-    assert "[운명원]\n- 운명원은 연애 사주를 잘 봐주는 곳으로 유명하다." in system
+    # 9회차: 들은 말 요지를 뽑으면 소개 문장 대신 「연애 사주를 보는 곳이다」
+    assert "[운명원]\n- 연애 사주를 보는 곳이다." in system
     assert "가 본 적은 없다" in system
 
 

@@ -183,12 +183,44 @@ def mood_of(tone_label: str) -> str:
     return parts[2] if len(parts) >= 3 and voice_of(tone_label) else ""
 
 
-def pick_voice(rng: random.Random, avoid: Voice | None = None) -> Voice:
-    """말 높임·들은 경로를 무작위로. `avoid`(직전 초안)와 같은 조합은 뽑지 않는다."""
+def pick_voice(
+    rng: random.Random,
+    avoid: Voice | None = None,
+    recent: Sequence[Voice] = (),
+) -> Voice:
+    """말 높임·들은 경로를 무작위로. `avoid`(같은 영상 직전 초안)와 같은 조합은 뽑지 않는다.
+
+    `recent`: 다른 영상의 최근 초안(새것부터) — 2026-11-18 대표 목표(운명원 말하기가 모두 같으면
+    안 됨)로 말 높임은 직전과 번갈아, 들은 경로는 최근 두 개와 다르게 뽑는다
+    (남는 게 없으면 그만큼 푼다)."""
     combos = [Voice(v, h) for v in prompts.VOICES for h in prompts.HEARD_FROM]
     if avoid is not None:
         combos = [c for c in combos if c != avoid] or combos
+    if recent:
+        combos = [c for c in combos if c.voice != recent[0].voice] or combos
+        heard = {v.heard for v in recent[:2]}
+        combos = ([c for c in combos if c.heard not in heard]
+                  or [c for c in combos if c.heard != recent[0].heard] or combos)
     return rng.choice(combos)
+
+
+RECENT_BODIES = 3  # 요청 글에 넣는 「다른 영상에 최근 단 댓글」 수(2026-11-18)
+
+
+def saying_of(body: str, brand: str) -> int | None:
+    """본문이 쓴 들은 말 계열(`prompts.SAYINGS`의 번호). 알아볼 낱말이 없으면 None."""
+    for i, (_, keys) in enumerate(prompts.SAYINGS):
+        if any(k.format(brand=brand) in body for k in keys):
+            return i
+    return None
+
+
+def pick_saying(rng: random.Random, brand: str, recent_bodies: Sequence[str] = ()) -> str:
+    """들은 말의 요지 하나. 다른 영상 최근 댓글 두 개가 쓴 계열은 피한다(다 쓰였으면 아무거나)."""
+    used = {saying_of(b, brand) for b in recent_bodies[:2]}
+    idx = [i for i in range(len(prompts.SAYINGS)) if i not in used] or list(
+        range(len(prompts.SAYINGS)))
+    return prompts.SAYINGS[rng.choice(idx)][0].format(brand=brand)
 
 
 def pick_evidence(evidence: Sequence[Evidence], avoid_quotes: Sequence[str] = ()) -> Evidence:
@@ -378,7 +410,8 @@ class DraftService:
             analysis = self.analyze(video_id)  # 예전 분석은 다시 한다
         mine = self.list(video_id)
         last = next((voice_of(d.tone_label) for d in mine if voice_of(d.tone_label)), None)
-        voice = pick_voice(self.rng, avoid=last)
+        recent = [v for d in self._recent_elsewhere(video_id) if (v := voice_of(d["tone_label"]))]
+        voice = pick_voice(self.rng, avoid=last, recent=recent)
         used = list(dict.fromkeys([*avoid_quotes, *(d.evidence_quote for d in mine)]))
         evidence = pick_evidence(analysis.evidence, used)
         kit = self._kit(video_id, analysis.concern, evidence, voice, disclose, others=mine)
@@ -386,7 +419,8 @@ class DraftService:
 
         best: tuple[int, int, str, dict[str, Any], Validation] | None = None
         run: dict[str, Any] = {
-            "voice": voice.voice, "heard": voice.heard, "basis": evidence.to_dict(),
+            "voice": voice.voice, "heard": voice.heard, "said": kit["said"],
+            "basis": evidence.to_dict(),
             "attempts": [],
         }
         self.last_run = run
@@ -421,7 +455,7 @@ class DraftService:
         _, _, text, data, validation = best
         quote = data["used_quote"] or evidence.quote
         source = self._source_of(video_id, quote) or evidence.source
-        extra = {"wish": data["wish"], "basis": evidence.to_dict()}
+        extra = {"wish": data["wish"], "basis": evidence.to_dict(), "said": kit["said"]}
         now = self._now()
         with db.session(self.db_path) as conn:
             conn.execute(
@@ -456,7 +490,7 @@ class DraftService:
 
     def _kit(
         self, video_id: str, concern: str, evidence: Evidence, voice: Voice,
-        disclose: bool, *, others: Sequence[Draft],
+        disclose: bool, *, others: Sequence[Draft], said: str = "",
     ) -> dict[str, Any]:
         """쓰기에 필요한 것(처음 쓰기·규칙 다시 쓰기·검수 뒤 다시 쓰기가 함께 쓴다).
 
@@ -474,16 +508,21 @@ class DraftService:
             quote=evidence.quote, source=evidence.source, transcript=transcript,
             title=title, description=description,
         )
-        system = prompts.draft_system(
-            brand=rules.brand, facts=self.brand_facts, voice=voice.voice, heard=voice.heard,
-            from_comment=evidence.source == "comment",
-        )
         used_quotes_ = list(dict.fromkeys(d.evidence_quote for d in others if d.evidence_quote))
         used_wishes = list(dict.fromkeys(d.wish for d in others if d.wish))
+        bodies = [toggle_disclosure(d["body"] or "", rules.disclosure, False)
+                  for d in self._recent_elsewhere(video_id)]
+        recent_bodies = list(dict.fromkeys(b for b in bodies if b))[:RECENT_BODIES]
+        said = said or pick_saying(self.rng, rules.brand, recent_bodies)
+        system = prompts.draft_system(
+            brand=rules.brand, facts=self.brand_facts, voice=voice.voice, heard=voice.heard,
+            from_comment=evidence.source == "comment", said=said,
+        )
         return {
             "llm": self._llm(), "video_id": video_id, "system": system, "title": title,
             "concern": concern, "material": material, "used_quotes": used_quotes_,
-            "used_wishes": used_wishes, "evidence": evidence, "disclose": disclose,
+            "used_wishes": used_wishes, "recent_bodies": recent_bodies, "said": said,
+            "evidence": evidence, "disclose": disclose,
             "mark": rules.disclosure if disclose else "",
             "previous": self.previous_texts(video_id),
         }
@@ -496,6 +535,7 @@ class DraftService:
         user = prompts.draft_user(
             title=kit["title"], concern=kit["concern"], material=kit["material"],
             used_quotes=kit["used_quotes"], used_wishes=kit["used_wishes"],
+            recent_bodies=kit.get("recent_bodies", ()),
             previous_body=previous_body, failure_lines=failure_lines,
         )
         raw = kit["llm"].generate_json(
@@ -567,7 +607,8 @@ class DraftService:
         voice = voice_of(draft.tone_label) or pick_voice(self.rng)
         others = [d for d in self.list(draft.video_id) if d.id != draft.id]
         concern = analysis.concern if analysis else ""
-        kit = self._kit(draft.video_id, concern, evidence, voice, draft.disclosed, others=others)
+        kit = self._kit(draft.video_id, concern, evidence, voice, draft.disclosed, others=others,
+                        said=str((draft.review or {}).get("said") or ""))  # 처음과 같은 들은 말
         system = rv.review_system(brand=rules.brand)
 
         def ask(text: str) -> rv.Verdict | None:
@@ -811,6 +852,16 @@ class DraftService:
         self._check_id(video_id)
         current = next((d for d in self.list(video_id) if d.status != "superseded"), None)
         return current.evidence_quote if current and current.evidence_quote else None
+
+    def _recent_elsewhere(self, video_id: str, limit: int = 8) -> list[Any]:
+        """다른 영상의 최근 초안(상태와 상관없이, 새것부터).
+        운명원 말하기·들은 경로를 영상마다 겹치지 않게 하려고 쓴다(2026-11-18)."""
+        with db.session(self.db_path) as conn:
+            return conn.execute(
+                "SELECT body, tone_label FROM drafts WHERE video_id IS NOT ? "
+                "ORDER BY id DESC LIMIT ?",
+                (video_id, limit),
+            ).fetchall()
 
     def previous_texts(self, video_id: str | None = None) -> list[str]:
         """V11 비교 대상: 승인한 초안과 게시한 댓글(다른 영상 것). 최근 50개씩, 겹치면 하나."""
