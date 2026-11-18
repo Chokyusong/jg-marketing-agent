@@ -304,6 +304,17 @@ def test_user_text_lists_situations_used_on_other_videos():
         title="t", concern="c", material=["- (자막) q"], recent_bodies=["가봐야지"])
 
 
+def test_user_text_lists_reactions_used_on_other_videos():
+    user = P.draft_user(title="t", concern="c", material=["- (자막) q"],
+                        recent_bodies=["b"], recent_reactions=["와닿네", "", "찔린다"])
+    assert "- 다른 영상 댓글에 이미 쓴 반응: 와닿네 / 찔린다 — 같은 반응 말은 쓰지 않는다." in user
+    assert "이미 쓴 반응" not in P.draft_user(title="t", concern="c", material=["- (자막) q"],
+                                          recent_bodies=["b"])
+    assert '"reaction": "본문에서 영상 말에 대한 네 반응을 나타낸 말 그대로"' in P.draft_system(
+        brand="운명원", facts=[], voice="존댓말", heard="요즘 자주 들어서", from_comment=False)
+    assert D.situation_of('{"reaction": "찔린다"}', "reaction") == "찔린다"
+
+
 def test_situation_of_reads_the_saved_situation():
     assert D.situation_of('{"situation": "늘 기다리는 쪽", "wish": "w"}') == "늘 기다리는 쪽"
     assert D.situation_of('{"wish": "w"}') == ""

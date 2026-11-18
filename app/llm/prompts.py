@@ -238,8 +238,10 @@ DRAFT_SCHEMA: JSONSchema = {
         "wish": {"type": "string"},
         "used_quote": {"type": "string"},
         "situation": {"type": "string"},
+        "reaction": {"type": "string"},
     },
-    "required": ["mood", "body", "wish", "used_quote"],  # situation은 있으면 쓴다(12회차)
+    # situation(12회차)·reaction(20회차)은 있으면 쓴다
+    "required": ["mood", "body", "wish", "used_quote"],
 }
 
 
@@ -312,7 +314,8 @@ def draft_system(
         '출력(JSON): {"mood": "네 기분 한 낱말", "body": "댓글 본문", '
         '"wish": "본문에 쓴, 사주로 보고 싶은 궁금증 그대로", '
         '"used_quote": "[짚을 내용]에서 네가 짚은 구절 그대로", '
-        '"situation": "본문에 쓴 네 처지 그대로"}',
+        '"situation": "본문에 쓴 네 처지 그대로", '
+        '"reaction": "본문에서 영상 말에 대한 네 반응을 나타낸 말 그대로"}',
     ]
     return "\n".join(lines)
 
@@ -376,6 +379,7 @@ def draft_user(
     used_wishes: Sequence[str] = (),
     recent_bodies: Sequence[str] = (),
     recent_situations: Sequence[str] = (),
+    recent_reactions: Sequence[str] = (),
     previous_body: str = "",
     failure_lines: Sequence[str] = (),
 ) -> str:
@@ -400,11 +404,16 @@ def draft_user(
             )
     bodies = [b for b in recent_bodies if b]
     situations = [s for s in recent_situations if s]
-    if bodies or situations:  # 2026-11-18 대표: 모두 같으면 안 된다. 9회차: 끝 쪽에 둬야 지킨다
+    reactions = [r for r in recent_reactions if r]
+    # 2026-11-18 대표: 모두 같으면 안 된다. 9회차: 끝 쪽에 둬야 지킨다
+    if bodies or situations or reactions:
         parts.append("[다른 영상에 최근 단 댓글]")
         parts += [f"- {b}" for b in bodies]
         if situations:  # 12회차: 본문만 보여 주면 처지가 겹쳤다(11개 중 「흐지부지」 4)
             parts.append("- 다른 영상 댓글에 이미 쓴 처지: " + " / ".join(situations))
+        if reactions:  # 20회차: 「첫 반응」 지시만으로는 「와닿네」가 6개 중 4개
+            parts.append("- 다른 영상 댓글에 이미 쓴 반응: " + " / ".join(reactions)
+                         + " — 같은 반응 말은 쓰지 않는다.")
         same_word = " 이미 쓴 처지와 같은 낱말(예: 흐지부지)도 쓰지 않는다." if situations else ""
         # 19회차: 존댓말 셋이 모두 「~말 와닿아요」 — 첫 반응도 다른 영상 댓글과 겹치지 않게
         parts.append("- 이 댓글들과 영상 말에 대한 첫 반응·처지(네 연애가 어떤지)·궁금증·운명원 "

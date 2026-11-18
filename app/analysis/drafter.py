@@ -209,13 +209,14 @@ RECENT_BODIES = 3  # 요청 글에 넣는 「다른 영상에 최근 단 댓글�
 RECENT_SITUATIONS = 8  # 그 아래 「이미 쓴 처지」 수(12회차: 본문 셋만으로는 처지가 겹쳤다)
 
 
-def situation_of(review_json: str | None) -> str:
-    """초안 `review_json`에 남긴 처지(AI가 적은 `situation`). 없거나 못 읽으면 빈 글."""
+def situation_of(review_json: str | None, key: str = "situation") -> str:
+    """초안 `review_json`에 남긴 처지(AI가 적은 `situation`) — `key="reaction"`이면 영상 말에 대한
+    반응(20회차). 없거나 못 읽으면 빈 글."""
     try:
         data = json.loads(review_json or "{}")
     except ValueError:
         return ""
-    return str(data.get("situation") or "") if isinstance(data, dict) else ""
+    return str(data.get(key) or "") if isinstance(data, dict) else ""
 
 
 def saying_of(body: str, brand: str) -> int | None:
@@ -501,7 +502,7 @@ class DraftService:
             fails = len(validation.failures)
             run["attempts"].append({
                 "body": text, "mood": data["mood"], "wish": data["wish"],
-                "situation": data["situation"],
+                "situation": data["situation"], "reaction": data["reaction"],
                 "used_quote": data["used_quote"], "failures": validation.failure_lines(),
             })
             if best is None or fails < best[0]:
@@ -517,7 +518,7 @@ class DraftService:
         quote = data["used_quote"] or evidence.quote
         source = self._source_of(video_id, quote) or evidence.source
         extra = {"wish": data["wish"], "basis": evidence.to_dict(), "said": kit["said"],
-                 "situation": data["situation"]}
+                 "situation": data["situation"], "reaction": data["reaction"]}
         now = self._now()
         with db.session(self.db_path) as conn:
             conn.execute(
@@ -577,6 +578,9 @@ class DraftService:
         recent_bodies = list(dict.fromkeys(b for b in bodies if b))[:RECENT_BODIES]
         recent_situations = list(dict.fromkeys(
             s for d in rows if (s := situation_of(d["review_json"]))))[:RECENT_SITUATIONS]
+        recent_reactions = list(dict.fromkeys(
+            r for d in rows if (r := situation_of(d["review_json"], "reaction"))
+        ))[:RECENT_SITUATIONS]
         said = said or pick_saying(self.rng, rules.brand, recent_bodies)
         system = prompts.draft_system(
             brand=rules.brand, facts=self.brand_facts, voice=voice.voice, heard=voice.heard,
@@ -586,7 +590,7 @@ class DraftService:
             "llm": self._llm(), "video_id": video_id, "system": system, "title": title,
             "concern": concern, "material": material, "used_quotes": used_quotes_,
             "used_wishes": used_wishes, "recent_bodies": recent_bodies, "said": said,
-            "recent_situations": recent_situations,
+            "recent_situations": recent_situations, "recent_reactions": recent_reactions,
             "evidence": evidence, "disclose": disclose,
             "mark": rules.disclosure if disclose else "",
             "previous": self.previous_texts(video_id),
@@ -602,6 +606,7 @@ class DraftService:
             used_quotes=kit["used_quotes"], used_wishes=kit["used_wishes"],
             recent_bodies=kit.get("recent_bodies", ()),
             recent_situations=kit.get("recent_situations", ()),
+            recent_reactions=kit.get("recent_reactions", ()),
             previous_body=previous_body, failure_lines=failure_lines,
         )
         raw = kit["llm"].generate_json(
@@ -615,6 +620,7 @@ class DraftService:
             "mood": " ".join(str(raw.get("mood") or "").split())[:20],
             "wish": " ".join(str(raw.get("wish") or "").split())[:80],
             "situation": " ".join(str(raw.get("situation") or "").split())[:60],
+            "reaction": " ".join(str(raw.get("reaction") or "").split())[:30],
             "used_quote": " ".join(str(raw.get("used_quote") or "").split()).strip(_QUOTES),
         }
         text = with_disclosure(body, kit["mark"])
@@ -717,7 +723,8 @@ class DraftService:
         quote = data["used_quote"] or evidence.quote
         new = {
             "text": text, "validation": validation, "wish": data["wish"],
-            "situation": data["situation"], "tone_label": voice.label(data["mood"]),
+            "situation": data["situation"], "reaction": data["reaction"],
+            "tone_label": voice.label(data["mood"]),
             "evidence_quote": quote,
             "evidence_source": self._source_of(draft.video_id, quote) or evidence.source,
         }
@@ -747,11 +754,12 @@ class DraftService:
             if "kept" in result:
                 result = {**result, "kept": False}
         old = draft.review or {}
-        keep = {k: old[k] for k in ("wish", "basis", "said", "situation") if k in old}
+        keep = {k: old[k] for k in ("wish", "basis", "said", "situation", "reaction") if k in old}
         if new is not None:
             keep["wish"] = new["wish"]
-            if new.get("situation"):
-                keep["situation"] = new["situation"]
+            for k in ("situation", "reaction"):
+                if new.get(k):
+                    keep[k] = new[k]
         raw = json.dumps({**result, **keep}, ensure_ascii=False)
         trace = (before, after, int(review_ms), int(rewrite_ms))
         with db.session(self.db_path) as conn:
