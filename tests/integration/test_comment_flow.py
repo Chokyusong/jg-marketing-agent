@@ -111,7 +111,7 @@ def test_transcript_basis_comes_first_and_has_no_comment_line(setup):
     llm = use([analysis, answer(body, quote=quote)])
     data = create(client)
     system, user = llm.calls[1]["kwargs"]["system"], llm.calls[1]["kwargs"]["user"]
-    assert f"- (자막) {quote}" in user and "- 자막 앞부분: " in user
+    assert f"- (자막) {quote}" in user and "- 그 말 앞뒤 자막: " in user
     assert P.COMMENT_LINE not in system
     assert data["evidence_source"] == "transcript"
 

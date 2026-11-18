@@ -95,7 +95,8 @@ def test_draft_system_is_the_template_with_the_picked_values():
     for line in (
         "[댓글에 들어갈 것]\n- [짚을 내용]의 장면이나 말 하나에 대한 네 반응.",
         # 2회차: 영상 고민(상담형)을 그대로 가져오면 사주와 이어지지 않았다
-        "- 그걸 보고 떠오른 네 처지 한마디: 네 연애가 늘 어떻게 흘러가는지나 지금 어떤 상태인지. ",
+        "- 그걸 보고 떠오른 네 처지 한마디: 짚은 얘기와 같은 데서 네 연애가 늘 어떻게 흘러가는지나 "
+        "지금 어떤 상태인지. ",
         "[이 영상의 연애 고민 한 줄]을 그대로 옮기지 않는다.",
         "어떻게 말하고 행동할지 같은 방법은 사주로 보는 게 아니다.",
         "- 운명원이 연애 사주로 이름났다는 얘기를 요즘 자주 들어서 들었다는 것. 네 말로 쓴다.",
@@ -160,7 +161,7 @@ def test_material_follows_the_source():
     t = P.material_lines(quote="만나도 각자 휴대폰만 봐요", source="transcript",
                          transcript="  만나도   각자 휴대폰만 봐요 그래서 ", title="제목")
     assert t == ["- (자막) 만나도 각자 휴대폰만 봐요",
-                 "- 자막 앞부분: 만나도 각자 휴대폰만 봐요 그래서"]
+                 "- 그 말 앞뒤 자막: 만나도 각자 휴대폰만 봐요 그래서"]
     d = P.material_lines(quote="읽씹 3일째", source="title", title="읽씹 3일째 연락 기다리기",
                          description="설명 글")
     assert d == ["- (제목) 읽씹 3일째", "- 제목: 읽씹 3일째 연락 기다리기", "- 설명: 설명 글"]
@@ -168,6 +169,26 @@ def test_material_follows_the_source():
     assert c == ["- (댓글) 저도 장거리 2년째예요"]
     long = P.material_lines(quote="q", source="transcript", transcript="가" * 5000)
     assert len(long[1]) == len("- 자막 앞부분: ") + P.TRANSCRIPT_CHARS
+
+
+def test_transcript_material_shows_the_text_around_the_quote():
+    text = "가" * 3000 + " 답장이 늦으면 혼자 이야기를 지어내요 " + "나" * 3000
+    lines = P.material_lines(quote="답장이 늦으면  혼자 이야기를", source="transcript",
+                             transcript=text)
+    around = lines[1].removeprefix("- 그 말 앞뒤 자막: ")
+    assert lines[1].startswith("- 그 말 앞뒤 자막: …") and around.endswith("…")
+    assert "답장이 늦으면 혼자 이야기를 지어내요" in around
+    assert around.count("가") == P.AROUND_CHARS - 1 and around.count("나") >= P.AROUND_CHARS - 20
+    # 구절 끝이 조금 달라도 앞쪽으로 자리를 찾는다
+    assert P.quote_window("답장이 늦으면 혼자 소설", " ".join(text.split()))
+    assert P.quote_window("전혀 없는 말입니다요", text) == ""
+
+
+def test_write_line_asks_to_show_and_empathize_with_the_video_worry():
+    s = P.draft_system(brand="운명원", facts=[], voice="반말", heard="요즘 자주 들어서",
+                       from_comment=False, said="운명원이 연애 사주를 잘 본다")
+    assert "댓글만 읽어도 보이게 짚고, 거기에 공감한다." in s
+    assert "짚은 얘기와 같은 데서" in s
 
 
 def test_draft_user_first_try_has_only_title_concern_and_material():

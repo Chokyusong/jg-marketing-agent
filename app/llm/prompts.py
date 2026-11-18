@@ -219,7 +219,8 @@ VOICE_SAMPLES: dict[str, tuple[str, ...]] = {
     ),
 }
 
-TRANSCRIPT_CHARS = 2000  # [짚을 내용]에 넣는 자막 앞부분 글자 수
+TRANSCRIPT_CHARS = 2000  # [짚을 내용]에 넣는 자막 앞부분 글자 수(근거 자리를 못 찾을 때)
+AROUND_CHARS = 400  # 14회차: 근거 구절 앞뒤로 넣는 자막 글자 수(긴 자막은 앞부분만으론 맥락이 빠짐)
 
 DRAFT_SCHEMA: JSONSchema = {
     "type": "object",
@@ -261,11 +262,15 @@ def draft_system(
         "- [짚을 내용]의 장면이나 말 하나에 대한 네 반응. 맨 위 근거 구절처럼 영상 주제나 연애 "
         "고민이 드러나는 말을 짚는다. 앞뒤를 모르면 뜻을 알 수 없는 짧은 맞장구·감탄은 짚지 "
         "않는다.",
+        # 14회차(대표 2026-11-19): 자막에서 찾은 고민·근거를 공감으로 잇는 힘이 약하다
+        "- 그 말이 영상에서 무슨 얘기였는지(앞뒤 자막으로 본 고민이나 조언)가 댓글만 읽어도 "
+        "보이게 짚고, 거기에 공감한다.",
     ]
     if from_comment:
         lines.append(f"- {COMMENT_LINE}")
     lines += [
-        "- 그걸 보고 떠오른 네 처지 한마디: 네 연애가 늘 어떻게 흘러가는지나 지금 어떤 상태인지. "
+        "- 그걸 보고 떠오른 네 처지 한마디: 짚은 얘기와 같은 데서 네 연애가 늘 어떻게 "
+        "흘러가는지나 지금 어떤 상태인지. "
         "[이 영상의 연애 고민 한 줄]을 그대로 옮기지 않는다. 날짜·사람·사건은 지어내지 않는다.",
         (f"- {heard} 알게 된 그 얘기(「{said}」). 그 뜻 그대로, 「~던데」「~길래」처럼 들은 "
          "얘기를 전하는 투로 네 말로 쓴다. 누가 말해 줬는지(친구·지인)는 쓰지 않는다." if said
@@ -300,19 +305,35 @@ def draft_system(
     return "\n".join(lines)
 
 
+def quote_window(quote: str, text: str, width: int = AROUND_CHARS) -> str:
+    """정리한 자막(`text`)에서 근거 구절 자리를 찾아 앞뒤 `width`자씩(14회차).
+
+    그대로 없으면 구절 앞쪽을 줄여 가며(8자까지) 찾는다. 못 찾으면 빈 글."""
+    q = " ".join(quote.split())
+    for n in range(len(q), 7, -1):
+        i = text.find(q[:n])
+        if i >= 0:
+            start, end = max(0, i - width), min(len(text), i + len(q) + width)
+            return ("…" if start else "") + text[start:end] + ("…" if end < len(text) else "")
+    return ""
+
+
 def material_lines(
     *, quote: str, source: str, transcript: str = "", title: str = "", description: str = ""
 ) -> list[str]:
     """[짚을 내용]: 근거 구절(출처 표시)과 관련 자료(지시서 4절의 우선순위대로 고른 근거 하나).
 
-    - 자막 근거면 자막 앞부분을 함께 준다.
+    - 자막 근거면 그 구절 앞뒤 자막을 함께 준다(못 찾으면 자막 앞부분).
     - 제목·설명 근거면 제목과 설명을 함께 준다(자막이 없거나 자막에서 고민을 못 찾았을 때).
     - 댓글 근거면 그 댓글 구절만 준다.
     """
     label = SOURCE_LABELS.get(source, source or "자료")
     lines = [f"- ({label}) {quote}"]
     if source == "transcript" and transcript.strip():
-        lines.append(f"- 자막 앞부분: {' '.join(transcript.split())[:TRANSCRIPT_CHARS]}")
+        text = " ".join(transcript.split())
+        around = quote_window(quote, text)
+        lines.append(f"- 그 말 앞뒤 자막: {around}" if around
+                     else f"- 자막 앞부분: {text[:TRANSCRIPT_CHARS]}")
     elif source in ("title", "description"):
         if title.strip():
             lines.append(f"- 제목: {' '.join(title.split())}")
