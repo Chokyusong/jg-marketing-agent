@@ -23,6 +23,10 @@ MAX_SHOWN = 6  # 「이미 쓴 글」로 보여 줄 앞 초안 수
 QUOTE_MARKS = "'\"‘’“”「」『』"
 
 # 길이로 세 번 다 걸렸을 때 한 번씩 더 쓰게 하는 말(차례대로). 구조는 정하지 않고 길이만 알린다
+# 길이로 걸려 다시 쓸 때만 덧붙이는 말(2026-11-18 대표: 120자는 과제 조건. 줄이면서 처지 문장과
+# 보러 가고 싶은 마음이 먼저 잘렸다 — 처음 쓸 때는 아무것도 정하지 않고, 줄일 때 남길 것만 알린다)
+SHORTEN_LINE = "영상 장면, 내 처지, 운명원 얘기는 모두 남기고 꾸미는 말을 덜어 줄인다."
+
 DROP_LINES = (
     "",
     "앞서 쓴 글이 모두 길었다 — 댓글 전체를 더 짧게 다시 쓴다.",
@@ -59,8 +63,9 @@ def story_system(*, brand: str, disclosure: str, facts: Sequence[str], sample: s
         f"{brand}에서 연애 사주를 보고 싶어지는 마음으로 이어지도록 한다.\n"
         "5. 기승전결은 문장을 나누는 고정 공식이 아니다. 자연스러운 흐름을 만들기 위한 기준이다. "
         "상황에 따라 짧게 쓰거나 문장 수를 자유롭게 조정한다.\n"
-        "6. 글쓴이의 성격, 말투, 관점은 영상의 주제와 분위기에 맞춰 스스로 결정한다. 특정 말투나 "
-        "연결 문장을 억지로 쓰지 않는다.\n"
+        "6. 글쓴이의 성격, 말투, 관점은 영상의 주제와 분위기에 맞춰 스스로 결정한다. "
+        "실제 시청자처럼 ㅋㅋ·ㅠㅠ·^^ 같은 이모티콘도 써도 된다. "
+        "특정 말투나 연결 문장을 억지로 쓰지 않는다.\n"
         f"7. {brand}은 들은 얘기로 꺼내고(요새·요즘·친구한테 듣기로 같은 말을 붙여도 된다), "
         "앞 이야기에서 궁금해진 것을 보러 가고 싶은 마음으로 맺는다. 제공된 브랜드 사실 범위 "
         "안에서 "
@@ -157,20 +162,25 @@ def story_user(
     thin: bool = False,
     material_text: str = "",
 ) -> str:
-    """이야기 방식의 요청 글: 영상 자료 · 참고할 영상 근거 · 작성 조건(+ 이미 쓴 글·다시 쓰기).
+    """이야기 방식의 요청 글: 영상 자료 · 영상 요약 · 실제 영상 근거 구절 · 작성 조건(+ 다시 쓰기).
 
     `material_text`: `material()`로 만든 자료(없으면 분석 요약만 보인다).
     `key_phrases`·`mark_len`·`thin`은 예전 인자(요청 글에 쓰지 않는다).
     `drop`: 길이로 세 번 다 걸린 뒤 더 짧게 쓰라는 차례.
     """
     del key_phrases, mark_len, thin
-    parts = ["[영상 자료]", material_text or (
-        f"제목: {title or '(모름)'}\n주제: {analysis.get('topic', '')}\n"
-        f"시청자 고민 한 줄: {analysis.get('concern', '')}"
-    )]
+    parts = ["[영상 자료]", material_text or f"제목: {title or '(모름)'}"]
+    # 2026-11-18 대표 5단계: 분석이 만든 요약(주제·핵심 연애 고민)과 실제 근거 구절을 함께 넘긴다
+    if analysis.get("topic") or analysis.get("concern"):
+        parts += [
+            "",
+            "[영상 요약]",
+            f"주제: {analysis.get('topic', '')}",
+            f"핵심 연애 고민: {analysis.get('concern', '')}",
+        ]
     parts += [
         "",
-        "[참고할 영상 근거]",
+        "[실제 영상 근거 구절]",
         f"{quote} ({SOURCE_LABELS.get(source, source)})",
         "",
         "[작성 조건]",
@@ -199,4 +209,6 @@ def story_user(
             *[f"- {line}" for line in failure_lines],
             "걸린 항목을 고쳐 댓글 전체를 다시 쓴다(문장을 덧붙여 억지로 잇지 않는다).",
         ]
+        if any("깁니다" in line for line in failure_lines):
+            parts.append(SHORTEN_LINE)
     return "\n".join(parts)

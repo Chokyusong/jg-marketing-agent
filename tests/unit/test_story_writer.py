@@ -336,7 +336,7 @@ def test_story_user_shows_the_raw_material():
     assert "· 저도 그래요ㅠ" in material and "· 연락이 전부는 아니죠" in material
     user = _user(material_text=material)
     assert user.startswith("[영상 자료]\n제목: 장거리 연애 1년차")
-    assert "[참고할 영상 근거]\n하루에 한 번 연락 (자막)" in user
+    assert "[실제 영상 근거 구절]\n하루에 한 번 연락 (자막)" in user
     assert "영상에서 실제로 확인되는 내용을 하나 이상 언급하고," in user
     none = SP.material(title="제목만", description="", transcript="", comments=[])
     assert "자막: 없음" in none
@@ -453,3 +453,34 @@ def test_writer_field_is_a_choice_of_two():
     field = FIELDS["comment.writer"]
     assert field.kind == "choice" and field.path == ("comment", "writer")
     assert set(field.choices) == set(S.WRITERS) and WRITER_LABELS == S.WRITER_LABELS
+
+
+def test_story_v5_needs_love_saju_with_the_brand():
+    # 2026-11-18 대표: 운명원 연애 사주 언급은 과제 필수
+    ok = ("[광고] 다음 약속 날짜까지 잡아 주면 설레는데 헷갈리네요. 저도 썸에서 혼자 의미 부여하는 "
+          "편이라 운명원이 연애사주 잘 본다던데 한번 보고 싶어요")
+    assert _check(_run(ok), "V5").passed
+    no_love = ok.replace("연애사주", "사주")
+    v5 = _check(_run(no_love), "V5")
+    assert not v5.passed and "연애 사주" in v5.message
+    assert _check(_run(no_love, story=False), "V5").passed  # 조각 맞추기는 그대로
+
+
+def test_story_shorten_line_only_when_too_long():
+    long_retry = _user(failure_lines=["V1 길이: 140자로 깁니다 — 20자 이상 줄이세요"],
+                       previous_body="앞 글")
+    assert SP.SHORTEN_LINE in long_retry
+    assert SP.SHORTEN_LINE not in _user(failure_lines=["S4 똑같은 글"], previous_body="앞 글")
+    assert SP.SHORTEN_LINE not in _user()
+
+
+def test_story_user_passes_summary_and_real_quote_together():
+    # 2026-11-18 대표 5단계: 요약 + 실제 자막 구절 + 필수 조건
+    summary = {"topic": "시간 갖자는 말", "concern": "뭐라고 답해야 덜 불안할까"}
+    user = SP.story_user(analysis=summary,
+                         title="t", quote="다시 얘기할 날만 정하자", source="transcript",
+                         material_text="제목: t\n자막: 다시 얘기할 날만 정하자")
+    order = [user.index(k) for k in ("[영상 자료]", "[영상 요약]", "[실제 영상 근거 구절]")]
+    assert order == sorted(order)
+    assert "핵심 연애 고민: 뭐라고 답해야 덜 불안할까" in user
+    assert "ㅋㅋ·ㅠㅠ·^^" in _system()

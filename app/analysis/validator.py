@@ -659,14 +659,18 @@ def _v4_disclosure(text: str, rules: ValidatorRules, *, required: bool = True) -
     return _check("V4", False, f"홍보 표기 {mark}가 없습니다 — 글을 '{mark} '로 시작하세요")
 
 
-def _v5_brand(text: str, rules: ValidatorRules) -> CheckResult:
+def _v5_brand(text: str, rules: ValidatorRules, *, story: bool = False) -> CheckResult:
+    """V5 브랜드 이름 1~2번. 이야기 방식(2026-11-18 대표: 운명원 연애 사주 언급은 과제 필수)은
+    연애와 사주 얘기도 있어야 한다(「연애 사주」·「연애사주」·「연애 쪽 사주」 모두 된다)."""
     brand = rules.brand
     count = text.count(brand) if brand else 0
     if count == 0:
         return _check("V5", False, f"브랜드 이름 '{brand}'이(가) 없습니다 — 한 번 넣으세요")
     if count > 2:
         return _check("V5", False, f"'{brand}'이(가) {count}번 나옵니다 — 1~2번으로 줄이세요")
-    return _check("V5", True, f"'{brand}' {count}번")
+    if story and not ("연애" in text and "사주" in text):
+        return _check("V5", False, f"'{brand}' 연애 사주 얘기가 없습니다 — 함께 말하세요")
+    return _check("V5", True, f"'{brand}' {count}번" + (" · 연애 사주" if story else ""))
 
 
 def _v6_evidence(
@@ -1307,7 +1311,7 @@ def validate(
         _v2_links(clean),
         _v3_hashtags(clean),
         _v4_disclosure(clean, rules, required=disclosure_required),
-        _v5_brand(clean, rules),
+        _v5_brand(clean, rules, story=story),
         v6,
         v7,
         _pattern_check(
