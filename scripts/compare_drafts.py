@@ -300,6 +300,9 @@ def context_counts(ds: Sequence[dict[str, Any]]) -> dict[str, str]:
         "맥락: 주제 다름(처음 → 남음)":
             f"{sum(first(x).get('same_topic') is False for x in checked)} → "
             f"{sum(x['context'].get('same_topic') is False for x in checked)}/{n}",
+        "맥락: 기승전결 어색(처음 → 남음)":
+            f"{sum(first(x).get('flow') is False for x in checked)} → "
+            f"{sum(x['context'].get('flow') is False for x in checked)}/{n}",
         "맥락: 억지 연결(처음 → 남음)":
             f"{sum(first(x).get('natural_ad') is False for x in checked)} → "
             f"{sum(x['context'].get('natural_ad') is False for x in checked)}/{n}",

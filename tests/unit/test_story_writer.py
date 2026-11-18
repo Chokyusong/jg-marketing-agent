@@ -7,11 +7,13 @@
 - 뺀 것이 남아 있지 않다 — 말투 유형 배정 · 운명원 조각 · 잇는 문장 · 인연·궁합·타이밍 강제 · 처지
   문장 강제 · 끝말 검사 · 과한 스타일 검사(S5·S9·S13) · 운명원 문장이 같다고 다시 쓰게 하는 것.
 - AI가 자막·제목·설명·인기 댓글 원문을 직접 읽는다(`material`).
-- V14(이야기 방식)는 넷만 본다 — 이름 · 연애 사주(사주) · 들은 평판 · 보러 갈 뜻. 운명원은 첫
-  문장에 나오지 않는다. 지어낸 평판은 걸린다.
+- 코드가 보는 것은 대표 표대로(2026-11-18) — 글자 수 · 영상 근거 · 운명원 언급 · 허위 후기(와
+  원문 금지·표기). V12·V13은 「보지 않음」, V14는 지어낸 평판·사례만 본다(운명원 자리·조각은
+  AI가 쓰고 AI 검토가 본다).
 - V11(이야기 방식): 끝 문장(운명원 문장)만 닮고 앞부분이 다르면 통과. 통째로 같으면 걸린다.
-- 다시 쓰게만 하는 검사는 S1(길이)·S4(앞 글과 거의 똑같은 글)만.
-- 맥락 일치 검증: same_topic·comment_topic·one_voice·drift·natural_ad + ok·problems.
+- 다시 쓰게만 하는 검사는 S4(앞 글과 거의 똑같은 글)만. 길이는 V1이 본다.
+- AI 판단(대표 표): 영상 맥락과 일치(same_topic·drift) · 기승전결이 자연스러운가(flow) · 같은
+  사람이 쓴 글처럼(one_voice) · 운명원 언급이 뜬금없는가(natural_ad) + ok·problems.
 """
 
 from __future__ import annotations
@@ -23,8 +25,6 @@ from app.analysis import story as S
 from app.analysis.validator import (
     ASSIGNMENT_SAMPLE,
     ValidatorRules,
-    brand_in_first_sentence,
-    story_pieces,
     validate,
 )
 from app.config import DEFAULT_BRAND_FACTS
@@ -62,7 +62,6 @@ def test_removed_helpers_are_gone():
 def test_assignment_sample_passes_story_v14():
     result = _run("[광고] " + ASSIGNMENT_SAMPLE, context=ASSIGNMENT_SAMPLE[:20], keys=None)
     assert _check(result, "V14").passed, _check(result, "V14").message
-    assert story_pieces("[광고] " + ASSIGNMENT_SAMPLE, "운명원", "[광고]") == []
 
 
 # ---------------------------------------------------------------- V14(이야기 방식)
@@ -87,23 +86,37 @@ def test_story_v14_accepts_plain_saju_and_wish_endings():
     assert _check(_run(text), "V14").passed, _check(_run(text), "V14").message
 
 
-def test_brand_in_first_sentence_fails_story_v14():
-    text = ("[광고] 운명원이 연애사주 잘 본다던데 하루에 한 번 연락으로 싸웠다니 저도 궁합이 "
-            "맞는지 보러 가려구요")
-    assert brand_in_first_sentence(text, "운명원", "[광고]")
-    check = _check(_run(text), "V14")
-    assert not check.passed and "첫 문장" in check.message
-
-
-@pytest.mark.parametrize("cut, said", [
-    ("운명원이 연애사주 잘 본다길래 지금 사람이랑 오래 갈지 궁금하네요", "보러 가겠다는 말"),
-    ("운명원이 잘 본다길래 지금 사람이랑 오래 갈지 보러 가려구요", "연애 사주"),
-    ("운명원에서 연애사주로 지금 사람이랑 오래 갈지 보러 가려구요", "잘 본다는 평판"),
+@pytest.mark.parametrize("text", [
+    # 운명원이 첫 문장에 — 뜬금없는지는 AI 검토(natural_ad)가 본다
+    "[광고] 운명원이 연애사주 잘 본다던데 하루에 한 번 연락으로 싸웠다니 저도 궁합이 맞는지 "
+    "보러 가려구요",
+    # 보러 갈 뜻 · 연애 사주 · 평판 조각이 없음 — 쓰는 것은 AI 몫
+    REACTION + "저도 자주 부딪히는 편이라 맞는 사람이 따로 있나 싶어요. 운명원이 연애사주 잘 "
+    "본다길래 지금 사람이랑 오래 갈지 궁금하네요",
+    REACTION + "저도 자주 부딪히는 편이라 맞는 사람이 따로 있나 싶어요. 운명원에서 연애사주로 "
+    "지금 사람이랑 오래 갈지 보러 가려구요",
 ])
-def test_story_v14_names_what_is_missing(cut, said):
-    text = REACTION + "저도 자주 부딪히는 편이라 맞는 사람이 따로 있나 싶어요. " + cut
+def test_story_code_does_not_judge_brand_position_or_pieces(text):
+    # 대표 표(2026-11-18): 코드는 운명원 「언급 여부」만 — 자리·조각은 보지 않는다
     check = _check(_run(text), "V14")
-    assert not check.passed and said in check.message, check.message
+    assert check.passed and check.name == "운명원 대목에 지어낸 평판·사례 없음", check.message
+    assert _check(_run(text), "V5").passed
+
+
+def test_story_code_checks_only_the_table():
+    # V12(문자 종류)·V13(길게 베낌)은 이야기 방식에서 보지 않는다 — 조각 맞추기는 그대로
+    copied = ("[광고] 하루에 한 번 연락하는 커플이 서로 연락 기대치가 달라 싸웠다니 공감돼요. "
+              "운명원이 연애사주 잘 본다던데 보러 가려구요")
+    odd = REACTION + "저도 마음이揪하네요. 운명원이 연애사주 잘 본다던데 보러 가려구요"
+    for text, code in ((copied, "V13"), (odd, "V12")):
+        story = _check(_run(text), code)
+        assert story.passed and "보지 않음" in story.message
+        assert not _check(_run(text, story=False), code).passed
+    # 표에 있는 것은 그대로 본다: 글자 수 · 영상 근거 · 운명원 언급 · 허위 후기
+    assert not _check(_run("[광고] 운명원 짧아요"), "V1").passed
+    assert not _check(_run(REACTION.replace("운명원", "") + "연애 사주 보러 가려구요"), "V5").passed
+    review = REACTION + "운명원에서 연애사주 받아 봤는데 진짜 잘 맞았어요"
+    assert not _run(review).passed
 
 
 def test_story_v14_still_blocks_invented_reputation():
@@ -120,6 +133,23 @@ def test_boss_models_still_pass_in_story_mode():
         text = REACTION + model
         result = _run(text)
         assert len(result.checks) == 14 and result.passed, (model, result.failure_lines())
+
+
+def test_story_review_asks_for_the_four_ai_judgments():
+    # 대표 표의 AI 판단 넷: 맥락 일치 · 기승전결 · 같은 사람 · 운명원이 뜬금없는지
+    system = rv.story_review_system(brand="운명원")
+    for key in ("same_topic", "flow", "one_voice", "natural_ad"):
+        assert key in system and key in rv.STORY_REVIEW_SCHEMA["required"], key
+    assert "기승전결이 자연스러운가" in system
+    verdict = rv.parse_story({
+        "same_topic": True, "comment_topic": "연락", "one_voice": True, "flow": False,
+        "drift": "", "natural_ad": True, "ok": True, "problems": [],
+    })
+    ok, problems = verdict
+    assert not ok and verdict.checks["flow"] is False
+    assert any("기승전결" in p for p in problems)
+    # flow가 빠진 답은 문제 없음으로 본다(모양이 틀린 답으로 글을 바꾸지 않는다)
+    assert rv.parse_story({"ok": True, "problems": []}).checks["flow"] is True
 
 
 def test_story_v7_accepts_another_real_line_from_the_material():
@@ -164,12 +194,13 @@ def _issues(text: str, **kw):
                           context=kw.pop("context", CONTEXT), **kw)
 
 
-def test_story_issues_only_use_s1_and_s4():
+def test_story_issues_only_use_s4():
     # 조각 맞추기에서 걸리는 꼴도, 예전 이야기 방식의 S5·S9·S13도 보지 않는다(대표)
     text = REACTION + "운명원이 연애사주 잘 본다길래 저도 보러 가려구요"
     assert _issues(text) == []
-    issues = _issues(STORY_OK + " 진짜 다들 인연이 있는 듯해요 정말로요 정말 정말로요")
-    assert issues and all(i.split(" ", 1)[0] in ("S1", "S4") for i in issues)
+    issues = _issues(STORY_OK + " 진짜 다들 인연이 있는 듯해요 정말로요 정말 정말로요",
+                     shown=[STORY_OK + " 진짜 다들 인연이 있는 듯해요 정말로요 정말 정말로요"])
+    assert issues and all(i.split(" ", 1)[0] == "S4" for i in issues)
     assert not any(i.startswith(STRUCTURE_CODES) for i in issues)
     ctx = "3년 사귄 남자친구와 헤어졌다는 사연 #이별"
     number = ("[광고] 3년 사귄 사람이랑 헤어졌다니ㅠ 저도 미련이 오래 가는 편이라.. "
@@ -179,13 +210,12 @@ def test_story_issues_only_use_s1_and_s4():
     assert _issues(number, context=ctx) == [] and _issues(ended) == []
 
 
-def test_s1_uses_the_given_cap_without_the_label():
-    assert _issues(STORY_OK) == []
-    body = STORY_OK.removeprefix("[광고] ")
-    assert S.story_issues(STORY_OK, brand="운명원", disclosure="[광고]",
-                          max_total=len(body)) == []  # 표기는 세지 않는다
+def test_length_is_left_to_v1():
+    # S1은 V1과 같은 셈(표기 빼고 120자)이 되어 뺐다 — 길이는 규칙 검사 V1만 본다
     longer = STORY_OK.replace("맞는 사람이", "처음부터 끝까지 정말 나랑 잘 맞는 사람이 " * 2)
-    assert len(longer.removeprefix("[광고] ")) > 120 and _issues(longer)[0].startswith("S1 길이")
+    assert len(longer.removeprefix("[광고] ")) > 120
+    assert _issues(longer) == []
+    assert not _check(_run(longer), "V1").passed
 
 
 def test_s4_blocks_only_near_identical_text():
@@ -292,7 +322,7 @@ def test_story_user_drop_lines_and_retry():
 # ---------------------------------------------------------------- 맥락 일치 검증
 
 GOOD_VERDICT = {"same_topic": True, "comment_topic": "연락 문제", "one_voice": True,
-                "drift": "", "natural_ad": True, "ok": True, "problems": []}
+                "flow": True, "drift": "", "natural_ad": True, "ok": True, "problems": []}
 
 
 def test_story_review_asks_for_the_four_context_judgments():
@@ -304,7 +334,8 @@ def test_story_review_asks_for_the_four_context_judgments():
         assert word in system, word
     assert system != rv.review_system(brand="운명원")
     assert set(rv.STORY_REVIEW_SCHEMA["required"]) == {
-        "same_topic", "comment_topic", "one_voice", "drift", "natural_ad", "ok", "problems"}
+        "same_topic", "comment_topic", "one_voice", "flow", "drift", "natural_ad", "ok",
+        "problems"}
 
 
 def test_story_review_user_gives_topic_source_and_transcript():

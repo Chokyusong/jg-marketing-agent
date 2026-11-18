@@ -97,14 +97,15 @@ def test_context_checks_are_recorded_per_draft(setup):
     assert set(d.review["checks"]) >= {"same_topic", "one_voice", "drift", "natural_ad"}
 
 
-def test_brand_in_first_sentence_is_written_again(setup):
+def test_brand_in_first_sentence_is_left_to_the_ai_review(setup):
+    # 대표 표(2026-11-18): 코드는 운명원 「언급 여부」만 본다. 운명원이 뜬금없는지는 AI 검토
+    # (natural_ad)가 본다 — 규칙 검사로 다시 쓰게 하지 않는다
     _, services, use = setup()
-    bad = ("운명원이 연애사주 잘 본다던데 하루에 한 번 연락 갖고 싸웠다는 댓글 보니 저도 지금 "
-           "사람이랑 맞는지 보러 가려구요")
-    llm = use([ANALYSIS, draft(bad), draft(GOOD)])
+    early = ("운명원이 연애사주 잘 본다던데 하루에 한 번 연락 갖고 싸웠다는 댓글 보니 저도 지금 "
+             "사람이랑 맞는지 보러 가려구요")
+    use([ANALYSIS, draft(early)])
     d = services.drafts.generate(VID, review=False)
-    assert d.passed and d.attempts == 2
-    assert "첫 문장" in users(llm)[2] and "걸린 항목을 고쳐" in users(llm)[2]
+    assert d.passed and d.attempts == 1
 
 
 def test_three_long_drafts_drop_the_coda_then_the_turn(setup):

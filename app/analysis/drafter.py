@@ -743,7 +743,7 @@ class DraftService:
     def _style(
         self, text: str, mark: str, key_phrases: Sequence[str], earlier: Sequence[str]
     ) -> list[str]:
-        if self.is_story:  # 이야기 방식: S1·S4·S5·S9·S13만(짜임 검사는 보지 않는다)
+        if self.is_story:  # 이야기 방식: S4만(길이는 V1, 맥락은 AI 검토)
             return story.story_issues(
                 text, brand=self.rules.brand, disclosure=self.rules.disclosure,
                 max_total=self.rules.max_chars, earlier=earlier,

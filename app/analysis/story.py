@@ -5,14 +5,15 @@
 시청자 입장에서 기승전결로 통째로 쓴다(`story_prompts`). `pieces`는 그 전 방식(조각 맞추기)이고
 코드와 시험을 그대로 둔다.
 
-`story`에 남는 것(대표: 「불필요하게 제한하는 것들은 제거」):
-1. 규칙 검사(막는 것, `validator.validate(story=True)`) — 글자 수(표기 빼고) · 광고 표기 ·
-   영상 근거 · 지어낸 후기·평판 금지 등 V1~V13 + V14 넷(이름·연애 사주·들은 평판·보러 갈 뜻)과
-   「운명원은 첫 문장에 나오지 않는다」.
-2. 다시 쓰게만 하는 검사(`story_issues`) — S1 길이 · S4 앞 글과 거의 똑같은 글. 그 밖의 스타일
-   검사(S5·S9·S13, 운명원 문장이 같다고 거르는 것)는 뺐다.
-3. 맥락 일치 검증(`review.story_review_system`) — 같은 주제 · 한 목소리 · 벗어난 문장 · 자연스러운
-   결론. 걸려도 게시를 막지 않는다.
+`story`에 남는 것(대표 표, 2026-11-18 — 코드가 확인할 것 / AI가 판단할 것):
+1. 코드, 규칙 검사(막는 것, `validator.validate(story=True)`) — 설정된 글자 수(V1, 표기 빼고) · 영상
+   근거(V6·V7) · 운명원 언급(V5) · 허위 이용 후기(V8·V9·V10, V14 지어낸 평판·사례) + 과제 원문 금지
+   (V2 링크·V3 해시태그·V11 영상마다 다르게)와 표기(V4). V12·V13은 보지 않는다.
+2. 코드, 다시 쓰게만 하는 검사(`story_issues`) — S4 앞 글과 거의 똑같은 글.
+3. AI, 맥락 일치 검증(`review.story_review_system`) — 영상 맥락과 일치(same_topic·drift) ·
+   기승전결이 자연스러운가(flow) · 같은 사람이 쓴 글처럼(one_voice) ·
+   운명원 언급이 뜬금없는가(natural_ad).
+   걸리면 한 번 다시 쓰고, 그래도 걸려도 게시를 막지 않는다.
 """
 
 from __future__ import annotations
@@ -66,18 +67,14 @@ def story_issues(
     shown: Sequence[str] = (),
     context: str = "",
 ) -> list[str]:
-    """이야기 방식의 나쁜 꼴 검사(S1 길이 · S4 똑같은 글만 — 2026-11-18 대표: 불필요한 제한은
-    뺀다. S5·S9·S13과 「똑같은 끝 문장」은 뺐다). 없으면 빈 목록.
+    """이야기 방식의 나쁜 꼴 검사(S4 똑같은 글만 — 2026-11-18 대표: 불필요한 제한은 뺀다.
+    S5·S9·S13과 「똑같은 끝 문장」을 뺐고, S1 길이는 V1과 같은 셈이 되어 뺐다). 없으면 빈 목록.
 
     `earlier`: 같은 영상 앞 초안. `shown`: 앞서 보인 초안(다른 영상 포함).
     """
+    del max_total  # 길이는 규칙 검사 V1이 본다(표기 빼고)
     issues: list[str] = []
     body = style._body(text, disclosure)
-    if len(body) > max_total:  # 표기는 빼고 센다(대표, 2026-11-18)
-        issues.append(
-            f"S1 길이: {len(body)}자로 깁니다 — {max_total}자 안으로 줄이세요"
-            "(이음 문장부터 빼고, 그래도 길면 문장 하나를 통째로 뺀다)"
-        )
     pool = [*earlier, *shown]
     ratio, _ = same_text(body, pool, brand=brand, disclosure=disclosure)
     if ratio >= SAME_TEXT:

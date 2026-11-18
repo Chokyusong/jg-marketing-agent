@@ -1235,72 +1235,31 @@ def _v14_brand_intro(
     )
 
 
-# 이야기 방식(2026-11-18 대표 결정, `comment.writer: story`): V14는 넷만 본다 — ① 이름 ② 연애 사주
-# (또는 사주) ③ 잘 본다는 평판을 들은 얘기로(「잘 본다길래」도) ④ 가 보거나 보겠다는 말. 때 말
-# (요즘·요새)은 없어도 된다. 더해서 운명원은 첫 문장에 나오지 않는다(영상 반응으로 시작하게).
-# 설정에 없는 새 평판·사례를 지어내지 않는 것은 두 방식 모두 같다(지어낸 후기 금지)
-V14_SAJU = re.compile(r"사주")
-V14_STORY_MISSING = (
-    ("love", "연애 사주(사주)가 없습니다"),
-    ("repute", "잘 본다는 평판(~다던데·~다길래)이 없습니다"),
-    ("intent", "보러 가겠다는 말(보러 가려구요·보고 싶다 등)이 없습니다"),
-)
+# 이야기 방식(2026-11-18 대표 표): 코드는 글자 수 · 영상 근거 · 운명원 언급 · 허위 후기만 본다.
+# 기승전결·맥락·한 목소리·운명원이 뜬금없는지는 AI 검토(`review.story_review_system`)가 본다.
+STORY_V14_NAME = "운명원 대목에 지어낸 평판·사례 없음"
 
 
-def story_pieces(text: str, brand: str, disclosure: str = "") -> list[str]:
-    """이야기 방식에서 운명원 대목에 빠진 것(`V14_STORY_MISSING`의 열쇠). 운명원이 든 문장과 그
-    앞뒤 문장에서 찾는다. 브랜드가 없으면 빈 목록."""
-    body = text.replace(disclosure, " ") if disclosure else text
-    parts = [p.strip() for p in _V14_SPLIT.split(body) if p and p.strip()]
-    spots = [i for i, p in enumerate(parts) if brand and brand in p]
-    best: list[str] | None = None
-    for i in spots:
-        chunk = " . ".join(parts[max(0, i - 1) : i + 2])
-        missing = [
-            key for key, ok in (
-                ("love", V14_SAJU.search(chunk)),
-                ("repute", V14_REPUTE.search(chunk)),
-                ("intent", V14_INTENT.search(chunk) or V14_WISH.search(chunk)),
-            ) if not ok
-        ]
-        if best is None or len(missing) < len(best):
-            best = missing
-    return best or []
-
-
-def brand_in_first_sentence(text: str, brand: str, disclosure: str = "") -> bool:
-    body = text.replace(disclosure, " ", 1) if disclosure else text
-    parts = [p.strip() for p in _V14_SPLIT.split(body) if p and p.strip()]
-    return bool(brand and parts and brand in parts[0])
+def _story_skipped(code: str) -> CheckResult:
+    return _check(code, True, "이야기 방식에서는 코드로 보지 않음(대표 표 — AI 검토가 봄)")
 
 
 def _v14_story(text: str, rules: ValidatorRules, facts_n: Sequence[str] = ()) -> CheckResult:
+    """이야기 방식의 V14(2026-11-18 대표 표): 허위만 막는다 — 설정에 없는 평판·사례를 지어내지
+    않았는가. 첫 문장 자리·조각(연애 사주·들은 평판·보러 갈 뜻)은 AI가 쓰고 AI 검토가 본다."""
     brand = rules.brand
+    name = STORY_V14_NAME
     if not brand or brand not in text:
-        return _check("V14", True, f"'{brand}' 없음(V5에서 봄)")
-    if brand_in_first_sentence(text, brand, rules.disclosure):
-        return _check(
-            "V14", False,
-            f"첫 문장에 '{brand}'이 나왔습니다 — 영상 속 말이나 장면에 대한 내 반응으로 시작하고 "
-            f"'{brand}'은 끝에서 꺼내세요",
-        )
+        return CheckResult("V14", name, True, f"'{brand}' 없음(V5에서 봄)")
     invented = brand_invented(text, brand, rules.disclosure, facts_n)
     if invented:
         label, word = invented
-        return _check(
-            "V14", False,
+        return CheckResult(
+            "V14", name, False,
             f"'{brand}' 대목에 설정에 없는 평판·사례({label}: '{word}')가 있습니다 — 들은 "
-            "평판은 '연애사주 잘 본다던데', '잘 본다길래'처럼만 쓰세요",
+            "평판은 '연애 사주 잘 본다던데'처럼만 쓰세요",
         )
-    missing = story_pieces(text, brand, rules.disclosure)
-    if not missing:
-        return _check("V14", True, f"'{brand}' 대목에 이름·연애 사주·들은 평판·보러 갈 뜻이 있음")
-    said = dict(V14_STORY_MISSING)
-    return _check(
-        "V14", False,
-        f"'{brand}' 대목에 " + " · ".join(said[k] for k in missing)
-        + f" — '{brand}이 연애사주 잘 본다던데 [알고 싶은 것] 보러 가려구요'처럼 쓰세요",
-    )
+    return CheckResult("V14", name, True, f"'{brand}' 대목에 지어낸 평판·사례 없음")
 
 
 # ---------------------------------------------------------------- 전체 검사
@@ -1329,7 +1288,9 @@ def validate(
     - `evidence_quote`: AI가 고른 근거 구절(5단계). 없으면 `find_evidence`로 찾는다
     - `key_phrases`: 분석이 뽑은 그 영상의 핵심 말(V7, C1). 없으면 제목·근거에서 코드로 뽑는다
     - `concern`: 분석의 고민 한 줄(V13: 그대로 길게 옮겼는지 본다)
-    - `story`: 이야기 방식(`comment.writer: story`)이면 V14를 `_v14_story`로 본다(넷만 + 첫 문장)
+    - `story`: 이야기 방식(`comment.writer: story`, 2026-11-18 대표 표)이면 코드는 글자 수 ·
+      영상 근거 · 운명원 언급 · 허위(후기·사연·효능·지어낸 평판)와 원문 금지(링크·해시태그·
+      영상마다 다르게)·표기만 본다. V12·V13은 「보지 않음」으로 통과, V14는 지어낸 평판만 본다
     """
     clean = unicodedata.normalize("NFC", text or "").strip()
     facts_n = [normalize(f) for f in brand_facts if f and f.strip()]
@@ -1362,8 +1323,8 @@ def validate(
             quoted=quoted,
         ),
         _v11_previous(clean, previous_texts, rules, story=story),
-        _v12_charset(clean, rules),
-        _v13_copy(clean, context_text or "", rules, concern),
+        _story_skipped("V12") if story else _v12_charset(clean, rules),
+        _story_skipped("V13") if story else _v13_copy(clean, context_text or "", rules, concern),
         _v14_story(clean, rules, facts_n) if story else _v14_brand_intro(clean, rules, facts_n),
     )
     return Validation(
