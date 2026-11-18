@@ -199,3 +199,66 @@ def test_validate_api_uses_story_v14(setup):
     assert res.status_code == 200, res.text
     v14 = next(c for c in res.json()["checks"] if c["code"] == "V14")
     assert v14["passed"] is True
+
+
+# ------------------------- 검수 정상·걸림·불완전·못 함 구분(2026-11-18 대표 지시서)
+
+FULL = {"same_topic": True, "comment_topic": "연락 문제", "one_voice": True, "flow": True,
+        "specific_link": True, "link_reason": "연락 다툼에서 오래 갈지 궁금해짐", "break_at": "",
+        "drift": "", "natural_ad": True, "ok": True, "problems": [], "_raw": True}
+
+
+def _review_of(client):
+    return client.get("/api/drafts", params={"video_id": VID}).json()["items"][0]["review"]
+
+
+def test_fake_review_all_six_fields_is_a_green_pass(setup):
+    # (가) 여섯 칸이 다 온 통과 답 → 「통과」, link_reason은 내부 기록으로만 남는다
+    client, services, use = setup()
+    llm = use([ANALYSIS, draft(GOOD), FULL])
+    d = services.drafts.generate(VID)
+    assert d.review_status == rv.PASSED and d.review["checks"]["missing"] == []
+    assert d.review["link_reason"] == "연락 다툼에서 오래 갈지 궁금해짐"
+    assert _review_of(client)["label"] == "맥락 검증 통과 · 영상 주제와 일치"
+    assert all("연락 다툼에서 오래 갈지" not in u for u in users(llm))  # 쓰는 AI에 안 넘김
+
+
+def test_fake_review_flagged_rewrites_the_whole_comment(setup):
+    # (나) 끝 궁금증이 막연 · link_reason 빈 글 → 걸림 → 전체를 한 번 다시 쓴다
+    client, services, use = setup()
+    vague = {**FULL, "specific_link": False, "link_reason": "",
+             "break_at": "연락 다툼 → 연애 흐름이 궁금: 상관없는 궁금증"}
+    llm = use([ANALYSIS, draft(GOOD), vague, draft(GOOD2), vague])
+    d = services.drafts.generate(VID)
+    assert d.review_status == rv.FLAGGED and d.passed  # 게시는 막지 않는다
+    retry = users(llm)[-1]
+    assert "끊긴 곳: 연락 다툼 → 연애 흐름이 궁금" in retry and "전체를 새로 쓴다" in retry
+    assert "링크" not in retry and "link_reason" not in retry
+    assert _review_of(client)["label"] == "맥락 확인 필요"
+
+
+def test_fake_review_missing_fields_is_incomplete_not_a_pass(setup):
+    # (다) ok는 참인데 판정 칸이 빠짐 → 「검수 불완전(빠진 칸: …)」, 다시 쓰지 않는다
+    client, services, use = setup()
+    partial = {k: v for k, v in FULL.items() if k not in ("specific_link", "link_reason")}
+    llm = use([ANALYSIS, draft(GOOD), partial])
+    d = services.drafts.generate(VID)
+    assert d.review_status == rv.INCOMPLETE and d.passed and d.body.endswith(GOOD)
+    assert d.review["missing"] == ["specific_link", "link_reason"]
+    assert len(llm.review_calls) == 1 and len(llm.calls) == 2  # 다시 쓰기 없음
+    review = _review_of(client)
+    assert review["label"] == "검수 불완전(빠진 칸: specific_link, link_reason)"
+    assert review["label"] != rv.label(rv.PASSED, story=True)
+
+
+@pytest.mark.parametrize("answer", [
+    {"ok": "네", "problems": [], "_raw": True},  # JSON 모양이 깨짐
+    {"ok": True, "raise": AppError(ErrorKind.LLM_TIMEOUT)},  # 시간 초과
+])
+def test_fake_review_broken_or_timeout_is_not_checked(setup, answer):
+    # (라) 파싱 실패·시간 초과 → 「맥락 검증 못 함」(통과도 불완전도 아님)
+    client, services, use = setup()
+    use([ANALYSIS, draft(GOOD), answer])
+    d = services.drafts.generate(VID)
+    assert d.review_status == rv.ERROR and d.passed
+    assert _review_of(client)["label"] == "맥락 검증 못 함 — 직접 읽어 주세요"

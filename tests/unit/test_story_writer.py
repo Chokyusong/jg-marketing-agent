@@ -140,7 +140,7 @@ def test_story_review_asks_for_the_four_ai_judgments():
     system = rv.story_review_system(brand="운명원")
     for key in ("same_topic", "flow", "one_voice", "natural_ad"):
         assert key in system and key in rv.STORY_REVIEW_SCHEMA["required"], key
-    assert "기승전결이 자연스러운가" in system
+    assert "가운데의 생각이 앞에서 나온 상황·감정에서 자연스럽게 이어지는가" in system
     verdict = rv.parse_story({
         "same_topic": True, "comment_topic": "연락", "one_voice": True, "flow": False,
         "drift": "", "natural_ad": True, "ok": True, "problems": [],
@@ -281,15 +281,25 @@ def test_story_system_is_the_prompt_the_boss_gave():
                  "## 작성 후 검토", "## 출력",
                  "핵심 연애 고민을 한 줄로 정리", "구체적인 장면이나 말을 하나 이상",
                  "인기 댓글의 사연은 영상에서 직접 말한 내용처럼 표현하지 않는다",
-                 "기승전결은 문장을 나누는 고정 공식이 아니다",
-                 "스스로 결정한다", "지어낸 후기는 절대 작성하지 않는다",
+                 "기승전결은 네 개의 문장이 아니라 생각의 흐름이다",
+                 "말투·관점·문장 수·잇는 말·끝말은 자유다", "지어낸 후기는 절대 작성하지 않는다",
                  "앞에서 등장하지 않은 인물이나 관계를 끝에서 갑자기 언급하지 않는다",
                  "억지 연결 문장은 작성하지 않는다",
                  # 대표 확인 뒤 고친 줄(2026-11-18)
-                 "들은 얘기로 꺼내고", "보러 가고 싶은 마음으로 맺는다",
+                 "들은 평판으로 꺼내고", "요새·요즘·친구한테 듣기로 같은 말을",
+                 "보고 싶은 마음으로 이어지게 맺는다",
                  "보고 싶어지도록", "따옴표로 옮기지 않고 내 말로 풀어 쓴다",
                  "사실상 동일한 경우만 피한다", "그대로 복사하지 않는다",
-                 "운명원이 뜬금없이 등장하지 않는가", "댓글 전체를 자연스럽게 다시 작성한다",
+                 "운명원이 뜬금없이 등장하지 않는가", "댓글 전체를 처음부터 다시 작성한다",
+                 # 대표 지시서(2026-11-18): 생각이 발전하는 과정
+                 "생각이 발전하는 한 줄기 이야기다", "그 반응에서 자라난 생각이나 궁금증",
+                 "답을 문장이나 따로 된 칸으로 내지 않는다",
+                 "왜 그 궁금증에서 운명원 연애 사주가 떠올랐는가",
+                 "설명할 수 없다면, 그 댓글은 처음부터 다시 쓴다",
+                 "다른 연애 영상 댓글에 그대로 붙여도 말이 되는 막연한 것",
+                 # 2026-11-18 대표 지시서 3: 가상 관점·고민은 자유, 전해 들은 경위도 된다
+                 "가상의 연애 고민·처지를 정해 써도 된다", "## 피해야 할 흐름",
+                 "이 문장이나 구성을 쓰라는 뜻이 아니다",
                  "중간 문장 조각은 따로 만들지 않는다", "\"concern\"", "연애 사주를 잘 봐주는"):
         assert word in system, word
     assert ASSIGNMENT_SAMPLE in system  # 참고 예시는 과제 예시 하나
@@ -305,7 +315,11 @@ def test_removed_rules_are_not_in_the_prompt():
                  # 대표가 고친 글·추임새 목록·글자 수 목표·핵심 말 강제
                  "요즘 저한테 잘해주는 사람이 있는데", "'요새'", "75~95자쯤", "핵심 말",
                  # 「연애 사주로 유명한 운명원 … 궁금하네요」를 만든 줄
-                 "관심", "불필요한 추임새", "인연·궁합·타이밍", "곳으로 소개한다",
+                 "관심을 갖도록", "관심으로 연결", "불필요한 추임새", "인연·궁합·타이밍",
+                 "곳으로 소개한다",
+                 # 2026-11-18 대표 지시서 2·3: 가상의 처지를 막던 말 · 추천 경위 금지
+                 "겪지 않은 구체적인 일", "추천해 줬다는 경위를 지어내지",
+                 "지어낸 추천 경위",
                  # 끝말 예시 하나 — 모든 댓글이 그 말로 끝났다(2026-11-18)
                  "'연애 사주 잘 본다던데'처럼"):
         assert gone not in system and gone not in user, gone
@@ -374,13 +388,19 @@ def test_story_review_asks_for_the_four_context_judgments():
     system = rv.review_system(brand="운명원", story=True)
     for word in ("same_topic", "comment_topic", "one_voice", "drift", "natural_ad",
                  "뜻", "바꿔치기", "다른 시청자 댓글의 사연", "억지로", "문제가 아닌 것",
-                 "막연한 내 처지", "인연·때·궁합", "분명한 문제만",
+                 "가상의 내 연애 고민·처지", "인연·때·궁합", "분명한 문제만",
+                 "친구가 얘기해 줬는데", "주변에서 추천하길래", "뜻으로 자연스럽게 이어지면 참",
+                 "분명히 아무 연애 영상에나 붙는 궁금증",
+                 "specific_link", "link_reason", "break_at", "걸려야 하는 예",
                  "같은 갈래다"):
         assert word in system, word
+    # 2026-11-18 대표 지시서 2·3: 가상의 경험·전해 들은 추천 경위는 걸리지 않는다
+    for gone in ("겪은 일처럼 쓴 구체적인", "지어낸 추천 경위", "구체적인 경험만 문제다"):
+        assert gone not in system, gone
     assert system != rv.review_system(brand="운명원")
     assert set(rv.STORY_REVIEW_SCHEMA["required"]) == {
-        "same_topic", "comment_topic", "one_voice", "flow", "drift", "natural_ad", "ok",
-        "problems"}
+        "same_topic", "comment_topic", "one_voice", "flow", "specific_link", "link_reason",
+        "break_at", "drift", "natural_ad", "ok", "problems"}
 
 
 def test_story_review_user_gives_topic_source_and_transcript():
@@ -469,9 +489,10 @@ def test_story_v5_needs_love_saju_with_the_brand():
 def test_story_shorten_line_only_when_too_long():
     long_retry = _user(failure_lines=["V1 길이: 140자로 깁니다 — 20자 이상 줄이세요"],
                        previous_body="앞 글")
-    assert SP.SHORTEN_LINE in long_retry
-    assert SP.SHORTEN_LINE not in _user(failure_lines=["S4 똑같은 글"], previous_body="앞 글")
-    assert SP.SHORTEN_LINE not in _user()
+    line = SP.SHORTEN_LINE.format(brand="운명원")
+    assert line in long_retry and "거기서 자라난 생각" in line and "내 처지" not in line
+    assert line not in _user(failure_lines=["S4 똑같은 글"], previous_body="앞 글")
+    assert line not in _user()
 
 
 def test_story_user_passes_summary_and_real_quote_together():
@@ -484,3 +505,53 @@ def test_story_user_passes_summary_and_real_quote_together():
     assert order == sorted(order)
     assert "핵심 연애 고민: 뭐라고 답해야 덜 불안할까" in user
     assert "ㅋㅋ·ㅠㅠ·^^" in _system()
+
+
+def test_story_review_flags_a_vague_ending_and_missing_link():
+    # 2026-11-18 대표 지시서: 끝의 궁금증이 이 영상에서 나왔나 · 운명원 직전 생각을 설명할 수 있나
+    base = {"same_topic": True, "comment_topic": "시간 갖자는 말", "one_voice": True,
+            "flow": True, "specific_link": True, "link_reason": "날짜를 정해도 맞는 사이인지 궁금",
+            "break_at": "", "drift": "", "natural_ad": True, "ok": True, "problems": []}
+    good = rv.parse_story(base)
+    assert good[0] and good.checks["link_reason"].startswith("날짜를")
+    vague = rv.parse_story({**base, "specific_link": False, "link_reason": "",
+                            "break_at": "날짜를 정하자는 얘기 → 연애 흐름이 궁금: 상관없는 궁금증"})
+    ok, problems = vague
+    assert not ok
+    assert problems[0].startswith("끊긴 곳: 날짜를 정하자는 얘기")  # 어디서 끊겼는지 먼저
+    assert any("막연함" in p for p in problems)
+    assert any("설명할 수 없음" in p for p in problems)
+    # 새 칸이 빠진 예전 모양의 답은 걸린 것으로 보지 않는다
+    old = rv.parse_story({k: v for k, v in base.items()
+                          if k not in ("specific_link", "link_reason", "break_at")})
+    assert old[0] and old.checks["link_reason"] is None
+
+
+def test_story_retry_rewrites_the_whole_comment():
+    lines = rv.retry_lines(["끊긴 곳: A → B: 상관없음"], story=True)
+    assert any("끊긴 곳: A → B" in line for line in lines)
+    assert any("끊긴 곳을 메우는 문장을 더하지 말고" in line and "전체를 새로 쓴다" in line
+               for line in lines)
+
+
+@pytest.mark.parametrize("tail", [
+    "친구가 얘기해 줬는데 운명원이 연애 사주 잘 본다던데 우리 사이 한번 보고 싶어요",
+    "주변에서 추천하길래 운명원 연애 사주로 우리 사이 한번 보고 싶어요",
+    "친구가 운명원 연애 사주 추천하던데 우리 사이 한번 보고 싶어요",
+    "친구한테 듣기로 운명원이 연애 사주 잘 본다던데 우리 사이 한번 보고 싶어요",
+])
+def test_story_hearsay_recommendation_is_not_a_falsehood(tail):
+    # 2026-11-18 대표 지시서 3: 누가 얘기해 줬다는 경위는 된다 — V8·V9·V14가 걸지 않는다
+    lead = "[광고] 사진 한 장만 콕 집어 고맙다고 하면 다음에도 찍어 주고 싶겠네요. "
+    result = _run(lead + tail)
+    for code in ("V8", "V9", "V14"):
+        assert _check(result, code).passed, (code, _check(result, code).message)
+
+
+def test_story_made_up_result_and_direct_use_still_fail():
+    # 금지는 그대로: 지어낸 결과(V14)·직접 이용 후기(V8)
+    lead = "[광고] 사진 한 장만 콕 집어 고맙다고 하면 다음에도 찍어 주고 싶겠네요. "
+    told = _run(lead + "친구가 운명원에서 연애 사주 봤는데 다 맞혔다던데 저도 보고 싶어요")
+    assert not _check(told, "V14").passed
+    used = _run(lead + "운명원에서 연애 사주 봤는데 진짜 다 맞았어요")
+    assert not _check(used, "V8").passed

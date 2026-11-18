@@ -448,7 +448,11 @@ class ReviewOut(BaseModel):
         story = bool(data.get("story"))
         flagged = status == rv.FLAGGED
         problems = [str(p) for p in data.get("problems") or []] if flagged else []
-        return cls(status=status, label=rv.label(status, story=story), problems=problems,
+        label = rv.label(status, story=story)
+        missing = [str(m) for m in data.get("missing") or []]
+        if status == rv.INCOMPLETE and missing:  # 2026-11-18: 빠진 칸을 통과와 구분해 보인다
+            label = f"{label}(빠진 칸: {', '.join(missing)})"
+        return cls(status=status, label=label, problems=problems,
                    story=story, drift=str(data.get("drift") or "") if flagged else "")
 
 

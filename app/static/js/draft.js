@@ -140,7 +140,10 @@ function schedule() {
 // 2026-11-18 AI 검수 한 번: 「규칙 검사 · 14개 모두 통과」 옆 한 줄. 글 상자의 글이 검수한 그 초안
 // 그대로일 때만 보인다(사람이 고치면 그 글의 검수가 아니다). 어색하다고 했으면 문제 한 줄을 붙인다
 // (넘치면 말줄임, 전체는 마우스를 올리면). 게시는 막지 않는다
-const REVIEW_CLASS = { passed: 'is-ok', rewritten: 'is-ok', flagged: 'is-warn', error: 'is-dim' };
+// 2026-11-18: 「검수 불완전」(판정 칸이 빠진 답)은 초록 통과와 다르게 경고색
+const REVIEW_CLASS = {
+  passed: 'is-ok', rewritten: 'is-ok', flagged: 'is-warn', error: 'is-dim', incomplete: 'is-warn',
+};
 
 function reviewView(state, text) {
   const d = state.draft;

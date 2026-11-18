@@ -907,8 +907,12 @@ class DraftService:
             return {"status": rv.ERROR, "problems": []}, None, None
         ok, problems = first
         info["first"] = {"ok": ok, "problems": problems, **_checks_of(first)}
+        missing = _missing_of(first)
+        if ok and missing:
+            # 판정 칸이 빠진 답: 다시 쓰게 하지 않되 통과와 구분해 남긴다(2026-11-18)
+            return {"status": rv.INCOMPLETE, "problems": [], "missing": missing}, None, None
         if ok:
-            return {"status": rv.PASSED, "problems": []}, None, None
+            return {"status": rv.PASSED, "problems": [], **_link_of(first)}, None, None
         flagged = {"status": rv.FLAGGED, "problems": problems, "first": problems}
         if analysis is None:
             return flagged, None, None
@@ -950,8 +954,14 @@ class DraftService:
             return {"status": rv.ERROR, "problems": [], "first": problems}, None, None
         ok2, problems2 = second
         info["second"] = {"ok": ok2, "problems": problems2, **_checks_of(second)}
+        missing2 = _missing_of(second)
+        if ok2 and missing2:
+            # 다시 쓴 글의 검수 답이 불완전: 통과했는지 모르는 글로 바꾸지 않는다 — 앞 초안
+            return ({"status": rv.INCOMPLETE, "problems": [], "first": problems,
+                     "missing": missing2}, None, None)
         if ok2:
-            return {"status": rv.REWRITTEN, "problems": [], "first": problems}, text, validation
+            return ({"status": rv.REWRITTEN, "problems": [], "first": problems,
+                     **_link_of(second)}, text, validation)
         return {"status": rv.FLAGGED, "problems": problems2, "first": problems}, text, validation
 
     def _save_review(
@@ -1262,6 +1272,19 @@ def used_quotes(drafts: Sequence[Draft]) -> list[str]:
             seen.add(key)
             out.append(d.evidence_quote)
     return out
+
+
+def _missing_of(verdict: Any) -> list[str]:
+    """이야기 방식 검수 답에서 빠진 판정 칸(예전 모양의 답이나 조각 맞추기는 빈 목록)."""
+    checks = getattr(verdict, "checks", None) or {}
+    return list(checks.get("missing") or [])
+
+
+def _link_of(verdict: Any) -> dict[str, Any]:
+    """검수를 통과했을 때 기록에 남길 「운명원 직전 생각이 영상의 어디서 나왔는지」(이야기 방식,
+    2026-11-18 대표 지시서). 화면에는 보이지 않는다."""
+    reason = (getattr(verdict, "checks", None) or {}).get("link_reason")
+    return {"link_reason": reason} if reason else {}
 
 
 def _checks_of(verdict: Any) -> dict[str, Any]:

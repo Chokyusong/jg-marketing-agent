@@ -153,6 +153,9 @@ def run(
                 # 검수 전·후 문장과 시간(다시 쓰기를 했을 때만 글이 있다, kept: 다시 쓴 글을 썼는지)
                 "review_before": d.review_before, "review_after": d.review_after,
                 "review_kept": (d.review or {}).get("kept"),
+                # 2026-11-18 대표 지시서: 운명원 직전 생각이 영상의 어디서 나왔는지(통과했을 때)
+                "link_reason": (d.review or {}).get("link_reason") or "",
+                "review_missing": list((d.review or {}).get("missing") or []),
                 "review_ms": d.review_ms, "rewrite_ms": d.rewrite_ms,
                 # 2026-11-18 맥락 일치 검증(이야기 방식): 남은 글의 네 판단, 처음 판단(다시 썼으면)
                 "context": dict((d.review or {}).get("checks") or {}),
@@ -211,6 +214,8 @@ def _review_counts(ds: Sequence[dict[str, Any]]) -> dict[str, int]:
                       or x.get("review_first"))
     return {"false": first_false, "rewritten": status[rv.REWRITTEN],
             "left": status[rv.FLAGGED], "error": status[rv.ERROR],
+            "incomplete": status[rv.INCOMPLETE],
+            "complete": status[rv.PASSED] + status[rv.REWRITTEN] + status[rv.FLAGGED],
             "discarded": sum(1 for x in ds
                              if x.get("review_after") and x.get("review_kept") is False)}
 
@@ -272,6 +277,8 @@ def _stats(videos: Sequence[dict[str, Any]], brand: str = "운명원") -> dict[s
             "AI 검수 고쳐도 남음": str(r["left"]),
             "AI 검수 못 함": str(r["error"]),
             "다시 쓴 글 버림(앞 초안 씀)": str(r["discarded"]),
+            # 2026-11-18 대표 지시서: 칸이 빠진 답·파싱 실패를 정상 판정과 구분해 센다
+            "검수 정상 / 불완전 / 못 함": f"{r['complete']} / {r['incomplete']} / {r['error']}",
         })
         avg, avg_rw, rewrote = _review_times(ds)
         if avg or rewrote:
@@ -292,7 +299,11 @@ def context_counts(ds: Sequence[dict[str, Any]]) -> dict[str, str]:
 
     checked = [x for x in ds if x.get("context")]
     n = len(checked)
+    # 판정 여섯 칸이 다 온 초안(처음 답 기준 · 남은 글의 답 기준) — 2026-11-18 대표 지시서
+    full_first = sum(not first(x).get("missing") for x in checked)
+    full_last = sum(not x["context"].get("missing") for x in checked)
     return {
+        "판정 여섯 칸 다 옴(처음 · 남은 글)": f"{full_first} · {full_last}/{n}",
         "맥락: 벗어난 문장(처음 → 남음)":
             f"{sum(bool(first(x).get('drift')) for x in checked)} → "
             f"{sum(bool(x['context'].get('drift')) for x in checked)}/{n}",
@@ -308,6 +319,9 @@ def context_counts(ds: Sequence[dict[str, Any]]) -> dict[str, str]:
         "맥락: 억지 연결(처음 → 남음)":
             f"{sum(first(x).get('natural_ad') is False for x in checked)} → "
             f"{sum(x['context'].get('natural_ad') is False for x in checked)}/{n}",
+        "맥락: 끝 궁금증 막연(처음 → 남음)":
+            f"{sum(first(x).get('specific_link') is False for x in checked)} → "
+            f"{sum(x['context'].get('specific_link') is False for x in checked)}/{n}",
     }
 
 

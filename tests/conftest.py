@@ -120,6 +120,13 @@ def length_plan_on(monkeypatch):
 
 
 REVIEW_OK = {"ok": True, "problems": []}
+# 이야기 방식 가짜 검수의 기본 칸(2026-11-18 판정 여섯 칸) — 준비한 답에 없는 칸은 이것으로 채운다.
+# 칸이 빠진 답을 시험할 때는 답에 "_raw": True를 넣는다(채우지 않는다)
+STORY_REVIEW_OK = {
+    "same_topic": True, "comment_topic": "", "one_voice": True, "flow": True,
+    "specific_link": True, "link_reason": "영상의 고민에서 이어짐", "break_at": "", "drift": "",
+    "natural_ad": True, "ok": True, "problems": [],
+}
 
 
 @pytest.fixture(autouse=True)
@@ -146,9 +153,12 @@ def _ai_review_answers(request, monkeypatch):
         parse = real_story if story else real_parse
         schema = review.STORY_REVIEW_SCHEMA if story else review.REVIEW_SCHEMA
         answer = getattr(llm, "answer_review", None)
-        if answer is None:
-            return parse(REVIEW_OK)
-        return parse(answer(system=system, user=user, schema=schema))
+        data = REVIEW_OK if answer is None else answer(system=system, user=user, schema=schema)
+        if story and isinstance(data, dict):
+            data = dict(data)
+            if not data.pop("_raw", False):
+                data = {**STORY_REVIEW_OK, **data}
+        return parse(data)
 
     monkeypatch.setattr(review, "ask", fake_ask)
 
