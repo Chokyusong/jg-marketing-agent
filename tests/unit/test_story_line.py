@@ -294,3 +294,20 @@ def test_review_asks_whether_it_is_one_story_and_lists_the_situation_line():
     assert "'저도 재회운이 있는지 한번 보러 가려구요'" in system
     assert "(마) 막연한 내 처지 한마디: '저도 미련 많은 편이라..'" in system
     assert "영상 속 숫자·사정을 그대로 옮긴 것만 6번이다" in system
+
+
+@pytest.mark.parametrize("ending, wish", [
+    # 2026-11-18 루나 실행(E)에서 S18이 잘못 걸린 끝말 — 관계를 묻는 말도 알고 싶은 것이다
+    ("저도 이 사람이 맞는 사람인지 언제 한번 보러 가려구요", "이 사람이 맞는 사람인지"),
+    ("저도 그 마음이 호감인지 기회 되면 보고 싶네요.", "그 마음이 호감인지"),
+    ("저도 진짜 좋아하는지 기회 되면 보고 싶네요.", "진짜 좋아하는지"),
+    ("저도 어떤 매력에 끌리는지 언제 한번 물어보러 가 볼까 해요.", "어떤 매력에 끌리는지"),
+])
+def test_relationship_questions_count_as_what_i_want_to_know(ending, wish):
+    text = f"[광고] 영상 반응이에요. 요즘 운명원이 연애사주를 잘 맞춘다고 하던데, {ending}"
+    assert P.intent_reason(text, BRAND) == wish
+    assert P.reason_kind(text, BRAND) == P.REASON_WISH
+    assert not [i for i in _style(text, reason_wanted=P.REASON_WISH) if i.startswith("S18")]
+    # 상태 까닭은 그대로 상태 까닭
+    state = text.replace(ending, "저도 연락 문제로 기회 되면 보고 싶네요.")
+    assert P.reason_kind(state, BRAND) == P.REASON_STATE
