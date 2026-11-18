@@ -73,6 +73,7 @@ def _bridge_check_off(monkeypatch):
     # S15(정해 준 운명원 조각과 다름, 2026-11-18)도 같은 까닭으로 끈다. 보는 시험은 `piece_check_on`
     monkeypatch.setattr(drafter, "PIECE_CHECK", False)
     monkeypatch.setattr(drafter, "STORY_CHECK", False)  # S18~S20(2026-11-18 D)
+    monkeypatch.setattr(drafter, "LENGTH_PLAN", False)  # 길이 셈(2026-11-18)
 
 
 @pytest.fixture
@@ -97,6 +98,14 @@ def story_check_on(monkeypatch):
     from app.analysis import drafter
 
     monkeypatch.setattr(drafter, "STORY_CHECK", True)
+
+
+@pytest.fixture
+def length_plan_on(monkeypatch):
+    """길이 셈(운명원 대목 상한·글자 수 몫·S1 112자·잇는 문장 덜기, 2026-11-18)을 켠다."""
+    from app.analysis import drafter
+
+    monkeypatch.setattr(drafter, "LENGTH_PLAN", True)
 
 
 REVIEW_OK = {"ok": True, "problems": []}

@@ -91,6 +91,11 @@ PIECE_CHECK = True
 # 다듬기 검사 S18~S20(알고 싶은 것 없음·잇는 문장과 같은 말·남의 마음 짐작, 2026-11-18 D)를 모델
 # 초안에 쓸지. 같은 까닭으로 자동 테스트는 `tests/conftest.py`가 끈다. ⑤ 꼴 배정은 늘 켜져 있다
 STORY_CHECK = True
+# 길이 셈(2026-11-18 기획 담당): 운명원 대목 상한(`prompts.BRAND_CAP`)으로 조각을 정하고, 남는
+# 글자 수를 ①·②에 숫자로 주고(모자라면 잇는 문장을 빼고), 다듬기 검사 S1 문턱을 112자로 두고,
+# 마지막에 길이(V1)만 걸리면 잇는 문장을 덜어 본다. 그 전에 짠 가짜 초안·프롬프트 시험이 예전
+# 배정을 보므로 자동 테스트는 `tests/conftest.py`가 끈다(켜는 것은 `length_plan_on`)
+LENGTH_PLAN = True
 # 꺼내는 말·끝말을 돌려 쓸 때 보는 「보인 초안」 수(최근 것부터, 2026-11-17)
 SHOWN_TEXTS = 30
 DraftStatus = str  # 'draft' | 'approved' | 'superseded'
@@ -425,6 +430,19 @@ class DraftService:
 
         assert best is not None
         _, _, text, tone, validation, _, issues = best
+        if LENGTH_PLAN and not validation.passed:
+            # 길이(V1)만 걸렸으면 잇는 문장을 덜어 본다 — 모델을 다시 부르지 않는다(2026-11-18)
+            trimmed = self._trim_bridge(text, validation)
+            if trimmed:
+                checked = self.checks.check(
+                    video_id, trimmed, previous_texts=previous, evidence_quote=evidence.quote,
+                    disclose=disclose, key_phrases=analysis.checked_phrases,
+                    concern=analysis.concern,
+                )
+                if checked.passed:
+                    run["trimmed"] = {"before": text, "after": trimmed}
+                    text, validation = trimmed, checked
+                    issues = self._style(text, mark, analysis.key_phrases, avoid_bodies)
         if validation.passed and self.polish:
             text, validation = self._polish(
                 llm, video_id, text, validation, issues, analysis=analysis, evidence=evidence,
@@ -558,10 +576,27 @@ class DraftService:
         # 2026-11-18 조각 배정: 운명원 대목의 때·연애 사주·세기 말·평판·들은 꼴·끝말을 코드가
         # 덜 쓴 것부터 정해 준다. AI 검수 뒤 다시 쓸 때는 앞 초안의 조각 그대로(같은 배정)
         keep = prompts.pieces_of(exclude.body, rules.brand) if exclude is not None else None
+        cap = None
+        if LENGTH_PLAN:  # 잇는 문장이 있으면 짧은 꼴, 없으면 긴 꼴도(2026-11-18 길이 셈)
+            cap = prompts.BRAND_CAP if want_bridge else prompts.BRAND_CAP_LONG
         pieces = prompts.assign_pieces(
             rules.brand, shown, avoid=avoid_bodies, rng=self.rng, keep=keep,
-            wish=kind == prompts.REASON_WISH)
+            wish=kind == prompts.REASON_WISH, cap=cap, reason_kind=kind)
         self._pieces = pieces
+        plan = None
+        if LENGTH_PLAN:
+            mark_len = len(mark) + 1 if mark else 0
+            plan = prompts.length_plan(pieces, rules.brand, mark_len=mark_len,
+                                       reason_kind=kind, bridge=want_bridge)
+            if want_bridge and not plan.bridge:  # ①과 잇는 문장에 남는 글자가 모자라다
+                want_bridge = False
+                self._want_bridge = False
+                if kind == prompts.REASON_NONE:
+                    kind = prompts.REASON_STATE
+                    self._reason_kind = kind
+                want_reason = True
+                plan = prompts.length_plan(pieces, rules.brand, mark_len=mark_len,
+                                           reason_kind=kind, bridge=False)
         self._used_leads = [x for x in (prompts.lead_part(t, rules.brand)
                                         for t in [*avoid_bodies, *shown]) if x]
         # S8: 바로 앞에 보인 초안과 같은 본보기를 그대로 옮기지 않게
@@ -571,8 +606,17 @@ class DraftService:
             previous=previous, avoid_bodies=avoid_bodies, avoid_phrases=avoid_phrases,
             avoid_tones=avoid_tones, tones=tones, schema=schema, used_closings=used_closings,
             hearsay=hearsay, endings=endings, used_openings=used_openings, want_reason=want_reason,
-            thin=thin, pieces=pieces, want_bridge=want_bridge, reason_kind=kind,
+            thin=thin, pieces=pieces, want_bridge=want_bridge, reason_kind=kind, plan=plan,
         )
+
+    def _trim_bridge(self, text: str, validation: Validation) -> str:
+        """길이(V1)만 넘친 글에서 잇는 문장을 뺀 글(뺄 것이 없거나 다른 검사에도 걸렸으면 빈 글)."""
+        if any(c.code != "V1" for c in validation.failures) or len(text) <= self.rules.max_chars:
+            return ""
+        bridge = prompts.bridge_sentence(text, self.rules.brand)
+        if not bridge:
+            return ""
+        return re.sub(r"\s{2,}", " ", text.replace(bridge, "", 1)).strip()
 
     def _draft_prompt(
         self, kit: SimpleNamespace, analysis: Analysis, evidence: Evidence,
@@ -605,6 +649,7 @@ class DraftService:
             thin=kit.thin,
             pieces=kit.pieces,
             reason_kind=kit.reason_kind,
+            plan=kit.plan,
         )
 
     def _style(
@@ -619,6 +664,7 @@ class DraftService:
             pieces=self._pieces if PIECE_CHECK else None, used_leads=self._used_leads,
             bridge_wanted=self._want_bridge if BRIDGE_CHECK else None,
             reason_wanted=self._reason_kind if STORY_CHECK else None,
+            max_total=prompts.SOFT_MAX_DRAFT if LENGTH_PLAN else style.SOFT_MAX_TOTAL,
         )
 
     def _polish(

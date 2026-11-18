@@ -56,10 +56,11 @@ C1 다듬기(대표 지시 2026-11-17 「초안 더 다듬고」)
 
 from __future__ import annotations
 
+import itertools
 import random
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from app.llm.base import JSONSchema
@@ -599,6 +600,7 @@ def ending_part(text: str, brand: str) -> str:
 def assign_pieces(
     brand: str, used_texts: Sequence[str], *, avoid: Sequence[str] = (),
     rng: random.Random | None = None, keep: Pieces | None = None, wish: bool = False,
+    cap: int | None = None, reason_kind: str | None = None,
 ) -> Pieces:
     """이번 초안의 조각을 정한다(2026-11-18). 조각마다 앞서 보인 초안(`used_texts`, 최신이 앞)에
     덜 쓴 것 — 최근 `RECENT_TEXTS`개 글 먼저, 다음 전체 횟수, 같으면 무작위. 같은 영상 앞 초안
@@ -606,7 +608,11 @@ def assign_pieces(
 
     잘한다는 말은 여섯 몫(동사 다섯 + 통째 꼴)으로 나눠 「잘 본다」가 쏠리지 않게 한다. 꺼내는 말이
     앞서 보인 초안과 통째로 같아지면 다음 들은 꼴로 바꾼다. `wish`면 끝말은 알고 싶은 것을 받는
-    `WISH_ACTIONS`에서(2026-11-18 D-1)."""
+    `WISH_ACTIONS`에서(2026-11-18 D-1).
+
+    `cap`(2026-11-18 길이): 운명원 대목의 예상 길이(`brand_estimate`, ⑤의 꼴 `reason_kind` 몫 포함)
+    상한. 넘으면 세기 말 → 때 → 연애 사주 → 들은 꼴 → 언제 → 끝말 순으로, 조각마다 덜 쓴 차례를
+    지키며 상한 안에 드는 첫 꼴로 바꾼다(없으면 가장 짧은 꼴). 그래도 넘으면 다음 잘한다는 말로."""
     if keep is not None:
         return keep
     rng = rng if rng is not None else random.Random()
@@ -616,8 +622,8 @@ def assign_pieces(
     avoid = [x for x in (lead_part(t, brand) for t in full_avoid) if x]
     used_ends = [x for x in (ending_part(t, brand) for t in full_used) if x]
     avoid_ends = [x for x in (ending_part(t, brand) for t in full_avoid) if x]
-    time = _least_used(LEAD_TIMES, used_texts, avoid, rng)[0]
-    love = _least_used(LEAD_LOVES, used_texts, avoid, rng)[0]
+    times = _least_used(LEAD_TIMES, used_texts, avoid, rng)
+    loves = _least_used(LEAD_LOVES, used_texts, avoid, rng)
     # 세기 말: 일곱 가지 + 「없이」(여덟째 몫, 세기 말이 없는 글을 그 몫으로 센다)
     hows_seen = [_present(LEAD_HOWS, t) for t in used_texts]
     hows_avoid = set().union(*(_present(LEAD_HOWS, t) for t in avoid)) if avoid else set()
@@ -626,15 +632,94 @@ def assign_pieces(
                  for i in range(n_how)]
     how_recent = [sum((i in s) if i < n_how - 1 else (not s) for s in hows_seen[:RECENT_TEXTS])
                   for i in range(n_how)]
-    how = PIECE_HOWS[_least_index(how_count, how_recent, rng, hows_avoid)[0]]
+    hows = [PIECE_HOWS[i] for i in _least_index(how_count, how_recent, rng, hows_avoid)]
     verbs_seen = [_verb_of(t) for t in used_texts]
     total = len(PIECE_VERBS) + 1
     count = [verbs_seen.count(i) for i in range(total)]
     recent = [verbs_seen[:RECENT_TEXTS].count(i) for i in range(total)]
     avoided = {_verb_of(t) for t in avoid}
-    verb = _least_index(count, recent, rng, avoided)[0]
+    verbs = _least_index(count, recent, rng, avoided)
+    hears = _hears_for(verbs[0], used_texts, rng)
+    whens = _least_used(END_WHENS, used_ends, avoid_ends, rng)
+    actions = _least_used(WISH_ACTIONS if wish else END_ACTIONS, used_ends, avoid_ends, rng)
+    leads = {fold(t) for t in [*used_texts, *avoid]}
+
+    def first_pick(verb: int, hears: Sequence[int]) -> Pieces:
+        pick = None
+        for hear in hears:
+            pick = _bare(Pieces(times[0], loves[0], hows[0], verb, hear, whens[0], actions[0]))
+            if fold(pick.lead(brand)) not in leads:
+                break
+        assert pick is not None
+        return pick
+
+    pick = first_pick(verbs[0], hears)
+    if cap is None:
+        return pick
+
+    def size(p: Pieces) -> int:
+        return brand_estimate(p, brand, reason_kind)
+
+    if size(pick) <= cap:
+        return pick
+    # 조각마다 덜 쓴 앞쪽 몇 가지만 놓고, 상한 안에 드는 짝 가운데 차례 합이 가장 작은 것(덜 쓴
+    # 것을 가장 많이 지키는 것). 같으면 상한에 가까운(긴) 쪽 — 세기 말을 늘 빼지 않게
+    # 첫 번째는 덜 쓴 앞쪽만, 그래도 안 들면 조각마다 가장 짧은 꼴 셋을 더해 다시 찾는다
+    shortest = pick
+    for wide in (False, True):
+        best: tuple[tuple[int, int], Pieces] | None = None
+        for vr, verb in enumerate(verbs[:3]):
+            vhears = hears if vr == 0 else _hears_for(verb, used_texts, rng)
+            hear_texts = [PIECE_WHOLES[h] if verb >= len(PIECE_VERBS) else PIECE_HEARS[h][1]
+                          for h in vhears]
+            hear_opts = [(r, vhears[i]) for r, (i, _) in
+                         _ranked(list(enumerate(hear_texts)), 5, wide, key=lambda x: len(x[1]))]
+            # 「, 저도 」(5)·마침표(1)·⑤ 몫
+            extra = 2 + 3 + 1 + REASON_CHARS.get(reason_kind or REASON_STATE, 0)
+            outer = list(itertools.product(_ranked(times, 4, wide), _ranked(whens, 4, wide),
+                                           _ranked(actions, 4, wide)))
+            for (r2, lv), (r3, hw), (r4, hr) in itertools.product(
+                _ranked(loves, 3, wide), _ranked(hows, 5, wide), hear_opts,
+            ):
+                core = _bare(Pieces("", lv, hw, verb, hr, "", ""))
+                body = len(core.lead(brand))  # 때 없이 셈(때는 아래에서 더한다)
+                for (r1, t), (r5, wh), (r6, ac) in outer:
+                    n = len(t) + 1 + body + extra + len(wh) + 1 + len(ac)
+                    if n < size(shortest):
+                        shortest = replace(core, time=t, when=wh, action=ac)
+                    if n > cap:
+                        continue
+                    score = (vr * 3 + r1 + r2 + r3 + r4 + r5 + r6, -n)
+                    if best is not None and score >= best[0]:
+                        continue
+                    cand = replace(core, time=t, when=wh, action=ac)
+                    if fold(cand.lead(brand)) not in leads:
+                        best = (score, cand)
+            if best is not None:
+                return best[1]
+    return shortest
+
+
+def _ranked(options: Sequence[Any], k: int, wide: bool, key: Any = len) -> list[tuple[int, Any]]:
+    """(덜 쓴 차례, 꼴) 앞쪽 `k`개. `wide`면 가장 짧은 꼴 셋을 더한다(길이 상한 찾기)."""
+    top = list(enumerate(options))[:k]
+    if wide:
+        short = sorted(enumerate(options), key=lambda x: (key(x[1]), x[0]))[:3]
+        top += [x for x in short if x not in top]
+    return top
+
+
+def _bare(p: Pieces) -> Pieces:
+    """세기 말 자리가 없는 통째 꼴(「주변에서 … 많이 추천하던데」)이면 세기 말도 없다."""
+    if p.verb >= len(PIECE_VERBS) and "{how}" not in PIECE_WHOLES[p.hear] and p.how:
+        return replace(p, how="")
+    return p
+
+
+def _hears_for(verb: int, used_texts: Sequence[str], rng: random.Random) -> list[int]:
+    """그 잘한다는 말에 붙일 들은 꼴(덜 쓴 차례, 효능 말과 못 붙는 짝은 뺌)."""
     if verb >= len(PIECE_VERBS):
-        options = PIECE_WHOLES
+        options: Sequence[str] = PIECE_WHOLES
         seen = [next((k for k, m in enumerate(_VERB_MARKS[-1]) if m in fold(t)), -1)
                 for t in used_texts]
     else:
@@ -642,19 +727,52 @@ def assign_pieces(
         seen = [_hear_of(t) for t in used_texts]
     hc = [seen.count(i) for i in range(len(options))]
     hr = [seen[:RECENT_TEXTS].count(i) for i in range(len(options))]
-    hears = [h for h in _least_index(hc, hr, rng) if (verb, h) not in PIECE_SKIP]
-    whens = _least_used(END_WHENS, used_ends, avoid_ends, rng)
-    actions = _least_used(WISH_ACTIONS if wish else END_ACTIONS, used_ends, avoid_ends, rng)
-    leads = {fold(t) for t in [*used_texts, *avoid]}
-    pick = None
-    for hear in hears:
-        # 세기 말 자리가 없는 통째 꼴(「주변에서 … 많이 추천하던데」)이면 세기 말도 없다
-        bare = verb >= len(PIECE_VERBS) and "{how}" not in PIECE_WHOLES[hear]
-        pick = Pieces(time, love, "" if bare else how, verb, hear, whens[0], actions[0])
-        if fold(pick.lead(brand)) not in leads:
-            break
-    assert pick is not None
-    return pick
+    return [h for h in _least_index(hc, hr, rng) if (verb, h) not in PIECE_SKIP]
+
+
+# ---------------------------------------------------------------- 길이 셈(2026-11-18)
+# 루나 12개 중 한 번에 끝난 초안이 하나뿐이었다(다시 쓴 까닭 S1 길이 9번) — 배정된 조각이 긴
+# 꼴이면 운명원 대목만 65~75자였다(과제 예시의 운명원 문장은 39자). 이제 코드가 길이를 먼저 센다:
+# 운명원 대목에 상한을 두고(잇는 문장이 있으면 `BRAND_CAP`, 없으면 긴 꼴도 되는 `BRAND_CAP_LONG`),
+# 남는 글자 수를 ① 영상 반응과 ② 잇는 문장에 숫자로 나눠 준다(`length_plan`).
+PLAN_TOTAL = 106  # 코드가 맞추는 전체 길이(표기 포함). 모델이 조금 넘쳐도 다듬기 문턱(112) 안
+SOFT_MAX_DRAFT = 112  # 모델 초안의 다듬기 검사 S1 문턱(규칙 검사 V1은 120자 그대로)
+BRAND_CAP = 55
+BRAND_CAP_LONG = 68
+BRIDGE_ROOM = 45  # ① + 잇는 문장에 이만큼 안 남으면 잇는 문장을 넣지 않는다
+FIRST_MAX = 42  # ① 영상 반응의 글자 수 상한(남는 글자가 많아도)
+# 「저도」 뒤 알고 싶은 것·까닭의 몫(띄어쓰기 포함)
+REASON_CHARS = {REASON_WISH: 13, REASON_STATE: 10, REASON_NONE: 0}
+
+
+def brand_estimate(pieces: Pieces, brand: str, reason_kind: str | None) -> int:
+    """운명원 대목의 예상 길이: 정해 준 조각을 이은 글 + ⑤ 몫 + 마침표."""
+    return len(pieces.joined(brand)) + 1 + REASON_CHARS.get(reason_kind or REASON_STATE, 0)
+
+
+@dataclass(frozen=True)
+class LengthPlan:
+    """이번 초안의 글자 수 몫(표기 포함 `total`). `bridge`가 0이면 잇는 문장 없음."""
+
+    first: int
+    bridge: int
+    brand: int
+    total: int
+
+
+def length_plan(
+    pieces: Pieces, brand: str, *, mark_len: int, reason_kind: str | None, bridge: bool
+) -> LengthPlan:
+    """남는 글자 수를 ①과 ②에 나눈다. `mark_len`: 표기와 띄어쓰기(「[광고] 」 5자, 끄면 0)."""
+    brand_len = brand_estimate(pieces, brand, reason_kind)
+    room = PLAN_TOTAL - mark_len - brand_len - 1  # ①과 운명원 대목 사이 띄어쓰기
+    if bridge and room >= BRIDGE_ROOM:
+        second = min(BRIDGE_CHARS[1], room - 28)
+        first = min(FIRST_MAX, room - second - 1)
+    else:
+        second, first = 0, min(FIRST_MAX, room)
+    total = mark_len + first + (second + 1 if second else 0) + 1 + brand_len
+    return LengthPlan(first=first, bridge=second, brand=brand_len, total=total)
 
 
 def pieces_of(text: str, brand: str, *, rng: random.Random | None = None) -> Pieces | None:
@@ -1144,7 +1262,9 @@ def draft_system(
         f"짜임(세 덩이: ① 영상 반응 한 문장 → ② 잇는 한 문장 → ③ {brand} 대목 두 토막. 마무리 "
         "문장은 따로 붙이지 않는다):\n"
         "① 영상 반응 **짧은 한 문장**(25~35자쯤, 길어야 두 문장) — 이 영상의 구체적인 말·장면을 "
-        "**내 말로** 짚는다. 주어진 [핵심 말] 중 하나 "
+        "**내 말로** 짚는다. 요청 글이 글자 수를 주면 그 숫자 안에서 쓰되, 짧게 쓰려고 토막 내지 "
+        "않는다 — 무엇이 어떤지 알 수 있는 **온전한 한 문장**('끌림이라니... 속얘기까지 듣고 "
+        "싶네요.' ✗). 주어진 [핵심 말] 중 하나 "
         "이상을 글자 그대로 넣는다. '~라는 말에 ~네요' 틀만 쓰지 말고 '근데 진짜 ~', "
         "'~라니 ㅠㅠ', '아 ~는 좀 웃프다' 같은 감탄·혼잣말로도 시작한다. '뜨끔'은 너무 자주 나와 "
         "굳은 말이니 쓰지 않는다. **남 얘기 평이 아니라 보는 내 반응으로** 쓴다 — 영상 속 사람의 "
@@ -1345,6 +1465,7 @@ def draft_user(
     thin: bool = False,
     pieces: Pieces | None = None,
     reason_kind: str | None = None,
+    plan: LengthPlan | None = None,
 ) -> str:
     """초안 요청. 다시 쓸 때는 앞의 본문과 실패 문구(`Validation.failure_lines()`)를 넣는다.
 
@@ -1368,6 +1489,8 @@ def draft_user(
     `hearsay`·`endings` 권유 대신 이 조각을 그대로 쓰라고 한다(다시 쓸 때도 같은 조각).
     `reason_kind`: 코드가 정한 ⑤의 꼴(`assign_reason`, 2026-11-18 D-1) — 알고 싶은 것(wish)·상태
     까닭(state)·까닭 없음(none). 주면 `reason`보다 앞선다.
+    `plan`: 코드가 셈한 글자 수 몫(`length_plan`, 2026-11-18). 주면 ①·②의 글자 수를 숫자로
+    알리고, ⑤의 끝 꼴을 요청 글 맨 끝 한 줄로 다시 적는다.
     """
     target_lo, target_hi = body_target(min_body=min_body, max_body=max_body, max_chars=max_chars)
     concern = analysis.get("concern", "")
@@ -1404,10 +1527,11 @@ def draft_user(
         f"{target_lo}~{target_hi}자를 목표로 한다. "
         # C1 손질 4회차: 실제 모델 첫 시도의 실패 7번 중 4번이 120자 넘김(123~132자)이었다.
         # 다듬기 회차: 목표를 낮추고 ②·④를 빼도 된다고 분명히 적는다(대표 지시)
-        f"{max_body}자를 넘으면 검사에 걸리고, 목표보다 길면 다시 쓰게 된다. {brand} 대목이 두 "
-        "토막 45~55자쯤이니 영상 반응은 한 문장(길어야 두 문장)으로 쓴다. "
-        + (f"잇는 문장({BRIDGE_CHARS[0]}~{BRIDGE_CHARS[1]}자)이 들어가니 영상 반응은 25~35자로 "
-           "짧게 쓴다. " if bridge is True else "")
+        f"{max_body}자를 넘으면 검사에 걸리고, 목표보다 길면 다시 쓰게 된다. "
+        + (_plan_line(plan, brand) if plan is not None else
+           f"{brand} 대목이 두 토막 45~55자쯤이니 영상 반응은 한 문장(길어야 두 문장)으로 쓴다. "
+           + (f"잇는 문장({BRIDGE_CHARS[0]}~{BRIDGE_CHARS[1]}자)이 들어가니 영상 반응은 25~35자로 "
+              "짧게 쓴다. " if bridge is True else ""))
         + "고민 한 줄과 영상 글도 10자 넘게 이어서 옮기지 않는다.",
         f"고민 한 줄('{concern}')을 그대로 옮기지 말고, 영상 반응과 {brand}에 가 보겠다는 말로 "
         "바꿔 쓴다(써 본 척 없이 의향까지만).",
@@ -1540,7 +1664,32 @@ def draft_user(
             *[f"- {line}" for line in failure_lines],
             "걸린 항목을 모두 고쳐 새 본문을 써라.",
         ]
+    if plan is not None and pieces is not None:
+        parts += ["", _end_line(pieces, reason_kind)]
     return "\n".join(parts)
+
+
+def _plan_line(plan: LengthPlan, brand: str) -> str:
+    """글자 수 몫을 숫자로(2026-11-18). ①은 토막이 아니라 온전한 한 문장."""
+    second = (f"② 잇는 문장은 {plan.bridge}자 안의 한 문장, " if plan.bridge else
+              "② 잇는 문장은 이번에 쓰지 않는다, ")
+    return (
+        f"**이번 초안 글자 수(코드가 셈함, 표기 포함 {plan.total}자쯤)**: ① 영상 반응은 "
+        f"{plan.first}자 안의 **온전한 한 문장**(무엇이 어떤지 알 수 있게 — '끌림이라니...'처럼 "
+        f"말을 던지고 끊거나 짧은 토막 여럿으로 쪼개지 않는다), {second}{brand} 대목은 정해 준 "
+        f"조각 그대로 {plan.brand}자쯤. 이 숫자 안에서 쓴다. "
+    )
+
+
+def _end_line(pieces: Pieces, reason_kind: str | None) -> str:
+    """요청 글 맨 끝 한 줄: ⑤의 끝 꼴(2026-11-18 — 첫 시도에서 알고 싶은 것을 자주 놓쳤다)."""
+    ending = pieces.ending()
+    if reason_kind == REASON_WISH:
+        return (f"[끝 꼴] 저도 [알고 싶은 것] {ending}. — [알고 싶은 것]은 이 영상 고민에서 "
+                "사주로 볼 것을 '~인지/~는지/~ㄹ지'로 새로 쓴다(꼴 보기 문구를 그대로 쓰지 않는다)")
+    if reason_kind == REASON_NONE:
+        return f"[끝 꼴] 저도 {ending}."
+    return f"[끝 꼴] 저도 [이 영상 고민에서 온 짧은 까닭] {ending}."
 
 
 # ---------------------------------------------------------------- 다듬기(C1 다듬기)
