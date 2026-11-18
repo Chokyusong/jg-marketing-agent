@@ -348,6 +348,19 @@ def test_pick_evidence_skips_thin_quotes_and_prefers_the_topic():
     assert D.pick_evidence(ev).quote == "와, 그럼 처음께 맞았던 거네"
 
 
+def test_pick_evidence_ranks_by_the_concern_and_title_not_key_phrases():
+    """24회차: 핵심 말이 소개 멘트에서 나와 소개 말이 맨 앞에 왔다 → 순서는 고민·제목으로."""
+    intro = "아직 미혼인 분을 가상에 후보 리스트를 놓고 궁합을 좀 맞춰 보려고"
+    ev = [Evidence(intro, "transcript"),
+          Evidence("하지원 씨는요 남자 관계를 좋아하지 않아", "transcript")]
+    title = "연애·결혼 생각 없다는 하지원…마음을 움직일 남자는"
+    topic = f"하지원 궁합 나와 맞는 사람을 만날까 후보 리스트 궁합을 좀 맞춰 {title}"
+    assert D.pick_evidence(ev, topic=topic, title=title).quote.startswith("아직 미혼인")
+    got = D.pick_evidence(ev, topic=topic, title=title,
+                          rank_by=f"나와 맞는 사람을 만나 결혼할 수 있을까? {title}")
+    assert got.quote == "하지원 씨는요 남자 관계를 좋아하지 않아"
+
+
 def test_pick_evidence_falls_back_to_the_title_when_transcript_quotes_are_thin():
     ev = [Evidence("억울했겠다", "transcript"),
           Evidence("와, 그럼 처음께 맞았던 거네", "transcript"),

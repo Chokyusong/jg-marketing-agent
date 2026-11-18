@@ -263,7 +263,7 @@ def thin_quote(quote: str, topic: str) -> bool:
 
 def pick_evidence(
     evidence: Sequence[Evidence], avoid_quotes: Sequence[str] = (), *, topic: str = "",
-    title: str = "",
+    title: str = "", rank_by: str = "",
 ) -> Evidence:
     """[짚을 내용]의 근거 하나: 자막 → 제목·설명 → 인기 댓글 순으로 근거가 있는 첫 무리에서,
     이미 짚은 구절이 아닌 것(모두 짚었으면 그 무리의 첫 것). 근거가 없으면 AppError.
@@ -271,7 +271,10 @@ def pick_evidence(
     `topic`(분석의 주제·고민·핵심 말·제목)을 주면(2026-11-19): 얇은 구절(`thin_quote`)은 빼고,
     주제와 많이 겹치는 구절을 먼저 고른다. 자막·제목·설명에 쓸 만한 근거가 없으면 확인된 제목
     (`title`)을 근거로 쓴다(자막·제목·설명 근거가 있었는데 모두 얇았을 때만 — 인기 댓글 근거만
-    있는 영상은 예전처럼 댓글). 다 얇으면 예전처럼 고른다."""
+    있는 영상은 예전처럼 댓글). 다 얇으면 예전처럼 고른다.
+
+    `rank_by`(고민 한 줄·제목)를 주면 순서는 그것과 겹치는 만큼으로 정한다(23회차: 핵심 말이
+    영상 소개 멘트에서 나오면 「오늘은 ~ 궁합을 맞춰 보려고」 같은 소개 말이 맨 앞에 왔다)."""
     avoid = {normalize(q) for q in avoid_quotes if q}
     dropped = False  # 자막·제목·설명 근거를 얇아서 뺐는지
     for group in EVIDENCE_GROUPS:
@@ -282,7 +285,7 @@ def pick_evidence(
         if topic:
             kept = [e for e in items if not thin_quote(e.quote, topic)]
             dropped = dropped or len(kept) < len(items)
-            items = sorted(kept, key=lambda e: -topic_overlap(e.quote, topic))
+            items = sorted(kept, key=lambda e: -topic_overlap(e.quote, rank_by or topic))
         if items:
             fresh = [e for e in items if normalize(e.quote) not in avoid]
             return (fresh or items)[0]
@@ -474,7 +477,8 @@ class DraftService:
         except AppError:
             pass
         topic = " ".join([analysis.topic, analysis.concern, *analysis.key_phrases, title])
-        evidence = pick_evidence(analysis.evidence, used, topic=topic, title=title)
+        evidence = pick_evidence(analysis.evidence, used, topic=topic, title=title,
+                                 rank_by=f"{analysis.concern} {title}")
         kit = self._kit(video_id, analysis.concern, evidence, voice, disclose, others=mine)
         llm = kit["llm"]
 
