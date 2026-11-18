@@ -449,6 +449,14 @@ def test_v10_fail(phrase):
     assert not v10.passed and "효능·최상급" in v10.message
 
 
+def test_v10_relationship_word_is_not_a_claim():
+    """33회차: 「확실한 관계로 넘어갈지」가 효능 단정으로 걸려 세 번 다 실패했다."""
+    assert check(run(f"{GOOD} 언제쯤 확실한 관계로 넘어갈지 궁금해요"), "V10").passed
+    assert check(run(f"{GOOD} 확실한 사이가 될지"), "V10").passed
+    for bad in ("확실히 맞혀요", "확실한 곳이래요", "확실해요"):
+        assert not check(run(f"{GOOD} {bad}"), "V10").passed, bad
+
+
 def test_v10_allows_phrase_written_in_brand_facts():
     facts = FACTS + ["운명원은 연애 사주만 30년째 하는 제일 오래된 상담소다"]
     text = (

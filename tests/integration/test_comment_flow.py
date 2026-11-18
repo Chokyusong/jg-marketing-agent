@@ -286,6 +286,7 @@ def test_system_carries_the_picked_saying():
     assert ("- 요즘 자주 들어서 알게 된 그 얘기(「연애 사주 하면 운명원이다」). 운명원 얘기 앞에 "
             "「요즘」을 붙이고, 그 뜻 그대로") in text
     assert "누가 말해 줬는지(친구·지인)는 쓰지 않는다." in text
+    assert "조사를 빼먹거나 다른 말과 섞어 문장이 꼬이지 않게 한다." in text  # 33회차
     # 9회차: 소개 문장(잘 봐주는 곳으로 유명하다)이 요지를 덮었다 → 들은 말이 있으면 넣지 않는다
     assert "[운명원]\n- 연애 사주를 보는 곳이다.\n" in text
     assert "잘 봐주는 곳으로 유명하다" not in text
