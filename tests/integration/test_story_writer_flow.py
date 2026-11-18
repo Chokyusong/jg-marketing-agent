@@ -70,8 +70,8 @@ def test_story_is_the_default_and_assigns_no_writer(setup):
     assert "[글쓴이]" not in user
     assert "이번 초안의 운명원 대목" not in user and "잇는 한 문장" not in user
     system = llm.calls[1]["kwargs"]["system"]
-    # 2026-11-18 대표: 영상 반응 → 사주에 관심을 갖게 된 이유 → 운명원은 생각의 흐름(문장 구조 아님)
-    assert "사주에 관심을 갖게 된 이유" in system and ASSIGNMENT_SAMPLE in system
+    # 2026-11-18 대표: 감상을 먼저 풀고 그 생각이 닿는 자리에서 운명원(길은 영상마다 다르다)
+    assert "그 생각이 닿는 자리에서 운명원" in system and ASSIGNMENT_SAMPLE in system
     assert user.startswith("[영상 자료]")  # 자막·제목·설명·인기 댓글을 직접 읽는다
     assert "writer" not in services.drafts.last_run
     assert not hasattr(services.drafts.stored_analysis(VID), "topic_group")
