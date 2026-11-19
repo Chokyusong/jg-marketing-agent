@@ -52,7 +52,7 @@ export const api = {
     const qs = params.toString();
     return request(`/api/videos${qs ? `?${qs}` : ''}`);
   },
-  // R4: 뜨기 직전 영상(초안까지만). 쇼츠 빼기는 ①칸의 체크를 따른다
+  // R4: 뜨기 직전 영상. 쇼츠 빼기는 ①칸의 체크를 따른다
   risingVideos: ({ excludeShorts } = {}) => {
     const qs = typeof excludeShorts === 'boolean' ? `?exclude_shorts=${excludeShorts}` : '';
     return request(`/api/videos/rising${qs}`);

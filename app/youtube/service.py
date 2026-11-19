@@ -128,8 +128,8 @@ class VideoService:
     def mark_source(self, video_ids: list[str], source: str) -> None:
         """영상의 출처만 바꾼다(마지막으로 불러온 목록이 출처가 된다).
 
-        뜨기 직전 목록에서 고른 영상은 초안까지만 되고(rising), 같은 영상을 [영상 불러오기]나
-        링크로 다시 불러오면 search·link로 바뀌어 평소처럼 게시할 수 있다.
+        뜨기 직전 목록에서 고른 영상은 rising, 같은 영상을 [영상 불러오기]나 링크로 다시
+        불러오면 search·link로 바뀐다. 게시는 출처와 상관없이 된다(2026-11-19).
         """
         if not video_ids:
             return

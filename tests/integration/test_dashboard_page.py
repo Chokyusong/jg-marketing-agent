@@ -73,10 +73,10 @@ def test_discover_column_is_wired(page):
 def test_unconnected_parts_are_off_and_labelled(page):
     for stage in range(3, 10):
         assert f"{stage}단계에서 연결" not in page
-    # R4: [뜨기 직전 영상]이 연결됐다(꺼 두지 않고 「곧 연결」도 없다). 초안까지만이라고 알린다
+    # R4: [뜨기 직전 영상]이 연결됐다(꺼 두지 않고 「곧 연결」도 없다). 2026-11-19부터 게시도 된다
     rising = _section(page, 'id="rising-btn"', "</button>")
     assert "disabled" not in rising and "곧 연결" not in rising
-    assert rising.endswith(">뜨기 직전 영상") and "초안까지만" in rising
+    assert rising.endswith(">뜨기 직전 영상") and "초안까지만" not in rising
     assert "곧 연결" not in page
     # R2: 설정 [저장] · [기본값으로]는 연결됐다([저장]은 바꾼 칸이 생길 때까지만 꺼 둔다)
     assert '<button type="button" class="btn" id="settings-save" disabled>저장</button>' in page

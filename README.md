@@ -129,7 +129,7 @@ limits:
 | 프로필 3개 선택·자동 배정 | ③칸 「프로필」(자동 배정 · 이번에는 유튜브2) · `app/ops/profiles.py` · `tests/unit/test_ops_profiles_ledger.py` |
 | 링크 직접 입력 | ①칸 「영상 링크로 불러오기」 · `app/youtube/url_parser.py` · `tests/unit/test_url_parser.py` |
 | 새 영상 초안 즉석 생성 | ②칸(고르면 바로, [다른 댓글 만들기]) · `app/analysis/drafter.py` · `tests/integration/test_drafts_api.py` |
-| '연애' 뜨기 직전 영상(조회수 1,000~5,000, 시간당 150회 이상, 초안까지만) | ①칸 [뜨기 직전 영상] · `app/youtube/rising.py` · `tests/integration/test_rising.py` |
+| '연애' 뜨기 직전 영상(조회수 1,000~5,000, 시간당 150회 이상. 초안은 물론 [댓글 달기]도 막지 않음) | ①칸 [뜨기 직전 영상] · `app/youtube/rising.py` · `tests/integration/test_rising.py` |
 
 ## 4. 설계 요점과 한계
 

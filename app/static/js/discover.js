@@ -3,7 +3,7 @@
 // - 링크로 불러온 영상은 목록 맨 위에 넣고 바로 고른다(고르면 ②가 자동으로 초안을 만든다).
 // - 목록 한 줄: 썸네일 · 제목(끝의 #태그는 흐리게) · 채널 · 올린 날짜(11.17 · 7시간 전) · 조회수, 「댓글 달았음」.
 // - R4 [뜨기 직전 영상]: 올린 지 34시간 안에 조회수가 빨리 오르는 영상(설정의 조건). 줄마다 「시간당 n회」와
-//   「뜨기 직전」 표시. 이 목록에서 고른 영상은 초안까지만 만든다(③ [댓글 달기]가 막힌다).
+//   「뜨기 직전」 표시. 이 목록에서 고른 영상도 다른 영상처럼 ③ [댓글 달기]로 달 수 있다(2026-11-19 대표 지시).
 import { api } from './api.js';
 import { el, formatAgo, formatDay, formatViews, thumbnail, titleNode } from './format.js';
 import { getState, setState, subscribe } from './state.js';
@@ -207,7 +207,7 @@ function renderMeta(state) {
     }
   } else if (state.meta.mode === 'rising') {
     meta.append(`뜨기 직전 영상 ${state.meta.count}개`);
-    meta.append(el('span', { class: 'shorts-note', title: `‘${state.meta.query}’ · 올린 지 34시간 안 · ${risingRuleText(state.meta.rule)}`, text: '초안까지만' }));
+    meta.append(el('span', { class: 'shorts-note', title: `‘${state.meta.query}’ · 올린 지 34시간 안 · ${risingRuleText(state.meta.rule)}`, text: '올린 지 34시간 안' }));
     if (state.meta.cached) {
       meta.append(el('span', { class: 'shorts-note', title: '같은 요청은 10분 동안 앞서 불러온 결과를 다시 씁니다', text: '10분 안에 불러온 결과' }));
     }

@@ -62,7 +62,7 @@ class Services:
     hooks: BrowserHooks = field(default_factory=BrowserHooks)
     # R2: 프로필 로그인 창 열기와 로그인 확인
     accounts: ProfileAccounts = field(default=None)  # type: ignore[assignment]
-    # R4: 뜨기 직전 영상(초안까지만)
+    # R4: 뜨기 직전 영상
     rising: RisingService = field(default=None)  # type: ignore[assignment]
     # R5: 고른 AI가 아닌 AI도 [연결 확인]·[모델 불러오기]를 할 때 쓰는 연결(테스트는 가짜)
     llm_transport: httpx.BaseTransport | None = None

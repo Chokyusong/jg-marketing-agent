@@ -26,7 +26,7 @@ discover:
   max_results: 12
   exclude_shorts: true    # 검색 결과에서 쇼츠(아래 길이 미만·길이 없음)를 뺀다. ①칸 「쇼츠 빼기」의 기본값
   shorts_under_seconds: 181  # 이보다 짧은 영상을 쇼츠로 본다(유튜브 쇼츠는 3분까지)
-rising:                 # 뜨기 직전 영상(①칸 [뜨기 직전 영상], 초안까지만). 올린 지 34시간 안의 영상에서 고른다
+rising:                 # 뜨기 직전 영상(①칸 [뜨기 직전 영상]). 올린 지 34시간 안의 영상에서 고른다
   query: 연애
   min_views: 1000
   max_views: 5000

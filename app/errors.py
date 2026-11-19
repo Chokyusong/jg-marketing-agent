@@ -70,8 +70,6 @@ class ErrorKind(StrEnum):
     PROFILE_CHECK_FAILED = "profile_check_failed"
     # R3: 실제 게시 시작 전 확인 — 최근 로그인 확인에서 로그인 안 됨으로 나온 프로필
     PROFILE_NOT_SIGNED_IN = "profile_not_signed_in"
-    # R4: 뜨기 직전 영상은 초안까지만(과제 가점: "초안까지만")
-    RISING_DRAFT_ONLY = "rising_draft_only"
 
 
 @dataclass(frozen=True)
@@ -313,12 +311,6 @@ ERROR_TEXTS: dict[ErrorKind, ErrorText] = {
         "이 프로필은 유튜브에 로그인돼 있지 않아 댓글을 달 수 없습니다.",
         "프로필 화면에서 그 프로필의 [로그인하기]를 눌러 로그인해 주세요. 이미 로그인했다면 "
         "[로그인 확인]을 눌러 주세요.",
-        409,
-    ),
-    ErrorKind.RISING_DRAFT_ONLY: ErrorText(
-        "뜨기 직전 영상은 초안까지만 만듭니다.",
-        "댓글을 달려면 같은 영상을 [영상 불러오기]나 「영상 링크로 불러오기」로 "
-        "다시 불러와 주세요.",
         409,
     ),
 }

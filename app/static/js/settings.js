@@ -1446,7 +1446,7 @@ export function settingsView(s) {
       numberField('rising.min_views', '조회수 최소', { unit: '회' }),
       numberField('rising.max_views', '조회수 최대', { unit: '회' }),
       numberField('rising.min_views_per_hour', '시간당 조회수', { unit: '회 이상' }),
-      readRow('댓글', '이 목록에서 고른 영상은 초안까지만 만듭니다'),
+      readRow('댓글', '이 목록에서 고른 영상에도 다른 영상처럼 댓글을 달 수 있습니다'),
     ]),
     el('p', { class: 'caption set-version', text: `버전 ${s.version}` }),
   ];

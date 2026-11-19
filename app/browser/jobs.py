@@ -417,8 +417,6 @@ class JobService:
             if self._task is not None:
                 raise AppError(ErrorKind.JOB_BUSY, detail="프로필 로그인을 확인하는 중")
             self.recover_stale()
-            if self._rising_only(video_id):  # R4: 뜨기 직전 목록에서 고른 영상은 초안까지만
-                raise AppError(ErrorKind.RISING_DRAFT_ONLY, detail=video_id)
             live = mode == "youtube"
             if live and self._comments_disabled(video_id):
                 raise AppError(ErrorKind.COMMENTS_DISABLED, detail=video_id)
@@ -479,14 +477,6 @@ class JobService:
                 "SELECT body, disclosed FROM drafts WHERE id = ?", (draft_id,)
             ).fetchone()
         return (row["body"], bool(row["disclosed"])) if row else ("", True)
-
-    def _rising_only(self, video_id: str) -> bool:
-        """마지막으로 불러온 목록이 뜨기 직전 영상이면 참(videos.source = 'rising')."""
-        with db.session(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT source FROM videos WHERE video_id = ?", (video_id,)
-            ).fetchone()
-        return bool(row and row["source"] == "rising")
 
     def _comments_disabled(self, video_id: str) -> bool:
         """맥락을 모을 때 YouTube가 「댓글 막힘」을 알려 준 영상인지."""

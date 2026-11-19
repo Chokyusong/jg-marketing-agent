@@ -65,7 +65,7 @@ def list_videos(
 def rising_videos(services: ServicesDep, exclude_shorts: bool | None = None) -> VideoListOut:
     """뜨기 직전 영상(R4, 가점). 조건은 설정 `rising.*`. 같은 요청은 10분 저장(검색 1회 100단위).
 
-    이 목록의 영상은 초안까지만 된다(게시 작업 시작을 거절한다).
+    이 목록의 영상도 다른 영상처럼 게시할 수 있다(2026-11-19 대표 지시).
     """
     discover = services.settings.discover
     result = services.rising.find(

@@ -1,11 +1,11 @@
-"""R4 뜨기 직전 영상(가점, 초안까지만): 가짜 YouTube 응답으로만(실제 접속 없음).
+"""R4 뜨기 직전 영상(가점): 가짜 YouTube 응답으로만(실제 접속 없음).
 
 - 경계값: 조회수 999·1,000·5,000·5,001, 시간당 149·150, 올린 지 1분(0.1시간으로 본다)
 - 시간당 조회수가 큰 순서, 쇼츠 빼기
 - 검색 조건(publishedAfter = 지금 − 34시간, 최신순, 50개, 검색어)
 - 같은 요청 10분 저장(할당량 기록 101 → 그대로), 10분 뒤 새로
-- 게시 작업 거절(실제 게시·연습 모드 모두), 링크로 다시 불러오면 평소처럼 게시
-- 화면 문구(목록 줄, 결과 없음, ③ 막힘 이유)
+- 뜨기 직전 목록에서 고른 영상도 평소처럼 게시(2026-11-19 대표 지시: 막지 않는다)
+- 화면 문구(목록 줄, 결과 없음, ③을 막지 않음)
 """
 
 from __future__ import annotations
@@ -178,32 +178,23 @@ def test_missing_key_is_clear_error(mock_http, make_client):
     assert res.status_code >= 400 and res.json()["error"]["kind"] == "missing_key"
 
 
-# ---------------------------------------------------------------- 초안까지만: 게시 거절
+# ---------------------------------------------------------------- 게시 막지 않음(2026-11-19)
 
 
-def test_job_refused_for_rising_video_then_allowed_after_reload(setup):
+def test_rising_video_can_be_posted(setup):
+    """뜨기 직전 목록에서 고른 영상도 다시 불러오지 않고 바로 게시된다(가짜 유튜브·연습 모드)."""
     client, services, approve_one, drivers, _, _ = setup
     d = approve_one()
     services.videos.mark_source([VID], "rising")  # 뜨기 직전 목록에서 고른 영상
-    for target in ("youtube", "sandbox"):
-        body = {"video_id": VID, "draft_id": d["id"], "target": target}
-        res = client.post("/api/jobs", json=body)
-        assert res.status_code == 409, res.text
-        error = res.json()["error"]
-        assert error["kind"] == "rising_draft_only"
-        assert error["message"] == "뜨기 직전 영상은 초안까지만 만듭니다."
-        assert "다시 불러와" in error["action"]
-    assert drivers == []  # 크롬을 열지 않았다
-    from app import db
-
-    with db.session(services.settings.db_path) as conn:  # 게시 예약도 남기지 않는다
-        assert conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0] == 0
-    # 같은 영상을 링크로 다시 불러오면 평소처럼 게시할 수 있다
-    item = client.post("/api/videos/resolve", json={"url": f"https://youtu.be/{VID}"}).json()["item"]
-    assert item["source"] == "link"
-    res = client.post("/api/jobs", json={"video_id": VID, "draft_id": d["id"], "target": "sandbox"})
+    body = {"video_id": VID, "draft_id": d["id"], "target": "sandbox"}
+    res = client.post("/api/jobs", json=body)
     assert res.status_code == 200, res.text
     assert wait_state(client, res.json()["id"], "posted")["state"] == "posted"
+    assert len(drivers) == 1
+    assert services.videos.source_of(VID) == "rising"  # 출처는 그대로 둔다
+    # 운영 규칙은 같다: 같은 영상에 두 번째 댓글은 거절
+    again = client.post("/api/jobs", json=body)
+    assert again.status_code == 409, again.text
 
 
 def test_normal_search_resets_rising_source(setup):
@@ -226,9 +217,8 @@ def test_screen_words(make_client):
     rule_text = "조회수 ${n(rule.min_views)}~${n(rule.max_views)} · "
     assert rule_text + "시간당 ${n(rule.min_views_per_hour)}회 이상" in discover
     assert "시간당 ${Math.round(value).toLocaleString('ko-KR')}회" in discover
-    assert "'뜨기 직전'" in discover and "초안까지만" in discover
-    job = client.get("/static/js/job.js").text
-    assert "if (video.source === 'rising') return RISING_ONLY;" in job
-    assert "뜨기 직전 영상은 초안까지만 만듭니다." in job
+    assert "'뜨기 직전'" in discover and "초안까지만" not in discover
+    job = client.get("/static/js/job.js").text  # ③ [댓글 달기]를 막지 않는다
+    assert "RISING_ONLY" not in job and "초안까지만" not in job
     api = client.get("/static/js/api.js").text
     assert "/api/videos/rising" in api

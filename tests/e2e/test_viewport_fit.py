@@ -199,10 +199,8 @@ def test_rising_list_fits_and_blocks_posting(fit_app):
         assert "뜨기 직전 영상" in page.text_content("#result-meta")
         page.click(f'.vid[data-id="{PICK}"]')
         wait_draft(page, 2)
-        page.wait_for_function(
-            "document.getElementById('job-why').textContent.startsWith("
-            "'뜨기 직전 영상은 초안까지만 만듭니다')")
-        assert page.is_disabled("#job-primary")
+        # 2026-11-19: 뜨기 직전 영상도 [댓글 달기]를 막지 않는다(예전 「초안까지만」)
+        assert "초안까지만" not in (page.text_content("#job-why") or "")
         # 2026-11-18: 예전 「자막을 읽지 못해 제목과 설명으로 대신합니다」. 이 시험 영상은
         # 설명·댓글도 짧아 자료 상태가 「자료 부족」(덧붙임: 자료 상태 셋).
         # 화면 손질(2026-11-18): 영상에 자막이 없으면 까닭 괄호 없이 「자막이 없고」
